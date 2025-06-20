@@ -37,4 +37,4 @@ In this frame:
 
 And yes, it's recursive—but bounded. **Positive feedback**, long feared in control theory, becomes a *creative force*—shaped by ontologies, scoped by constraints, and mirrored across system levels.
 
-**Survivability**, not just stability and robustness
+**Survivability** includes **adaptability**, not just stability and robustness.

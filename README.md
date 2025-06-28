@@ -1,4 +1,4 @@
-# Cogniscient
+# Cogniscient: An exploration of the adaptive loop
 
 **Rethinking Control Systems by Revisiting Cybernetics and General Systems Theory**
 
@@ -6,7 +6,7 @@ This started as a simple idea: *Can I build a generic Control Plane?* Every cont
 
 So I started over.
 
-I reduced the problem to what I think are the first principles, and from that emerged a broader model—one grounded in **Cybernetics** (Wiener, 1948), **General Systems Theory** (Bertalanffy, 1968), and inspired by **cognitive models of adaptive intelligence** (Sternberg, 1997). From this came a control architecture following a three-state model:
+I reduced the problem to what I think are the first principles, and from that emerged a broader model—one grounded in **Cybernetics** (Wiener, 1948, and Ashby 1956), **General Systems Theory** (Bertalanffy, 1968), **Viable System Model** (Beer, 1972) and inspired by **cognitive models of adaptive intelligence** (Sternberg, 1997). From this came a control architecture following a three-state model:
 
 - **Init** → System boot, environment setup  
 - **Operate** → Optimized execution under predefined constraints  
@@ -21,6 +21,8 @@ We see this everywhere:
 The insight? We've neglected **Reconcile**.
 
 This is **Cogniscient**.
+ - **Exceptions are epistemic signals**
+ - **A domain is both defined and bounded by its constraints**
 
 Most control systems treat exceptions as terminal conditions—log and halt. But what if **Reconcile** wasn’t an afterthought, but the *engine of adaptation*? Imagine a system where:
 

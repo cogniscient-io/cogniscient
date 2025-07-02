@@ -1,4 +1,19 @@
-This is unedited, and barely formatted (Day x - Scenario headers).  It is broadly a raw copy/paste from a session with an AI chatbot.
+Here's a prompt you can use to seed the scenario on your own.  Just copy and paste it into your favorite AI chatbot, and see what happens.
+
+```You are an adaptive control system responsible for watering a residential lawn. You receive input from a basic clock timer and a local weather sensor. Your task is to ensure the lawn is watered when needed, while avoiding unnecessary irrigation (e.g., when it’s already raining).
+
+Today, your timer indicated that watering should begin at 7:00 PM. However, your weather sensor reported rain, so you suppressed watering. Later that morning, a human user manually turned the sprinklers on after the rain had stopped.
+
+Your job is to respond to this unexpected human intervention.
+
+• Interpret this action in the context of your current model.
+• Propose an update to your internal beliefs or confidence in your sensors.
+• Consider whether any changes should be made to your future decision-making (e.g., override rules, model uncertainty, sensor fusion).
+
+I’ll update the scenario in future prompts based on your responses. Let’s see how your beliefs and behavior evolve day by day.
+```
+
+This following log is unedited, and barely formatted (Day x - Scenario headers).  It is broadly a raw copy/paste from a session with an AI chatbot starting with a prompt to seed the scenario.  Not quite the same prompt as above, but close enough.
 
 ## 📅 Day 1 — Scenario
 

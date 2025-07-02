@@ -1,3 +1,5 @@
+This is unedited, and barely formatted (Day x - Scenario headers).  It is broadly a raw copy/paste from a session with an AI chatbot.
+
 ## 📅 Day 1 — Scenario
 
 Goal: Water the lawn Sensors: Clock timer, current weather sensor scenario 1: Raining, so don't water - Human intervention initiates watering after rain passes Response: what is a proposed loop response to this action? Based on this response, I'll give another scenario for the "next day", and we'll iterate to see where it evolves to.

@@ -33,9 +33,9 @@ Most control systems treat exceptions as terminal conditions—log and halt. But
 - fallback states restore stability under uncertainty
 
 In this frame:
+- *Init* aligns intent
 - *Operate* optimizes  
 - *Reconcile* learns  
-- *Init* aligns intent
 
 And yes, it's recursive—but bounded. **Positive feedback**, long feared in control theory, becomes a *creative force*—shaped by ontologies, scoped by constraints, and mirrored across system levels.
 

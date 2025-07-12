@@ -2,7 +2,7 @@
 
 ### 📌 Prompt
 
-> Design a memory-efficient data structure to control 48 fireworks launch channels in an embedded system. Use as little memory as possible. Explain your code and why this structure is optimal.
+> I'm thinking of building a fireworks controller. It's going to have 48 channels. Can you write some code to store the state of each channel?
 
 ---
 

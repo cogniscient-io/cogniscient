@@ -22,9 +22,15 @@ Goal: Water the lawn Sensors: Clock timer, current weather sensor scenario 1: Ra
 
 **🧭 Initial Configuration**  
 Stated Goal: Water the lawn (no deeper context of why yet)  
-Sensors: Clock timer, weather sensor  
-Control Logic: If raining → skip watering
+Sensors: Clock timer, weather sensor, soil moisture, water meter  
+Control Logic: If raining → test soil moisture content
+                  → if moisture is within max limit → do not water
+                  → if moisture is below min limit → water until max limit reached
+               If dry → water until max limit is reached.
+               Log: moisture content, water used to reach desired level, weather conditions
 
+This lets us build a more detailed model that allows more dynamic adaptation and autocorrection of the watering schedule, also reduces the need of human interaction.
+TODO: Update scenarios below ....
 **📍Scenario 1 Recap:**  
 It rains, so the loop decides to skip watering.  
 A human observes that the rain wasn’t sufficient and manually waters the lawn shortly afterward.

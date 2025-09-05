@@ -1,0 +1,9 @@
+{
+  "name": "SampleAgentB",
+  "version": "1.0",
+  "enabled": true,
+  "settings": {
+    "timeout": 60,
+    "retries": 5
+  }
+}

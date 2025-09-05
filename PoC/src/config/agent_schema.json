@@ -10,6 +10,48 @@
     "enabled": {
       "type": "boolean"
     },
+    "dns_settings": {
+      "type": "object",
+      "properties": {
+        "target_domain": {
+          "type": "string"
+        },
+        "dns_server": {
+          "type": "string"
+        },
+        "timeout": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "target_domain"
+      ]
+    },
+    "website_settings": {
+      "type": "object",
+      "properties": {
+        "target_url": {
+          "type": "string"
+        },
+        "timeout": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "target_url"
+      ]
+    },
+    "response_controls": {
+      "type": "object",
+      "properties": {
+        "delay_ms": {
+          "type": "number"
+        },
+        "error_rate": {
+          "type": "number"
+        }
+      }
+    },
     "settings": {
       "type": "object",
       "properties": {

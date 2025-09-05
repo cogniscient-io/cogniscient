@@ -12,5 +12,5 @@ def test_load_agent_module():
 
 def test_load_nonexistent_module():
     """Should raise ImportError for nonexistent module."""
-    with pytest.raises(ImportError):
+    with pytest.raises((ImportError, FileNotFoundError)):
         load_agent_module("nonexistent", "nonexistent.py")

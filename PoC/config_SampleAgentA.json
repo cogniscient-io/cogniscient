@@ -2,6 +2,15 @@
   "name": "SampleAgentA",
   "version": "1.0",
   "enabled": true,
+  "dns_settings": {
+    "target_domain": "example.com",
+    "dns_server": "8.8.8.8",
+    "timeout": 5
+  },
+  "response_controls": {
+    "delay_ms": 0,
+    "error_rate": 0.0
+  },
   "settings": {
     "timeout": 30,
     "retries": 3

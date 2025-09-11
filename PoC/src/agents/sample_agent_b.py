@@ -10,7 +10,7 @@ from agents.base import Agent
 class SampleAgentB(Agent):
     """Sample agent B implementation with website checking capabilities."""
 
-    def self_describe(self):
+    def self_describe(self) -> dict:
         """Return a dictionary describing the agent's capabilities.
         
         Returns:
@@ -34,7 +34,7 @@ class SampleAgentB(Agent):
             }
         }
     
-    def perform_website_check(self, url=None):
+    def perform_website_check(self, url=None) -> dict:
         """Perform a website check with configurable behavior.
         
         Args:

@@ -1,4 +1,5 @@
 {
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
     "name": {
@@ -9,62 +10,6 @@
     },
     "enabled": {
       "type": "boolean"
-    },
-    "dns_settings": {
-      "type": "object",
-      "properties": {
-        "target_domain": {
-          "type": "string"
-        },
-        "dns_server": {
-          "type": "string"
-        },
-        "timeout": {
-          "type": "number"
-        }
-      },
-      "required": [
-        "target_domain"
-      ]
-    },
-    "website_settings": {
-      "type": "object",
-      "properties": {
-        "target_url": {
-          "type": "string"
-        },
-        "timeout": {
-          "type": "number"
-        }
-      },
-      "required": [
-        "target_url"
-      ]
-    },
-    "response_controls": {
-      "type": "object",
-      "properties": {
-        "delay_ms": {
-          "type": "number"
-        },
-        "error_rate": {
-          "type": "number"
-        }
-      }
-    },
-    "settings": {
-      "type": "object",
-      "properties": {
-        "timeout": {
-          "type": "number"
-        },
-        "retries": {
-          "type": "integer"
-        }
-      },
-      "required": [
-        "timeout"
-      ]
     }
   },
   "required": [

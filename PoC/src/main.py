@@ -1,4 +1,4 @@
-"""Main application entry point."""
+"""Main entry point for the dynamic control system."""
 
 from control_system.manager import ControlSystemManager
 from agents.sample_agent_a import SampleAgentA
@@ -6,24 +6,21 @@ from agents.sample_agent_b import SampleAgentB
 
 
 def main():
-    """Main application entry point."""
+    """Main function to run the control system."""
+    # Initialize the control system manager
     manager = ControlSystemManager()
     
-    # Load agents
+    # Create and add sample agents
     agent_a = SampleAgentA()
     agent_b = SampleAgentB()
     
-    # Add agents to manager
     manager.add_agent(agent_a)
     manager.add_agent(agent_b)
     
-    # Generate configurations
+    # Generate configuration files for all agents
     manager.generate_all_configs()
     
-    # Demonstrate functionality
-    print("Loaded agents:")
-    for agent_name in manager.list_agents():
-        print(f"  - {agent_name}")
+    print("Configuration files generated successfully.")
 
 
 if __name__ == "__main__":

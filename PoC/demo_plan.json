@@ -1,0 +1,18 @@
+{
+  "steps": [
+    {
+      "agent": "SampleAgentA",
+      "method": "perform_dns_lookup",
+      "kwargs": {
+        "domain": "google.com"
+      }
+    },
+    {
+      "agent": "SampleAgentB",
+      "method": "perform_website_check",
+      "kwargs": {
+        "url": "https://httpbin.org/status/200"
+      }
+    }
+  ]
+}

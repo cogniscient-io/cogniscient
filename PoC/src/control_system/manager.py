@@ -7,9 +7,9 @@ from control_system.generator import generate_agent_config
 class ControlSystemManager:
     """Manages loaded agents and their configurations."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the control system manager."""
-        self.agents = []
+        self.agents: List[Any] = []
 
     def add_agent(self, agent: Any) -> None:
         """Add an agent to the manager.

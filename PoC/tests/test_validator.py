@@ -1,6 +1,5 @@
 """Unit tests for the validator component."""
 
-import pytest
 from control_system.validator import validate_agent_config, load_schema
 
 
@@ -15,7 +14,7 @@ def test_valid_agent_config():
         }
     }
     schema = load_schema()
-    assert validate_agent_config(config, schema) == True
+    assert validate_agent_config(config, schema)
 
 
 def test_invalid_agent_config_missing_required():
@@ -25,4 +24,4 @@ def test_invalid_agent_config_missing_required():
         # Missing version and enabled
     }
     schema = load_schema()
-    assert validate_agent_config(config, schema) == False
+    assert not validate_agent_config(config, schema)

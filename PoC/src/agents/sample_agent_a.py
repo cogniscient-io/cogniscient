@@ -9,7 +9,7 @@ from agents.base import Agent
 class SampleAgentA(Agent):
     """Sample agent A implementation with DNS lookup capabilities."""
 
-    def self_describe(self):
+    def self_describe(self) -> dict:
         """Return a dictionary describing the agent's capabilities.
         
         Returns:
@@ -34,7 +34,7 @@ class SampleAgentA(Agent):
             }
         }
 
-    def perform_dns_lookup(self, domain=None, dns_server=None):
+    def perform_dns_lookup(self, domain=None, dns_server=None) -> dict:
         """Perform a DNS lookup with configurable behavior.
         
         Args:

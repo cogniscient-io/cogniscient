@@ -10,6 +10,65 @@
     },
     "enabled": {
       "type": "boolean"
+    },
+    "parameter_ranges": {
+      "type": "object",
+      "properties": {
+        "min_values": {
+          "type": "object"
+        },
+        "max_values": {
+          "type": "object"
+        },
+        "default_values": {
+          "type": "object"
+        }
+      }
+    },
+    "approval_thresholds": {
+      "type": "object",
+      "properties": {
+        "change_threshold": {
+          "type": "number"
+        },
+        "critical_parameters": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "orchestration_metadata": {
+      "type": "object",
+      "properties": {
+        "domain_knowledge": {
+          "type": "string"
+        },
+        "safety_constraints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "learning_preferences": {
+          "type": "object"
+        }
+      }
+    },
+    "settings": {
+      "type": "object",
+      "properties": {
+        "timeout": {
+          "type": "number"
+        },
+        "retries": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "timeout"
+      ]
     }
   },
   "required": [

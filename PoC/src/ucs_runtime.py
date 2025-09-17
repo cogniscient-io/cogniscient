@@ -3,7 +3,7 @@
 import importlib.util
 import json
 from typing import Any, Dict
-
+from src.services.llm_service import LLMService
 
 class UCSRuntime:
     """Core UCS runtime for loading and managing agents."""
@@ -17,6 +17,7 @@ class UCSRuntime:
         self.config_dir = config_dir
         self.agents: Dict[str, Any] = {}
         self.agent_configs: Dict[str, Dict[str, Any]] = {}
+        self.llm_service = LLMService()
 
     def load_agent_config(self, config_file: str) -> Dict[str, Any]:
         """Load an agent configuration from a JSON file.
@@ -129,7 +130,21 @@ if __name__ == "__main__":
     # Simple demonstration of running agents
     try:
         result_a = ucs.run_agent("SampleAgentA", "perform_dns_lookup")
-        print(f"SampleAgentA result: {result_a}")
+        if result_a.error:
+            try:
+                llmContent = {
+                    "agent": "SampleAgentA",
+                    "error": result_a.error,
+                    "reasoning": result_a.reasoning,
+                    "suggestion": result_a.suggestion
+                }
+                llm_response = ucs.llm_service.generate_response(llmContent, domain="IT Networking")
+                print(f"SampleAgentA error: {result_a.error}")
+                print(f"LLM suggestion: {llm_response}")
+            except Exception as llm_e:
+                print(f"Failed to get LLM suggestion: {llm_e}")
+        else:
+            print(f"SampleAgentA result: {result_a}")
         
         result_b = ucs.run_agent("SampleAgentB", "perform_website_check")
         print(f"SampleAgentB result: {result_b}")

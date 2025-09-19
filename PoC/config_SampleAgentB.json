@@ -1,5 +1,6 @@
 {
   "name": "SampleAgentB",
+  "description": "Fetches web page content as a service monitor.",
   "version": "1.0",
   "enabled": true,
   "website_settings": {

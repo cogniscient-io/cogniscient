@@ -26,8 +26,9 @@ async def test_user_input_processing():
         user_input = "Hello, how are you?"
         response = await chat_interface.process_user_input(user_input)
         
-        # Verify LLM service was called
-        mock_generate.assert_called_once_with(user_input)
+        # Verify LLM service was called with the correct message format
+        expected_messages = [{"role": "user", "content": user_input}]
+        mock_generate.assert_called_once_with(expected_messages)
         
         # Verify response
         assert isinstance(response, str)

@@ -1,5 +1,6 @@
 {
   "name": "SampleAgentA",
+  "description": "Performs DNS lookups for given domains.",
   "version": "1.0",
   "enabled": true,
   "dns_settings": {

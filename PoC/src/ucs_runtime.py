@@ -4,6 +4,7 @@ import importlib.util
 import json
 from typing import Any, Dict
 from src.services.llm_service import LLMService
+from src.services.contextual_llm_service import ContextualLLMService
 
 class UCSRuntime:
     """Core UCS runtime for loading and managing agents."""
@@ -17,7 +18,8 @@ class UCSRuntime:
         self.config_dir = config_dir
         self.agents: Dict[str, Any] = {}
         self.agent_configs: Dict[str, Dict[str, Any]] = {}
-        self.llm_service = LLMService()
+        self.raw_llm_service = LLMService()
+        self.llm_service = ContextualLLMService(self.raw_llm_service)
 
     def load_agent_config(self, config_file: str) -> Dict[str, Any]:
         """Load an agent configuration from a JSON file.
@@ -74,7 +76,7 @@ class UCSRuntime:
         # This is a simplification - a real system would be more flexible
         class_name = config["name"]
         agent_class = getattr(module, class_name)
-        return agent_class()
+        return agent_class(config)
 
     def load_all_agents(self) -> None:
         """Load all agents based on configuration files."""
@@ -123,23 +125,18 @@ class UCSRuntime:
         print("All agents shut down.")
 
 
-if __name__ == "__main__":
+async def main():
     ucs = UCSRuntime()
     ucs.load_all_agents()
     
     # Simple demonstration of running agents
     try:
         result_a = ucs.run_agent("SampleAgentA", "perform_dns_lookup")
-        if result_a.error:
+        if "error" in result_a and result_a["error"]:
             try:
-                llmContent = {
-                    "agent": "SampleAgentA",
-                    "error": result_a.error,
-                    "reasoning": result_a.reasoning,
-                    "suggestion": result_a.suggestion
-                }
-                llm_response = ucs.llm_service.generate_response(llmContent, domain="IT Networking")
-                print(f"SampleAgentA error: {result_a.error}")
+                llmContent = f"Agent SampleAgentA encountered an error: {result_a['error']}"
+                llm_response = await ucs.llm_service.generate_response(llmContent, domain="IT Networking")
+                print(f"SampleAgentA error: {result_a['error']}")
                 print(f"LLM suggestion: {llm_response}")
             except Exception as llm_e:
                 print(f"Failed to get LLM suggestion: {llm_e}")
@@ -150,3 +147,8 @@ if __name__ == "__main__":
         print(f"SampleAgentB result: {result_b}")
     finally:
         ucs.shutdown()
+
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())

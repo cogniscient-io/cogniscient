@@ -33,7 +33,8 @@ class ChatInterface:
         self.conversation_history.append({"role": "user", "content": user_input})
         
         # Generate response using LLM
-        response = await self.llm_service.generate_response(user_input)
+        messages = [{"role": "user", "content": user_input}]
+        response = await self.llm_service.generate_response(messages)
         
         # Add response to conversation history
         self.conversation_history.append({"role": "assistant", "content": response})

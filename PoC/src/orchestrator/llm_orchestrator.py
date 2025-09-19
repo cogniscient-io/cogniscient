@@ -4,6 +4,7 @@ import json
 import logging
 from typing import Dict, Any
 from src.services.llm_service import LLMService
+from src.services.contextual_llm_service import ContextualLLMService
 from src.ucs_runtime import UCSRuntime
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,8 @@ class LLMOrchestrator:
             ucs_runtime (UCSRuntime): The UCS runtime instance to manage agents.
         """
         self.ucs_runtime = ucs_runtime
-        self.llm_service = LLMService()
+        self.raw_llm_service = LLMService()  # Generic transport layer
+        self.llm_service = ContextualLLMService(self.raw_llm_service)  # High-level service with context
         self.parameter_ranges: Dict[str, Dict[str, Dict[str, Any]]] = {}  # Define acceptable parameter ranges
         self.approval_thresholds: Dict[str, Dict[str, Any]] = {}  # Define thresholds for human approval
 
@@ -38,22 +40,68 @@ class LLMOrchestrator:
 "
         prompt += "Based on this output, what should be the next steps?\
 "
-        prompt += "Options: continue with current parameters, adjust parameters, escalate for approval, or terminate.\
+        prompt += "Please respond with a JSON object that has the following structure:\
 "
-        prompt += "Respond with a JSON object containing the decision and reasoning."
+        prompt += "{\
+"
+        prompt += '  "decision": "success|retry|failure",\
+'
+        prompt += '  "reasoning": "Explanation for the decision",\
+'
+        prompt += '  "retry_params": {"param_name": "param_value"} // Only include this if decision is "retry"\
+'
+        prompt += "}\
+"
+        prompt += "Use 'success' if the task completed successfully.\
+"
+        prompt += "Use 'retry' if the task should be retried, possibly with different parameters. When suggesting retry_params, consider adjusting timeout values or other relevant settings.\
+"
+        prompt += "Use 'failure' if the task cannot be completed successfully.\
+"
+        prompt += "IMPORTANT: Respond ONLY with the JSON object. Do not include any other text, markdown, or formatting.\
+"
         
         try:
-            # Get LLM evaluation
+            # Get LLM evaluation using the contextual LLM service
             evaluation_text = await self.llm_service.generate_response(prompt)
-            # Try to parse as JSON, fallback to text if parsing fails
+            
+            # Clean up the response text
+            # Remove any markdown code block markers
+            evaluation_text = evaluation_text.strip()
+            if evaluation_text.startswith("```json"):
+                evaluation_text = evaluation_text[7:]
+            if evaluation_text.startswith("```"):
+                evaluation_text = evaluation_text[3:]
+            if evaluation_text.endswith("```"):
+                evaluation_text = evaluation_text[:-3]
+            evaluation_text = evaluation_text.strip()
+            
+            # Try to parse as JSON
             try:
                 evaluation = json.loads(evaluation_text)
             except json.JSONDecodeError:
-                evaluation = {"decision": "continue", "reasoning": evaluation_text}
+                # If JSON parsing fails, try to extract JSON from the response
+                # This handles cases where the LLM includes additional text around the JSON
+                import re
+                # Look for a JSON object in the response
+                json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', evaluation_text)
+                if json_match:
+                    try:
+                        evaluation = json.loads(json_match.group())
+                    except json.JSONDecodeError:
+                        evaluation = {"decision": "failure", "reasoning": f"Could not parse LLM response as JSON: {evaluation_text}"}
+                else:
+                    evaluation = {"decision": "failure", "reasoning": f"Could not find JSON in LLM response: {evaluation_text}"}
+            
+            # Validate the structure of the evaluation
+            if "decision" not in evaluation:
+                evaluation["decision"] = "failure"
+                evaluation["reasoning"] = f"Missing 'decision' field in LLM response: {evaluation}"
+            
             return evaluation
         except Exception as e:
             logger.error(f"Error evaluating agent output: {e}")
-            return {"decision": "continue", "reasoning": f"Error in evaluation: {str(e)}"}
+            return {"decision": "failure", "reasoning": f"Error in evaluation: {str(e)}"}
 
     def is_within_range(self, agent_name: str, param: str, value: Any) -> bool:
         """Check if a parameter value is within the acceptable range.
@@ -155,7 +203,7 @@ class LLMOrchestrator:
             evaluation = await self.evaluate_agent_output(agent_name, result)
             
             # Process the evaluation decision
-            decision = evaluation.get("decision", "continue")
+            decision = evaluation.get("decision", "failure")
             if decision == "adjust":
                 # Extract suggested changes from evaluation
                 changes = evaluation.get("suggested_changes", {})

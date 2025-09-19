@@ -15,8 +15,8 @@ class Settings(BaseSettings):
     
     # LLM API settings
     llm_api_key: Optional[str] = "ollama"
-    llm_model: str = "qwen3:8b"
-    llm_base_url: str = "http://192.168.0.230:11434/v1"
+    llm_model: str = "ollama_chat/qwen3:8b"
+    llm_base_url: str = "http://192.168.0.230:11434"
     llm_request_timeout: float = 30.0
     llm_max_retries: int = 3
     

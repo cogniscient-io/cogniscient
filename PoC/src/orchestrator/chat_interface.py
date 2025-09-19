@@ -21,7 +21,7 @@ class ChatInterface:
         self.conversation_history: List[Dict[str, str]] = []
 
     async def process_user_input(self, user_input: str) -> str:
-        """Process user input and generate response.
+        """Process user input and generate response using LLM-driven agent selection.
         
         Args:
             user_input (str): The user's input message.
@@ -32,9 +32,8 @@ class ChatInterface:
         # Add user input to conversation history
         self.conversation_history.append({"role": "user", "content": user_input})
         
-        # Generate response using LLM
-        messages = [{"role": "user", "content": user_input}]
-        response = await self.llm_service.generate_response(messages)
+        # Generate response using LLM orchestrator which handles agent selection
+        response = await self.orchestrator.process_user_request(user_input, self.conversation_history)
         
         # Add response to conversation history
         self.conversation_history.append({"role": "assistant", "content": response})

@@ -22,12 +22,29 @@ class SampleAgentA(Agent):
         """Return a dictionary describing the agent's capabilities.
         
         Returns:
-            dict: A dictionary containing the agent's configuration.
+            dict: A dictionary containing the agent's configuration and methods.
         """
         return {
             "name": "SampleAgentA",
             "version": "1.0",
             "enabled": True,
+            "methods": {
+                "perform_dns_lookup": {
+                    "description": "Perform a DNS lookup for a domain",
+                    "parameters": {
+                        "domain": {
+                            "type": "string",
+                            "description": "The domain to lookup",
+                            "required": False
+                        },
+                        "dns_server": {
+                            "type": "string",
+                            "description": "The DNS server to use for the lookup",
+                            "required": False
+                        }
+                    }
+                }
+            },
             "dns_settings": {
                 "target_domain": "example.com",
                 "dns_server": "8.8.8.8",

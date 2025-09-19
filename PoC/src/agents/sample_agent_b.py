@@ -22,12 +22,24 @@ class SampleAgentB(Agent):
         """Return a dictionary describing the agent's capabilities.
         
         Returns:
-            dict: A dictionary containing the agent's configuration.
+            dict: A dictionary containing the agent's configuration and methods.
         """
         return {
             "name": "SampleAgentB",
             "version": "1.0",
             "enabled": True,
+            "methods": {
+                "perform_website_check": {
+                    "description": "Check the status and gather diagnostics for a website",
+                    "parameters": {
+                        "url": {
+                            "type": "string",
+                            "description": "The URL of the website to check",
+                            "required": False
+                        }
+                    }
+                }
+            },
             "website_settings": {
                 "target_url": "https://httpbin.org/delay/1",
                 "timeout": 10
@@ -43,7 +55,7 @@ class SampleAgentB(Agent):
         }
     
     def perform_website_check(self, url=None) -> dict:
-        """Perform a website check with configurable behavior.
+        """Perform a website check with configurable behavior and detailed diagnostics.
         
         Args:
             url (str, optional): URL to check. Defaults to website_settings.target_url.
@@ -64,7 +76,48 @@ class SampleAgentB(Agent):
         # Perform actual website check
         url = url or self.config["website_settings"]["target_url"]
         try:
-            response = urllib.request.urlopen(url, timeout=self.config["website_settings"]["timeout"])
-            return {"status": "success", "status_code": response.getcode(), "response_time": response.headers.get('Date')}
-        except (urllib.error.URLError, urllib.error.HTTPError) as e:
-            return {"status": "error", "message": str(e)}
+            request = urllib.request.Request(url)
+            request.add_header('User-Agent', 'Cogniscient Website Checker/1.0')
+            response = urllib.request.urlopen(request, timeout=self.config["website_settings"]["timeout"])
+            
+            # Collect additional diagnostic information
+            headers = dict(response.headers)
+            content_length = headers.get('Content-Length', 'Unknown')
+            
+            return {
+                "status": "success", 
+                "status_code": response.getcode(), 
+                "response_time": response.headers.get('Date'),
+                "content_length": content_length,
+                "headers": headers
+            }
+        except urllib.error.HTTPError as e:
+            return {
+                "status": "error", 
+                "message": f"HTTP {e.code}: {e.reason}",
+                "error_type": "HTTP_ERROR",
+                "status_code": e.code
+            }
+        except urllib.error.URLError as e:
+            # More specific error classification
+            error_msg = str(e)
+            if "Name or service not known" in error_msg or "nodename nor servname provided" in error_msg:
+                error_type = "DNS_ERROR"
+            elif "timed out" in error_msg:
+                error_type = "TIMEOUT_ERROR"
+            elif "Network is unreachable" in error_msg:
+                error_type = "NETWORK_ERROR"
+            else:
+                error_type = "CONNECTION_ERROR"
+                
+            return {
+                "status": "error", 
+                "message": error_msg,
+                "error_type": error_type
+            }
+        except Exception as e:
+            return {
+                "status": "error", 
+                "message": str(e),
+                "error_type": "UNKNOWN_ERROR"
+            }

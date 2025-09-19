@@ -9,6 +9,8 @@ This project demonstrates an LLM-enhanced orchestration system that can adaptive
 - **Parameter Adaptation**: The system can adjust agent parameters based on LLM suggestions to improve the chances of success.
 - **Proper Error Handling**: The system correctly handles DNS lookup failures for non-existent domains.
 - **Robust LLM Response Parsing**: The system can handle various formats of LLM responses and extract structured data.
+- **Website Checking via Chat Interface**: Users can check website status through natural language commands like "check website <url>" in the chat interface.
+- **Intelligent Error Diagnosis**: When website checks fail, the system provides intelligent diagnosis and resolution suggestions.
 
 ## Prerequisites
 
@@ -86,8 +88,25 @@ This will show the adaptive orchestration in action, including:
 2. A failed DNS lookup for a non-existent domain (`test.cogniscient.io`) with retry attempts
 3. Parameter adaptation demonstration
 4. Chat interface demonstration
+5. Website checking functionality demonstration
 
 The demo showcases how the system can handle both successful and failed agent executions, and how it uses LLM evaluations to make decisions about retrying tasks or adjusting parameters. The system correctly identifies when a task cannot be completed (like a non-existent domain) and stops retrying after a few attempts.
+
+## Website Checking via Chat Interface
+
+Users can check website status through natural language commands in the chat interface:
+
+1. **Command Format**: Users can type commands like "check website <url>", "test site <url>", or "verify url <url>"
+2. **Successful Checks**: For accessible websites, the system responds with status information
+3. **Error Diagnosis**: For inaccessible websites, the system provides intelligent diagnosis and resolution suggestions
+4. **Integration**: The feature integrates seamlessly with the existing chat interface and LLM orchestrator
+
+Example commands:
+- `check website https://example.com`
+- `test site http://google.com`
+- `verify url https://github.com`
+
+The system uses SampleAgentB to perform the actual website checks and the LLM orchestrator to provide intelligent analysis of results.
 
 ## Troubleshooting
 
@@ -100,8 +119,3 @@ If you encounter issues with the LLM service:
    unset LLM_MODEL LLM_BASE_URL
    ```
 4. **Ollama Connection**: Ensure Ollama is running and accessible at the specified URL
-
-## Files Created During Fixes
-
-- `LLM_SERVICE_TRANSITION_FIXES.md`: Documentation of the issues and fixes applied
-- `config_SampleAgentA.json`: Configuration file for SampleAgentA (was missing)

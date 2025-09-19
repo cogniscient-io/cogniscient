@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, List
 from src.services.llm_service import LLMService
 from src.services.contextual_llm_service import ContextualLLMService
 from src.ucs_runtime import UCSRuntime
@@ -224,3 +224,216 @@ class LLMOrchestrator:
                 "method": method_name,
                 "error": str(e)
             }
+
+    async def process_user_request(self, user_input: str, conversation_history: List[Dict[str, str]]) -> str:
+        """Process user request using LLM to determine appropriate agents.
+        
+        Args:
+            user_input (str): The user's input message.
+            conversation_history (List[Dict[str, str]]): The conversation history.
+            
+        Returns:
+            str: The generated response.
+        """
+        # Get available agents and their capabilities
+        agent_capabilities = self.get_agent_capabilities()
+        
+        # Construct prompt for LLM with agent information
+        prompt = f"User request: {user_input}\n"
+        prompt += "Available agents and their capabilities:\n"
+        for agent_name, capabilities in agent_capabilities.items():
+            prompt += f"- {agent_name}: {capabilities['description']}\n"
+            if "methods" in capabilities:
+                prompt += "  Available methods:\n"
+                for method_name, method_info in capabilities["methods"].items():
+                    prompt += f"  - {method_name}: {method_info['description']}\n"
+                    if "parameters" in method_info:
+                        prompt += "    Parameters:\n"
+                        for param_name, param_info in method_info["parameters"].items():
+                            required = " (required)" if param_info.get("required", False) else ""
+                            prompt += f"    - {param_name}: {param_info['type']} - {param_info['description']}{required}\n"
+        prompt += "\nINSTRUCTIONS:\n"
+        prompt += "1. First, determine if any tools need to be called to fulfill the user's request.\n"
+        prompt += "2. You may make up to TWO tool calls to investigate an issue thoroughly.\n"
+        prompt += "3. For website accessibility checks, if the website check fails, perform a DNS lookup using SampleAgentA to determine if the domain exists.\n"
+        prompt += "4. After investigating, provide a clear explanation to the user about what you found and what it means.\n"
+        prompt += "5. Do NOT make endless recursive calls - limit yourself to the tools needed to answer the user's question.\n"
+        prompt += "\nTo make a tool call, respond with a JSON object in the following EXACT format:\n"
+        prompt += "{\n"
+        prompt += '  "tool_call": {\n'
+        prompt += '    "agent_name": "SampleAgentB",\n'
+        prompt += '    "method_name": "perform_website_check",\n'
+        prompt += '    "parameters": {"url": "https://example.com"}\n'
+        prompt += "  }\n"
+        prompt += "}\n"
+        prompt += "IMPORTANT: Use EXACTLY 'agent_name', 'method_name', and 'parameters' as the keys.\n"
+        prompt += "IMPORTANT: Respond ONLY with the JSON object if requesting agent execution. "
+        prompt += "Do not include any other text, markdown, or formatting.\n"
+        prompt += "If responding directly to the user, provide a helpful response in plain text.\n"
+        prompt += "Only use the agent names and method names listed above.\n"
+        
+        try:
+            # Track tool calls to prevent infinite loops
+            tool_calls_made = []
+            max_tool_calls = 2  # Limit to two tool calls for focused investigation
+            
+            while len(tool_calls_made) < max_tool_calls:
+                # Get LLM response
+                llm_response = await self.llm_service.generate_response(prompt)
+                
+                # Try to parse as JSON for tool call
+                try:
+                    response_json = json.loads(llm_response)
+                    if "tool_call" in response_json:
+                        # Check if this is a duplicate tool call
+                        tool_call = response_json["tool_call"]
+                        tool_call_key = (tool_call["agent_name"], tool_call["method_name"], 
+                                       tuple(sorted(tool_call.get("parameters", {}).items())))
+                        
+                        if tool_call_key in tool_calls_made:
+                            # Prevent infinite loops by breaking if we've made this exact call before
+                            break
+                            
+                        tool_calls_made.append(tool_call_key)
+                        
+                        # Execute the requested agent method
+                        agent_name = tool_call["agent_name"]
+                        method_name = tool_call["method_name"]
+                        parameters = tool_call.get("parameters", {})
+                        
+                        # Execute agent method
+                        try:
+                            result = self.ucs_runtime.run_agent(agent_name, method_name, **parameters)
+                            
+                            # Generate follow-up prompt with the result
+                            prompt = f"Previous tool call result:\n"
+                            prompt += f"Agent: {agent_name}\n"
+                            prompt += f"Method: {method_name}\n"
+                            prompt += f"Parameters: {parameters}\n"
+                            prompt += f"Result: {json.dumps(result)}\n\n"
+                            prompt += "INSTRUCTIONS:\n"
+                            prompt += "1. Analyze the result above.\n"
+                            prompt += "2. You may make ONE more tool call if needed to complete your investigation.\n"
+                            prompt += "3. For website errors, perform a DNS lookup using SampleAgentA to determine if the domain exists.\n"
+                            prompt += "4. After investigating, provide a clear explanation to the user about what you found and what it means.\n"
+                            prompt += "5. Do NOT make endless recursive calls - limit yourself to the tools needed to answer the user's question.\n"
+                            prompt += "To make a tool call, use the EXACT same JSON format as before:\n"
+                            prompt += "{\n"
+                            prompt += '  "tool_call": {\n'
+                            prompt += '    "agent_name": "SampleAgentA",\n'
+                            prompt += '    "method_name": "perform_dns_lookup",\n'
+                            prompt += '    "parameters": {"domain": "example.com"}\n'
+                            prompt += "  }\n"
+                            prompt += "}\n"
+                            prompt += "IMPORTANT: Use EXACTLY 'agent_name', 'method_name', and 'parameters' as the keys.\n"
+                            prompt += "Only use the agent names and method names listed in the original capabilities.\n"
+                            
+                            # If this was an error result, encourage follow-up investigation
+                            if isinstance(result, dict) and result.get("status") == "error":
+                                prompt += "IMPORTANT: The previous tool call resulted in an error. "
+                                prompt += "Perform one more investigation tool call if it would help clarify the issue.\n"
+                                prompt += "For website errors, a DNS lookup using SampleAgentA can determine if the domain exists.\n"
+                                
+                        except Exception as e:
+                            # Handle agent execution errors
+                            prompt = f"Error executing tool call:\n"
+                            prompt += f"Agent: {agent_name}\n"
+                            prompt += f"Method: {method_name}\n"
+                            prompt += f"Parameters: {parameters}\n"
+                            prompt += f"Error: {str(e)}\n\n"
+                            prompt += "INSTRUCTIONS:\n"
+                            prompt += "1. Analyze the error above.\n"
+                            prompt += "2. You may make ONE more tool call if needed to complete your investigation.\n"
+                            prompt += "3. For website errors, perform a DNS lookup using SampleAgentA to determine if the domain exists.\n"
+                            prompt += "4. After investigating, provide a clear explanation to the user about what you found and what it means.\n"
+                            prompt += "5. Do NOT make endless recursive calls - limit yourself to the tools needed to answer the user's question.\n"
+                            prompt += "To make a tool call, use the EXACT same JSON format as before:\n"
+                            prompt += "{\n"
+                            prompt += '  "tool_call": {\n'
+                            prompt += '    "agent_name": "SampleAgentA",\n'
+                            prompt += '    "method_name": "perform_dns_lookup",\n'
+                            prompt += '    "parameters": {"domain": "example.com"}\n'
+                            prompt += "  }\n"
+                            prompt += "}\n"
+                            prompt += "IMPORTANT: Use EXACTLY 'agent_name', 'method_name', and 'parameters' as the keys.\n"
+                            prompt += "Only use the agent names and method names listed in the original capabilities.\n"
+                            
+                        # Continue the loop to get the next LLM response
+                        continue
+                        
+                except json.JSONDecodeError:
+                    # Not a JSON response, return as direct response to user
+                    return llm_response
+                    
+            # If we've reached the maximum number of tool calls, we need to generate a final response
+            # Generate a final prompt to get a user-friendly response
+            final_prompt = f"User request: {user_input}\n"
+            final_prompt += "INSTRUCTIONS:\n"
+            final_prompt += "Provide a clear, user-friendly response to the original user request based on all the tool call results above.\n"
+            final_prompt += "Explain what was found and what it means in plain language.\n"
+            final_prompt += "Do NOT make any more tool calls.\n"
+            final_prompt += "Do NOT include JSON or technical formatting.\n"
+            final_prompt += "Just provide a helpful response to the user.\n"
+            
+            final_response = await self.llm_service.generate_response(final_prompt)
+            return final_response
+            
+        except Exception as e:
+            logger.error(f"Error processing user request: {e}")
+            return "I encountered an error while processing your request. Please try again later."
+
+    def get_agent_capabilities(self) -> Dict[str, Dict]:
+        """Get the capabilities of available agents including their methods.
+        
+        Returns:
+            Dict[str, Dict]: A dictionary mapping agent names to their capabilities and methods.
+        """
+        capabilities = {}
+        # In a real implementation, this would retrieve capabilities from agent configurations
+        # For now, we'll get this information from the loaded agents
+        for agent_name, agent in self.ucs_runtime.agents.items():
+            agent_description = agent.self_describe()
+            capabilities[agent_name] = {
+                "description": f"Agent {agent_name}",
+                "methods": agent_description.get("methods", {})
+            }
+        
+        # If no agents are loaded, provide default information
+        if not capabilities:
+            capabilities["SampleAgentB"] = {
+                "description": "Can check website status and provide detailed diagnostics",
+                "methods": {
+                    "perform_website_check": {
+                        "description": "Check the status and gather diagnostics for a website",
+                        "parameters": {
+                            "url": {
+                                "type": "string",
+                                "description": "The URL of the website to check",
+                                "required": False
+                            }
+                        }
+                    }
+                }
+            }
+            capabilities["SampleAgentA"] = {
+                "description": "Can perform DNS lookups for domains",
+                "methods": {
+                    "perform_dns_lookup": {
+                        "description": "Perform a DNS lookup for a domain",
+                        "parameters": {
+                            "domain": {
+                                "type": "string",
+                                "description": "The domain to lookup",
+                                "required": False
+                            },
+                            "dns_server": {
+                                "type": "string",
+                                "description": "The DNS server to use for the lookup",
+                                "required": False
+                            }
+                        }
+                    }
+                }
+            }
+        
+        return capabilities

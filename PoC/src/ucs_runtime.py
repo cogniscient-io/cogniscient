@@ -18,8 +18,9 @@ class UCSRuntime:
         self.config_dir = config_dir
         self.agents: Dict[str, Any] = {}
         self.agent_configs: Dict[str, Dict[str, Any]] = {}
-        self.raw_llm_service = LLMService()
-        self.llm_service = ContextualLLMService(self.raw_llm_service)
+        # Create the contextual LLM service without agent registry initially
+        self.llm_service = ContextualLLMService(LLMService())
+        # Agent registry will be set after agents are loaded
 
     def load_agent_config(self, config_file: str) -> Dict[str, Any]:
         """Load an agent configuration from a JSON file.
@@ -94,6 +95,9 @@ class UCSRuntime:
                     print(f"Loaded agent: {config['name']}")
             except Exception as e:
                 print(f"Failed to load agent from {config_file}: {e}")
+        
+        # Set the agent registry in the LLM service
+        self.llm_service.set_agent_registry(self.agents)
 
     def run_agent(self, agent_name: str, method_name: str, *args, **kwargs) -> Any:
         """Run a specific method on an agent.

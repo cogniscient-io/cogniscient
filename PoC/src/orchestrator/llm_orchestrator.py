@@ -20,8 +20,8 @@ class LLMOrchestrator:
             ucs_runtime (UCSRuntime): The UCS runtime instance to manage agents.
         """
         self.ucs_runtime = ucs_runtime
-        self.raw_llm_service = LLMService()  # Generic transport layer
-        self.llm_service = ContextualLLMService(self.raw_llm_service)  # High-level service with context
+        # Use the LLM service from UCS runtime directly
+        self.llm_service = ucs_runtime.llm_service
         self.parameter_ranges: Dict[str, Dict[str, Dict[str, Any]]] = {}  # Define acceptable parameter ranges
         self.approval_thresholds: Dict[str, Dict[str, Any]] = {}  # Define thresholds for human approval
 
@@ -210,23 +210,9 @@ class LLMOrchestrator:
         Returns:
             str: The generated response.
         """
-        # Get available agents and their capabilities
-        agent_capabilities = self.get_agent_capabilities()
-        
         # Construct prompt for LLM with agent information
+        # The agent information is now automatically included by the ContextualLLMService
         prompt = f"User request: {user_input}\n"
-        prompt += "Available agents and their capabilities:\n"
-        for agent_name, capabilities in agent_capabilities.items():
-            prompt += f"- {agent_name}: {capabilities['description']}\n"
-            if "methods" in capabilities:
-                prompt += "  Available methods:\n"
-                for method_name, method_info in capabilities["methods"].items():
-                    prompt += f"  - {method_name}: {method_info['description']}\n"
-                    if "parameters" in method_info:
-                        prompt += "    Parameters:\n"
-                        for param_name, param_info in method_info["parameters"].items():
-                            required = " (required)" if param_info.get("required", False) else ""
-                            prompt += f"    - {param_name}: {param_info['type']} - {param_info['description']}{required}\n"
         prompt += "\nINSTRUCTIONS:\n"
         prompt += "1. First, determine if any tools need to be called to fulfill the user's request.\n"
         prompt += "2. You may make up to TWO tool calls to investigate an issue thoroughly.\n"
@@ -245,7 +231,7 @@ class LLMOrchestrator:
         prompt += "IMPORTANT: Respond ONLY with the JSON object if requesting agent execution. "
         prompt += "Do not include any other text, markdown, or formatting.\n"
         prompt += "If responding directly to the user, provide a helpful response in plain text.\n"
-        prompt += "Only use the agent names and method names listed above.\n"
+        prompt += "Only use the agent names and method names that are available.\n"
         
         try:
             # Track tool calls to prevent infinite loops
@@ -253,11 +239,8 @@ class LLMOrchestrator:
             max_tool_calls = 2  # Limit to two tool calls for focused investigation
             
             while len(tool_calls_made) < max_tool_calls:
-                # Get LLM response using contextual service with agent registry
-                llm_response = await self.llm_service.generate_response(
-                    prompt, 
-                    agent_registry=self.ucs_runtime.agents
-                )
+                # Get LLM response using contextual service (agent registry is now embedded)
+                llm_response = await self.llm_service.generate_response(prompt)
                 
                 # Try to parse as JSON for tool call
                 try:
@@ -308,7 +291,7 @@ class LLMOrchestrator:
                             prompt += "  }\n"
                             prompt += "}\n"
                             prompt += "IMPORTANT: Use EXACTLY 'agent_name', 'method_name', and 'parameters' as the keys.\n"
-                            prompt += "Only use the agent names and method names listed in the original capabilities.\n"
+                            prompt += "Only use the agent names and method names that are available.\n"
                             
                             # If this was an error result, encourage follow-up investigation
                             if isinstance(result, dict) and result.get("status") == "error":
@@ -338,7 +321,7 @@ class LLMOrchestrator:
                             prompt += "  }\n"
                             prompt += "}\n"
                             prompt += "IMPORTANT: Use EXACTLY 'agent_name', 'method_name', and 'parameters' as the keys.\n"
-                            prompt += "Only use the agent names and method names listed in the original capabilities.\n"
+                            prompt += "Only use the agent names and method names that are available.\n"
                             
                         # Continue the loop to get the next LLM response
                         continue
@@ -360,71 +343,12 @@ class LLMOrchestrator:
             final_prompt += "Do NOT include JSON or technical formatting.\n"
             final_prompt += "Just provide a helpful response to the user.\n"
             
-            final_response = await self.llm_service.generate_response(
-                final_prompt,
-                agent_registry=self.ucs_runtime.agents
-            )
+            final_response = await self.llm_service.generate_response(final_prompt)
             return final_response
             
         except Exception as e:
             logger.error(f"Error processing user request: {e}")
             return "I encountered an error while processing your request. Please try again later."
-
-    def get_agent_capabilities(self) -> Dict[str, Dict]:
-        """Get the capabilities of available agents including their methods.
-        
-        Returns:
-            Dict[str, Dict]: A dictionary mapping agent names to their capabilities and methods.
-        """
-        capabilities = {}
-        # In a real implementation, this would retrieve capabilities from agent configurations
-        # For now, we'll get this information from the loaded agents
-        for agent_name, agent in self.ucs_runtime.agents.items():
-            agent_description = agent.self_describe()
-            capabilities[agent_name] = {
-                "description": f"Agent {agent_name}",
-                "methods": agent_description.get("methods", {})
-            }
-        
-        # If no agents are loaded, provide default information
-        if not capabilities:
-            capabilities["SampleAgentB"] = {
-                "description": "Can check website status and provide detailed diagnostics",
-                "methods": {
-                    "perform_website_check": {
-                        "description": "Check the status and gather diagnostics for a website",
-                        "parameters": {
-                            "url": {
-                                "type": "string",
-                                "description": "The URL of the website to check",
-                                "required": False
-                            }
-                        }
-                    }
-                }
-            }
-            capabilities["SampleAgentA"] = {
-                "description": "Can perform DNS lookups for domains",
-                "methods": {
-                    "perform_dns_lookup": {
-                        "description": "Perform a DNS lookup for a domain",
-                        "parameters": {
-                            "domain": {
-                                "type": "string",
-                                "description": "The domain to lookup",
-                                "required": False
-                            },
-                            "dns_server": {
-                                "type": "string",
-                                "description": "The DNS server to use for the lookup",
-                                "required": False
-                            }
-                        }
-                    }
-                }
-            }
-        
-        return capabilities
 
     def _parse_llm_json_response(self, response_text: str) -> Dict[str, Any]:
         """Parse LLM response text that should contain a JSON object.

@@ -65,33 +65,8 @@ class LLMOrchestrator:
             # Get LLM evaluation using the contextual LLM service
             evaluation_text = await self.llm_service.generate_response(prompt)
             
-            # Clean up the response text
-            # Remove any markdown code block markers
-            evaluation_text = evaluation_text.strip()
-            if evaluation_text.startswith("```json"):
-                evaluation_text = evaluation_text[7:]
-            if evaluation_text.startswith("```"):
-                evaluation_text = evaluation_text[3:]
-            if evaluation_text.endswith("```"):
-                evaluation_text = evaluation_text[:-3]
-            evaluation_text = evaluation_text.strip()
-            
-            # Try to parse as JSON
-            try:
-                evaluation = json.loads(evaluation_text)
-            except json.JSONDecodeError:
-                # If JSON parsing fails, try to extract JSON from the response
-                # This handles cases where the LLM includes additional text around the JSON
-                import re
-                # Look for a JSON object in the response
-                json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', evaluation_text)
-                if json_match:
-                    try:
-                        evaluation = json.loads(json_match.group())
-                    except json.JSONDecodeError:
-                        evaluation = {"decision": "failure", "reasoning": f"Could not parse LLM response as JSON: {evaluation_text}"}
-                else:
-                    evaluation = {"decision": "failure", "reasoning": f"Could not find JSON in LLM response: {evaluation_text}"}
+            # Parse and validate the LLM response
+            evaluation = self._parse_llm_json_response(evaluation_text)
             
             # Validate the structure of the evaluation
             if "decision" not in evaluation:
@@ -278,12 +253,19 @@ class LLMOrchestrator:
             max_tool_calls = 2  # Limit to two tool calls for focused investigation
             
             while len(tool_calls_made) < max_tool_calls:
-                # Get LLM response
-                llm_response = await self.llm_service.generate_response(prompt)
+                # Get LLM response using contextual service with agent registry
+                llm_response = await self.llm_service.generate_response(
+                    prompt, 
+                    agent_registry=self.ucs_runtime.agents
+                )
                 
                 # Try to parse as JSON for tool call
                 try:
-                    response_json = json.loads(llm_response)
+                    response_json = self._parse_llm_json_response(llm_response)
+                    # Handle case where _parse_llm_json_response returns an error object
+                    if "error" in response_json:
+                        return llm_response  # Return original response as direct response to user
+                        
                     if "tool_call" in response_json:
                         # Check if this is a duplicate tool call
                         tool_call = response_json["tool_call"]
@@ -361,9 +343,12 @@ class LLMOrchestrator:
                         # Continue the loop to get the next LLM response
                         continue
                         
-                except json.JSONDecodeError:
-                    # Not a JSON response, return as direct response to user
-                    return llm_response
+                except (json.JSONDecodeError, Exception):
+                    # Not a JSON response or parsing error, try to parse with our helper
+                    response_json = self._parse_llm_json_response(llm_response)
+                    # If parsing failed, return as direct response to user
+                    if "error" in response_json:
+                        return llm_response
                     
             # If we've reached the maximum number of tool calls, we need to generate a final response
             # Generate a final prompt to get a user-friendly response
@@ -375,7 +360,10 @@ class LLMOrchestrator:
             final_prompt += "Do NOT include JSON or technical formatting.\n"
             final_prompt += "Just provide a helpful response to the user.\n"
             
-            final_response = await self.llm_service.generate_response(final_prompt)
+            final_response = await self.llm_service.generate_response(
+                final_prompt,
+                agent_registry=self.ucs_runtime.agents
+            )
             return final_response
             
         except Exception as e:
@@ -437,3 +425,40 @@ class LLMOrchestrator:
             }
         
         return capabilities
+
+    def _parse_llm_json_response(self, response_text: str) -> Dict[str, Any]:
+        """Parse LLM response text that should contain a JSON object.
+        
+        Args:
+            response_text (str): The raw text response from the LLM.
+            
+        Returns:
+            Dict[str, Any]: The parsed JSON object, or an error object if parsing fails.
+        """
+        # Clean up the response text
+        # Remove any markdown code block markers
+        cleaned_text = response_text.strip()
+        if cleaned_text.startswith("```json"):
+            cleaned_text = cleaned_text[7:]
+        if cleaned_text.startswith("```"):
+            cleaned_text = cleaned_text[3:]
+        if cleaned_text.endswith("```"):
+            cleaned_text = cleaned_text[:-3]
+        cleaned_text = cleaned_text.strip()
+        
+        # Try to parse as JSON
+        try:
+            return json.loads(cleaned_text)
+        except json.JSONDecodeError:
+            # If JSON parsing fails, try to extract JSON from the response
+            # This handles cases where the LLM includes additional text around the JSON
+            import re
+            # Look for a JSON object in the response
+            json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', cleaned_text)
+            if json_match:
+                try:
+                    return json.loads(json_match.group())
+                except json.JSONDecodeError:
+                    return {"error": f"Could not parse LLM response as JSON: {cleaned_text}"}
+            else:
+                return {"error": f"Could not find JSON in LLM response: {cleaned_text}"}

@@ -200,7 +200,7 @@ class LLMOrchestrator:
                 "error": str(e)
             }
 
-    async def process_user_request(self, user_input: str, conversation_history: List[Dict[str, str]]) -> str:
+    async def process_user_request(self, user_input: str, conversation_history: List[Dict[str, str]]) -> dict:
         """Process user request using LLM to determine appropriate agents.
         
         Args:
@@ -208,8 +208,11 @@ class LLMOrchestrator:
             conversation_history (List[Dict[str, str]]): The conversation history.
             
         Returns:
-            str: The generated response.
+            dict: A dictionary containing the final response and tool call information.
         """
+        # Initialize tool call tracking
+        tool_calls = []
+        
         # Construct prompt for LLM with agent information
         # The agent information is now automatically included by the ContextualLLMService
         # These prompts are more prescriptive because I'm using an 8B model.  The model is
@@ -251,7 +254,11 @@ class LLMOrchestrator:
                     response_json = self._parse_llm_json_response(llm_response)
                     # Handle case where _parse_llm_json_response returns an error object
                     if "error" in response_json:
-                        return llm_response  # Return original response as direct response to user
+                        # Return original response as direct response to user with tool call info
+                        return {
+                            "response": llm_response,
+                            "tool_calls": tool_calls
+                        }
                         
                     if "tool_call" in response_json:
                         # Check if this is a duplicate tool call
@@ -270,9 +277,21 @@ class LLMOrchestrator:
                         method_name = tool_call["method_name"]
                         parameters = tool_call.get("parameters", {})
                         
+                        # Record the tool call
+                        tool_call_info = {
+                            "agent_name": agent_name,
+                            "method_name": method_name,
+                            "parameters": parameters
+                        }
+                        
                         # Execute agent method
                         try:
                             result = self.ucs_runtime.run_agent(agent_name, method_name, **parameters)
+                            
+                            # Record the tool response
+                            tool_call_info["result"] = result
+                            tool_call_info["success"] = True
+                            tool_calls.append(tool_call_info)
                             
                             # Generate follow-up prompt with the result
                             prompt = f"Previous tool call result:\n"
@@ -302,9 +321,14 @@ class LLMOrchestrator:
                                 prompt += "IMPORTANT: The previous tool call resulted in an error. "
                                 prompt += "Perform one more investigation tool call if it would help clarify the issue.\n"
                                 prompt += "For website errors, a DNS lookup using SampleAgentA can determine if the domain exists.\n"
+                                prompt += "When analyzing the results, remember that errors indicate the website or domain is NOT accessible.\n"
                                 
                         except Exception as e:
                             # Handle agent execution errors
+                            tool_call_info["result"] = {"error": str(e)}
+                            tool_call_info["success"] = False
+                            tool_calls.append(tool_call_info)
+                            
                             prompt = f"Error executing tool call:\n"
                             prompt += f"Agent: {agent_name}\n"
                             prompt += f"Method: {method_name}\n"
@@ -316,6 +340,7 @@ class LLMOrchestrator:
                             prompt += "3. For website errors, perform a DNS lookup using SampleAgentA to determine if the domain exists.\n"
                             prompt += "4. After investigating, provide a clear explanation to the user about what you found and what it means.\n"
                             prompt += "5. Do NOT make endless recursive calls - limit yourself to the tools needed to answer the user's question.\n"
+                            prompt += "IMPORTANT: Errors indicate that the website or domain is NOT accessible. Make sure to communicate this clearly to the user.\n"
                             prompt += "To make a tool call, use the EXACT same JSON format as before:\n"
                             prompt += "{\n"
                             prompt += '  "tool_call": {\n'
@@ -335,24 +360,81 @@ class LLMOrchestrator:
                     response_json = self._parse_llm_json_response(llm_response)
                     # If parsing failed, return as direct response to user
                     if "error" in response_json:
-                        return llm_response
-                    
+                        return {
+                            "response": llm_response,
+                            "tool_calls": tool_calls
+                        }
+                        
             # If we've reached the maximum number of tool calls, we need to generate a final response
+            # Check if we have any errors that we can directly interpret
+            error_response = self._generate_error_response(tool_calls, user_input)
+            if not error_response.startswith("I encountered an error while checking the website"):
+                # We have a specific error response, use it
+                return {
+                    "response": error_response,
+                    "tool_calls": tool_calls
+                }
+            
             # Generate a final prompt to get a user-friendly response
             final_prompt = f"User request: {user_input}\n"
             final_prompt += "INSTRUCTIONS:\n"
             final_prompt += "Provide a clear, user-friendly response to the original user request based on all the tool call results above.\n"
             final_prompt += "Explain what was found and what it means in plain language.\n"
+            final_prompt += "IMPORTANT: If any tool calls resulted in errors, especially DNS errors or website access errors, this means the website is NOT accessible.\n"
             final_prompt += "Do NOT make any more tool calls.\n"
             final_prompt += "Do NOT include JSON or technical formatting.\n"
             final_prompt += "Just provide a helpful response to the user.\n"
             
             final_response = await self.llm_service.generate_response(final_prompt)
-            return final_response
+            return {
+                "response": final_response,
+                "tool_calls": tool_calls
+            }
             
         except Exception as e:
             logger.error(f"Error processing user request: {e}")
-            return "I encountered an error while processing your request. Please try again later."
+            return {
+                "response": "I encountered an error while processing your request. Please try again later.",
+                "tool_calls": tool_calls
+            }
+
+    def _generate_error_response(self, tool_calls: List[Dict[str, Any]], user_input: str) -> str:
+        """Generate a correct response when we know the domain doesn't exist or the website is inaccessible.
+        
+        Args:
+            tool_calls (List[Dict[str, Any]]): The tool calls that were made.
+            user_input (str): The original user input.
+            
+        Returns:
+            str: A correct response based on the tool call results.
+        """
+        # Check if we have any tool calls with errors
+        for tool_call in tool_calls:
+            result = tool_call.get("result", {})
+            if isinstance(result, dict) and result.get("status") == "error":
+                # Check for specific error types
+                if "Domain does not exist" in result.get("message", ""):
+                    return "The domain does not exist. The website you're trying to check is not accessible because the domain name cannot be found."
+                elif result.get("error_type") == "DNS_ERROR":
+                    return "The website is not accessible. The domain name could not be resolved, which means the website does not exist or is not properly configured."
+        
+        # If we have both a website check and DNS lookup, and both failed, the website is definitely not accessible
+        website_check_failed = False
+        dns_lookup_failed = False
+        
+        for tool_call in tool_calls:
+            result = tool_call.get("result", {})
+            if isinstance(result, dict) and result.get("status") == "error":
+                if tool_call.get("agent_name") == "SampleAgentB" and tool_call.get("method_name") == "perform_website_check":
+                    website_check_failed = True
+                elif tool_call.get("agent_name") == "SampleAgentA" and tool_call.get("method_name") == "perform_dns_lookup":
+                    dns_lookup_failed = True
+        
+        if website_check_failed and dns_lookup_failed:
+            return "The website is not accessible. Both the website check and DNS lookup failed, which indicates that the domain does not exist or is not properly configured."
+        
+        # If we couldn't determine a specific error, return a generic error message
+        return "I encountered an error while checking the website. Please try again later."
 
     def _parse_llm_json_response(self, response_text: str) -> Dict[str, Any]:
         """Parse LLM response text that should contain a JSON object.

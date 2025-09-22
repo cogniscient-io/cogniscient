@@ -24,6 +24,7 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
+    tool_calls: List[Dict[str, Any]] = []
     conversation_history: List[Dict[str, str]]
 
 class StatusResponse(BaseModel):
@@ -99,15 +100,27 @@ async def chat(request: ChatRequest):
     if chat_interface is None:
         return ChatResponse(
             response="System is still initializing. Please try again in a moment.",
+            tool_calls=[],
             conversation_history=[]
         )
     
     user_message = request.message
     
     # Process user input through chat interface
-    response = await chat_interface.process_user_input(user_message)
+    result = await chat_interface.process_user_input(user_message)
+    
+    # Handle both old and new response formats
+    if isinstance(result, str):
+        # Old format - just a string response
+        response_text = result
+        tool_calls = []
+    else:
+        # New format - dictionary with response and tool calls
+        response_text = result.get("response", "")
+        tool_calls = result.get("tool_calls", [])
     
     return ChatResponse(
-        response=response,
+        response=response_text,
+        tool_calls=tool_calls,
         conversation_history=chat_interface.conversation_history
     )

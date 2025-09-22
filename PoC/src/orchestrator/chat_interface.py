@@ -20,25 +20,25 @@ class ChatInterface:
         self.llm_service = LLMService()
         self.conversation_history: List[Dict[str, str]] = []
 
-    async def process_user_input(self, user_input: str) -> str:
+    async def process_user_input(self, user_input: str) -> dict:
         """Process user input and generate response using LLM-driven agent selection.
         
         Args:
             user_input (str): The user's input message.
             
         Returns:
-            str: The generated response.
+            dict: A dictionary containing the response and tool call information.
         """
         # Add user input to conversation history
         self.conversation_history.append({"role": "user", "content": user_input})
         
         # Generate response using LLM orchestrator which handles agent selection
-        response = await self.orchestrator.process_user_request(user_input, self.conversation_history)
+        result = await self.orchestrator.process_user_request(user_input, self.conversation_history)
         
         # Add response to conversation history
-        self.conversation_history.append({"role": "assistant", "content": response})
+        self.conversation_history.append({"role": "assistant", "content": result.get("response", result)})
         
-        return response
+        return result
     
     async def handle_approval_request(self, request: Dict[str, Any]) -> bool:
         """Handle approval requests from the orchestrator.

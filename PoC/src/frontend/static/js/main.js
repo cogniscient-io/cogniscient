@@ -34,6 +34,42 @@ document.addEventListener('DOMContentLoaded', function() {
         chatHistory.scrollTop = chatHistory.scrollHeight;
     }
     
+    // Function to add a tool call to the chat history
+    function addToolCallToChat(toolCall) {
+        const toolCallDiv = document.createElement('div');
+        toolCallDiv.classList.add('chat-message', 'tool-call-message');
+        
+        let toolCallContent = `<div class="tool-call-header">🔧 Tool Call: ${toolCall.agent_name}.${toolCall.method_name}</div>`;
+        
+        if (toolCall.parameters && Object.keys(toolCall.parameters).length > 0) {
+            toolCallContent += `<div class="tool-call-parameters"><strong>Parameters:</strong> ${JSON.stringify(toolCall.parameters)}</div>`;
+        }
+        
+        toolCallDiv.innerHTML = toolCallContent;
+        chatHistory.appendChild(toolCallDiv);
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+    }
+    
+    // Function to add a tool response to the chat history
+    function addToolResponseToChat(toolCall) {
+        const toolResponseDiv = document.createElement('div');
+        toolResponseDiv.classList.add('chat-message', 'tool-response-message');
+        
+        let toolResponseContent = `<div class="tool-response-header">✅ Tool Response: ${toolCall.agent_name}.${toolCall.method_name}</div>`;
+        
+        if (toolCall.result) {
+            if (toolCall.result.error) {
+                toolResponseContent += `<div class="tool-response-error"><strong>Error:</strong> ${toolCall.result.error}</div>`;
+            } else {
+                toolResponseContent += `<div class="tool-response-result"><strong>Result:</strong> ${JSON.stringify(toolCall.result)}</div>`;
+            }
+        }
+        
+        toolResponseDiv.innerHTML = toolResponseContent;
+        chatHistory.appendChild(toolResponseDiv);
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+    }
+    
     // Function to send a message to the backend
     async function sendMessage() {
         const message = userInput.value.trim();
@@ -54,6 +90,14 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             
             const data = await response.json();
+            
+            // Add tool calls and responses to chat if they exist
+            if (data.tool_calls && data.tool_calls.length > 0) {
+                data.tool_calls.forEach(toolCall => {
+                    addToolCallToChat(toolCall);
+                    addToolResponseToChat(toolCall);
+                });
+            }
             
             // Add assistant response to chat
             addMessageToChat('assistant', data.response);

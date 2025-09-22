@@ -37,6 +37,30 @@ body {
     background-color: #f5f5f5;
 }
 
+.tool-call-message {
+    background-color: #fff3cd;
+    border-left: 3px solid #ffc107;
+}
+
+.tool-response-message {
+    background-color: #d1ecf1;
+    border-left: 3px solid #17a2b8;
+}
+
+.tool-call-header, .tool-response-header {
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.tool-call-parameters, .tool-response-result, .tool-response-error {
+    font-size: 0.9em;
+    margin: 5px 0;
+}
+
+.tool-call-parameters strong, .tool-response-result strong, .tool-response-error strong {
+    color: #495057;
+}
+
 /* Markdown styling */
 .assistant-message h1,
 .assistant-message h2,

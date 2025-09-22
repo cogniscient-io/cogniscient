@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     """Application configuration settings."""
     
     # Server settings
-    host: str = "192.168.0.176"
+    host: str = "0.0.0.0"
     port: int = 8002
     debug: bool = False
     

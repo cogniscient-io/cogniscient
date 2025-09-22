@@ -3,11 +3,33 @@ document.addEventListener('DOMContentLoaded', function() {
     const userInput = document.getElementById('user-input');
     const sendButton = document.getElementById('send-button');
     
+    // Configure Marked.js options
+    marked.setOptions({
+        gfm: true,
+        breaks: true,
+        smartypants: true
+    });
+    
     // Function to add a message to the chat history
     function addMessageToChat(role, content) {
         const messageDiv = document.createElement('div');
         messageDiv.classList.add('chat-message', `${role}-message`);
-        messageDiv.textContent = content;
+        
+        // Check if content is a JSON string that might contain markdown
+        let displayContent = content;
+        try {
+            // Try to parse as JSON to see if it's a structured response
+            const parsed = JSON.parse(content);
+            // If it's an object with a response property, use that
+            if (parsed && typeof parsed === 'object' && parsed.response) {
+                displayContent = parsed.response;
+            }
+        } catch (e) {
+            // Not JSON, use content as is
+        }
+        
+        // Render markdown content
+        messageDiv.innerHTML = marked.parse(displayContent);
         chatHistory.appendChild(messageDiv);
         chatHistory.scrollTop = chatHistory.scrollHeight;
     }

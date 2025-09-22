@@ -212,6 +212,10 @@ class LLMOrchestrator:
         """
         # Construct prompt for LLM with agent information
         # The agent information is now automatically included by the ContextualLLMService
+        # These prompts are more prescriptive because I'm using an 8B model.  The model is
+        # too small to show emergent properties like automatically testing for DNS entries
+        # when the initial URL check fails.
+        # TODO: Need to test with bigger models to see where emergence happens reliably.
         prompt = f"User request: {user_input}\n"
         prompt += "\nINSTRUCTIONS:\n"
         prompt += "1. First, determine if any tools need to be called to fulfill the user's request.\n"

@@ -5,6 +5,7 @@ import json
 from typing import Any, Dict
 from src.services.llm_service import LLMService
 from src.services.contextual_llm_service import ContextualLLMService
+import datetime
 
 class UCSRuntime:
     """Core UCS runtime for loading and managing agents."""
@@ -18,6 +19,8 @@ class UCSRuntime:
         self.config_dir = config_dir
         self.agents: Dict[str, Any] = {}
         self.agent_configs: Dict[str, Dict[str, Any]] = {}
+        # Track last call information for each agent
+        self.agent_last_call: Dict[str, Dict[str, Any]] = {}
         # Create the contextual LLM service without agent registry initially
         self.llm_service = ContextualLLMService(LLMService())
         # Agent registry will be set after agents are loaded
@@ -111,15 +114,40 @@ class UCSRuntime:
         Returns:
             The result of the method execution.
         """
+        # Record the call information
+        call_time = datetime.datetime.now()
+        call_info = {
+            "method": method_name,
+            "args": args,
+            "kwargs": kwargs,
+            "timestamp": call_time.isoformat()
+        }
+        
         if agent_name not in self.agents:
+            # Record the error and raise
+            call_info["result"] = {"error": f"Agent {agent_name} not loaded"}
+            self.agent_last_call[agent_name] = call_info
             raise ValueError(f"Agent {agent_name} not loaded")
             
         agent = self.agents[agent_name]
         if not hasattr(agent, method_name):
+            # Record the error and raise
+            call_info["result"] = {"error": f"Agent {agent_name} does not have method {method_name}"}
+            self.agent_last_call[agent_name] = call_info
             raise ValueError(f"Agent {agent_name} does not have method {method_name}")
             
-        method = getattr(agent, method_name)
-        return method(*args, **kwargs)
+        try:
+            method = getattr(agent, method_name)
+            result = method(*args, **kwargs)
+            call_info["result"] = result
+        except Exception as e:
+            call_info["result"] = {"error": str(e)}
+            raise
+        finally:
+            # Store the call information
+            self.agent_last_call[agent_name] = call_info
+            
+        return result
 
     def shutdown(self) -> None:
         """Shutdown all agents."""

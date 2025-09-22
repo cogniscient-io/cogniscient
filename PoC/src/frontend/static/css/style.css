@@ -109,6 +109,36 @@ body {
     margin-bottom: 10px;
 }
 
+.agent-card h3 {
+    margin-top: 0;
+    color: #333;
+}
+
+.agent-card p {
+    margin: 5px 0;
+    font-size: 0.9em;
+}
+
+.agent-card .status-label {
+    font-weight: bold;
+    color: #007bff;
+}
+
+.agent-card .target-label {
+    font-weight: bold;
+    color: #6f42c1;
+}
+
+.agent-card .last-call-label {
+    font-weight: bold;
+    color: #28a745;
+}
+
+.agent-card .result-label {
+    font-weight: bold;
+    color: #ffc107;
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
     .container-fluid {

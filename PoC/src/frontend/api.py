@@ -29,6 +29,7 @@ class ChatResponse(BaseModel):
 class StatusResponse(BaseModel):
     agents: List[str]
     agent_configs: Dict[str, Any]
+    agent_last_calls: Dict[str, Dict[str, Any]]
     system_status: str
 
 # Initialize FastAPI app
@@ -80,6 +81,7 @@ async def get_status():
         return StatusResponse(
             agents=[],
             agent_configs={},
+            agent_last_calls={},
             system_status="initializing"
         )
     
@@ -87,6 +89,7 @@ async def get_status():
     return StatusResponse(
         agents=list(ucs_runtime.agents.keys()),
         agent_configs=ucs_runtime.agent_configs,
+        agent_last_calls=ucs_runtime.agent_last_call,
         system_status="running"
     )
 

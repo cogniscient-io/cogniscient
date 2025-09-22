@@ -89,9 +89,49 @@ async function loadStatus() {
         data.agents.forEach(agentName => {
             const agentCard = document.createElement('div');
             agentCard.classList.add('agent-card');
+            
+            // Get last call information for this agent
+            const lastCall = data.agent_last_calls[agentName] || {};
+            
+            // Format timestamp if available
+            let lastCallTime = 'Never';
+            if (lastCall.timestamp) {
+                const timestamp = new Date(lastCall.timestamp);
+                lastCallTime = timestamp.toLocaleString();
+            }
+            
+            // Extract target information based on agent type and method
+            let targetInfo = '';
+            if (lastCall.method && lastCall.kwargs) {
+                if (agentName === 'SampleAgentA' && lastCall.method === 'perform_dns_lookup') {
+                    const domain = lastCall.kwargs.domain || 'Not specified';
+                    targetInfo = `<p><span class="target-label">Target:</span> ${domain}</p>`;
+                } else if (agentName === 'SampleAgentB' && lastCall.method === 'perform_website_check') {
+                    const url = lastCall.kwargs.url || 'Not specified';
+                    targetInfo = `<p><span class="target-label">Target:</span> ${url}</p>`;
+                }
+            }
+            
+            // Format result if available
+            let lastCallResult = 'None';
+            if (lastCall.result) {
+                if (lastCall.result.error) {
+                    lastCallResult = `Error: ${lastCall.result.error}`;
+                } else {
+                    // Truncate long results
+                    const resultStr = JSON.stringify(lastCall.result);
+                    lastCallResult = resultStr.length > 100 ? 
+                        resultStr.substring(0, 100) + '...' : 
+                        resultStr;
+                }
+            }
+            
             agentCard.innerHTML = `
                 <h3>${agentName}</h3>
-                <p>Status: Active</p>
+                <p><span class="status-label">Status:</span> Active</p>
+                ${targetInfo}
+                <p><span class="last-call-label">Last Call:</span> ${lastCallTime}</p>
+                <p><span class="result-label">Results:</span> ${lastCallResult}</p>
             `;
             agentStatus.appendChild(agentCard);
         });

@@ -36,30 +36,18 @@ class LLMOrchestrator:
             Dict[str, Any]: The evaluation result with next actions.
         """
         # Construct prompt for LLM evaluation
-        prompt = f"Agent {agent_name} produced output: {json.dumps(output)}\
-"
-        prompt += "Based on this output, what should be the next steps?\
-"
-        prompt += "Please respond with a JSON object that has the following structure:\
-"
-        prompt += "{\
-"
-        prompt += '  "decision": "success|retry|failure",\
-'
-        prompt += '  "reasoning": "Explanation for the decision",\
-'
-        prompt += '  "retry_params": {"param_name": "param_value"} // Only include this if decision is "retry"\
-'
-        prompt += "}\
-"
-        prompt += "Use 'success' if the task completed successfully.\
-"
-        prompt += "Use 'retry' if the task should be retried, possibly with different parameters. When suggesting retry_params, consider adjusting timeout values or other relevant settings.\
-"
-        prompt += "Use 'failure' if the task cannot be completed successfully.\
-"
-        prompt += "IMPORTANT: Respond ONLY with the JSON object. Do not include any other text, markdown, or formatting.\
-"
+        prompt = f"Agent {agent_name} produced output: {json.dumps(output)}\n"
+        prompt += "Based on this output, what should be the next steps?\n"
+        prompt += "Please respond with a JSON object that has the following structure:\n"
+        prompt += "{\n"
+        prompt += '  "decision": "success|retry|failure",\n'
+        prompt += '  "reasoning": "Explanation for the decision",\n'
+        prompt += '  "retry_params": {"param_name": "param_value"} // Only include this if decision is "retry"\n'
+        prompt += "}\n"
+        prompt += "Use 'success' if the task completed successfully.\n"
+        prompt += "Use 'retry' if the task should be retried, possibly with different parameters. When suggesting retry_params, consider adjusting timeout values or other relevant settings.\n"
+        prompt += "Use 'failure' if the task cannot be completed successfully.\n"
+        prompt += "IMPORTANT: Respond ONLY with the JSON object. Do not include any other text, markdown, or formatting.\n"
         
         try:
             # Get LLM evaluation using the contextual LLM service
@@ -381,14 +369,42 @@ class LLMOrchestrator:
             final_prompt += "Provide a clear, user-friendly response to the original user request based on all the tool call results above.\n"
             final_prompt += "Explain what was found and what it means in plain language.\n"
             final_prompt += "IMPORTANT: If any tool calls resulted in errors, especially DNS errors or website access errors, this means the website is NOT accessible.\n"
+            final_prompt += "ADDITIONAL INSTRUCTIONS:\n"
+            final_prompt += "After providing your response, please suggest any additional agents that would be helpful to better troubleshoot or investigate this issue.\n"
+            final_prompt += "Format your response like this:\n"
+            final_prompt += "Your response here.\n\n"
+            final_prompt += "Suggested Agents:\n"
+            final_prompt += "- Agent Name: Description of what this agent would do\n"
+            final_prompt += "- Another Agent Name: Description of what this agent would do\n"
+            final_prompt += "If you don't have any suggestions for additional agents, just provide your response without the 'Suggested Agents' section.\n"
             final_prompt += "Do NOT make any more tool calls.\n"
             final_prompt += "Do NOT include JSON or technical formatting.\n"
             final_prompt += "Just provide a helpful response to the user.\n"
             
             final_response = await self.llm_service.generate_response(final_prompt)
+            
+            # Extract suggested agents from the response
+            suggested_agents = self._extract_suggested_agents(final_response)
+            
+            # Try to parse the response as JSON to see if it contains suggested agents
+            try:
+                response_json = self._parse_llm_json_response(final_response)
+                if isinstance(response_json, dict) and "response" in response_json:
+                    # The LLM provided a structured response with suggested agents
+                    return {
+                        "response": response_json["response"],
+                        "tool_calls": tool_calls,
+                        "suggested_agents": response_json.get("suggested_agents", suggested_agents)
+                    }
+            except:
+                # If parsing fails, treat it as a regular response
+                pass
+            
+            # Return the response with any extracted suggested agents
             return {
                 "response": final_response,
-                "tool_calls": tool_calls
+                "tool_calls": tool_calls,
+                "suggested_agents": suggested_agents
             }
             
         except Exception as e:
@@ -435,6 +451,39 @@ class LLMOrchestrator:
         
         # If we couldn't determine a specific error, return a generic error message
         return "I encountered an error while checking the website. Please try again later."
+
+    def _extract_suggested_agents(self, response_text: str) -> List[Dict[str, Any]]:
+        """Extract suggested agents from the LLM's response text.
+        
+        Args:
+            response_text (str): The LLM's response text.
+            
+        Returns:
+            List[Dict[str, Any]]: A list of suggested agents.
+        """
+        import re
+        
+        suggested_agents = []
+        
+        # Look for the "Suggested Agents:" section
+        suggested_agents_section = re.search(r"[Ss]uggested\s+[Aa]gents?:\s*(.*?)(?=\n\n|\Z)", response_text, re.DOTALL)
+        if suggested_agents_section:
+            agents_text = suggested_agents_section.group(1)
+            # Look for agent names and descriptions
+            # Match patterns like "- Agent Name: Description" or "* Agent Name: Description"
+            agent_matches = re.findall(r"[-*]\s*(.*?):\s*(.*?)(?=\n[-*]|\n\n|\Z)", agents_text, re.DOTALL)
+            for agent_name, agent_description in agent_matches:
+                # Clean up the agent name and description
+                agent_name = agent_name.strip().rstrip(':')
+                agent_description = agent_description.strip()
+                
+                suggested_agents.append({
+                    "name": agent_name,
+                    "description": agent_description,
+                    "capabilities": []
+                })
+        
+        return suggested_agents
 
     def _parse_llm_json_response(self, response_text: str) -> Dict[str, Any]:
         """Parse LLM response text that should contain a JSON object.

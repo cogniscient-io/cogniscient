@@ -47,14 +47,45 @@ body {
     border-left: 3px solid #17a2b8;
 }
 
+.suggested-agents-message {
+    background-color: #fff3cd;
+    border-left: 3px solid #ffc107;
+}
+
 .tool-call-header, .tool-response-header {
     font-weight: bold;
     margin-bottom: 5px;
 }
 
+.suggested-agents-header {
+    font-weight: bold;
+    margin-bottom: 10px;
+    color: #856404;
+}
+
 .tool-call-parameters, .tool-response-result, .tool-response-error {
     font-size: 0.9em;
     margin: 5px 0;
+}
+
+.suggested-agent {
+    margin-bottom: 10px;
+    padding: 10px;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+}
+
+.suggested-agent-name {
+    font-size: 1.1em;
+    margin-bottom: 5px;
+}
+
+.suggested-agent-description {
+    margin-bottom: 5px;
+}
+
+.suggested-agent-capabilities {
+    font-size: 0.9em;
 }
 
 .tool-call-parameters strong, .tool-response-result strong, .tool-response-error strong {

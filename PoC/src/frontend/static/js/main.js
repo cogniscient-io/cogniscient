@@ -70,6 +70,28 @@ document.addEventListener('DOMContentLoaded', function() {
         chatHistory.scrollTop = chatHistory.scrollHeight;
     }
     
+    // Function to add suggested agents to the chat history
+    function addSuggestedAgentsToChat(suggestedAgents) {
+        const suggestedAgentsDiv = document.createElement('div');
+        suggestedAgentsDiv.classList.add('chat-message', 'suggested-agents-message');
+        
+        let suggestedAgentsContent = `<div class="suggested-agents-header">💡 Suggested Agents:</div>`;
+        
+        suggestedAgents.forEach(agent => {
+            suggestedAgentsContent += `<div class="suggested-agent">`;
+            suggestedAgentsContent += `<div class="suggested-agent-name"><strong>${agent.name}</strong></div>`;
+            suggestedAgentsContent += `<div class="suggested-agent-description">${agent.description}</div>`;
+            if (agent.capabilities && agent.capabilities.length > 0) {
+                suggestedAgentsContent += `<div class="suggested-agent-capabilities"><strong>Capabilities:</strong> ${agent.capabilities.join(', ')}</div>`;
+            }
+            suggestedAgentsContent += `</div>`;
+        });
+        
+        suggestedAgentsDiv.innerHTML = suggestedAgentsContent;
+        chatHistory.appendChild(suggestedAgentsDiv);
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+    }
+    
     // Function to send a message to the backend
     async function sendMessage() {
         const message = userInput.value.trim();
@@ -97,6 +119,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     addToolCallToChat(toolCall);
                     addToolResponseToChat(toolCall);
                 });
+            }
+            
+            // Add suggested agents to chat if they exist
+            if (data.suggested_agents && data.suggested_agents.length > 0) {
+                addSuggestedAgentsToChat(data.suggested_agents);
             }
             
             // Add assistant response to chat

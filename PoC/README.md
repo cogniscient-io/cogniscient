@@ -59,11 +59,18 @@ Key configuration options:
 
 ## Orchestration Flow
 
+The orchestration flow has two main modes of operation:
+
+1. **Direct Agent Orchestration**: Using the `orchestrate_agent` method for specific agent execution with LLM evaluation
+2. **Chat-based Orchestration**: Using the `process_user_request` method for natural language interaction
+
+### Direct Agent Orchestration Flow
+
 ```mermaid
 graph TD
     A[Start] --> B[Initialize UCS Runtime]
     B --> C[Load Agents]
-    C --> D[Execute Agent]
+    C --> D[Execute Agent Method]
     D --> E[LLM Evaluates Result]
     E --> F{Decision?}
     F -->|Success| G[Task Completed]
@@ -74,6 +81,38 @@ graph TD
     J --> K[End]
     G --> K
 ```
+
+### Chat-based Orchestration Flow
+
+```mermaid
+graph TD
+    A[User Input] --> B[Process Request]
+    B --> C[LLM Determines Tool Call]
+    C --> D{Tool Call?}
+    D -->|Yes| E[Execute Agent Method]
+    E --> F[Add Result to Context]
+    F --> G[LLM Analyzes Results]
+    G --> H{More Investigation?}
+    H -->|Yes| I[LLM Determines Next Tool Call]
+    I --> E
+    H -->|No| J[Generate User Response]
+    D -->|No| J
+    J --> K[Return Response]
+```
+
+### Key Changes in Orchestration Logic
+
+1. **Enhanced LLM Response Parsing**: The system now has robust JSON parsing capabilities that can extract structured data even when the LLM includes additional text around the JSON.
+
+2. **Chat-based Agent Selection**: The chat interface allows users to interact with the system through natural language. The LLM determines which agents to call based on the user's request.
+
+3. **Intelligent Error Diagnosis**: When website checks fail, the system automatically performs DNS lookups to determine if the domain exists, providing more detailed error information.
+
+4. **Preventive Loop Protection**: The system tracks tool calls to prevent infinite loops by avoiding duplicate tool calls.
+
+5. **Adaptive Investigation**: The system can make up to two tool calls to investigate an issue thoroughly before providing a final response to the user.
+
+6. **Structured Agent Responses**: Agents now return structured responses with detailed status information, making it easier for the LLM to evaluate results.
 
 ## Running the Demo
 

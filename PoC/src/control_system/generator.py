@@ -19,7 +19,8 @@ def generate_agent_config(agent: Any) -> bool:
     
     # Validate the generated configuration
     if validate_agent_config(description, schema):
-        with open(f"config_{description['name']}.json", "w") as f:
-            json.dump(description, f, indent=2)
+        # Instead of auto-generating configuration files, we now rely on pre-existing JSON files
+        # This prevents duplication between code and configuration files
+        print(f"Note: Configuration for {description['name']} exists in code but JSON file should be maintained separately.")
         return True
     return False

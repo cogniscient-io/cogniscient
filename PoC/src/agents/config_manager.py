@@ -14,6 +14,7 @@ class ConfigManager(Agent):
         Args:
             config (dict, optional): Configuration for the agent.
         """
+        # Use the provided config, but ensure capabilities are properly defined
         self.config = config or self.self_describe()
         self.ucs_runtime = None
 

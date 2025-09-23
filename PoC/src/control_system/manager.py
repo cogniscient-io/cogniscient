@@ -1,7 +1,6 @@
 """Manager component for the dynamic control system."""
 
 from typing import List, Any
-from control_system.generator import generate_agent_config
 
 
 class ControlSystemManager:
@@ -27,7 +26,9 @@ class ControlSystemManager:
         """
         return [agent.self_describe()["name"] for agent in self.agents]
 
-    def generate_all_configs(self) -> None:
-        """Generate configuration files for all loaded agents."""
-        for agent in self.agents:
-            generate_agent_config(agent)
+    def register_all_configs(self) -> None:
+        """Register all loaded agents (without auto-generating config files).
+        
+        This approach prevents duplication between code and config files.
+        """
+        print("Agents registered. Configuration files should be managed separately.")

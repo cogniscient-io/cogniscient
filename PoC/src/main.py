@@ -24,10 +24,10 @@ def main():
     manager.add_agent(agent_a)
     manager.add_agent(agent_b)
     
-    # Generate configuration files for all agents
-    manager.generate_all_configs()
+    # NOTE: We no longer automatically generate config files to prevent duplication.
+    # Configuration files are maintained separately as JSON files.
     
-    print("Configuration files generated successfully.")
+    print("Control system initialized. Configuration files should be maintained separately.")
 
 def run_frontend():
     """Run the frontend server."""

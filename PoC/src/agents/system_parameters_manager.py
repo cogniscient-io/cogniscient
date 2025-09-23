@@ -13,7 +13,21 @@ class SystemParametersManager(Agent):
         Args:
             config (dict, optional): Configuration for the agent.
         """
-        self.config = config or self.self_describe()
+        # Start with the self-describe definition as the base
+        base_config = self.self_describe()
+        
+        # Merge with provided config, allowing config file to override defaults
+        if config:
+            # Update the base config with values from the config file
+            for key, value in config.items():
+                if isinstance(value, dict) and key in base_config and isinstance(base_config[key], dict):
+                    # If both are dictionaries, merge them
+                    base_config[key].update(value)
+                else:
+                    # Otherwise, replace the value
+                    base_config[key] = value
+        
+        self.config = base_config
         self.ucs_runtime = None
 
     def self_describe(self) -> dict:

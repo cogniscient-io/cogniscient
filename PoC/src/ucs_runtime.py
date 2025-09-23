@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 from src.services.llm_service import LLMService
 from src.services.contextual_llm_service import ContextualLLMService
 import datetime
+from config.agent_config_manager import AgentConfigManager
 
 class UCSRuntime:
     """Core UCS runtime for loading and managing agents."""
@@ -32,6 +33,8 @@ class UCSRuntime:
         self.runtime_ref = self
         # Keep track of chat interfaces that need to be notified of configuration changes
         self.chat_interfaces: List[Any] = []
+        # Initialize the configuration manager to consolidate config handling
+        self.config_manager = AgentConfigManager(config_dir=config_dir, agents_dir=agents_dir)
 
     def load_agent_config(self, config_file: str) -> Dict[str, Any]:
         """Load an agent configuration from a JSON file.
@@ -54,23 +57,32 @@ class UCSRuntime:
         Returns:
             module: The loaded agent module.
         """
-        if not config.get("enabled", False):
+        if not config.get("enabled", True):
             return None
             
         name = config["name"]
-        # For this PoC, we'll assume a simple mapping from name to file path
-        # In a more complex system, this would be part of the configuration
-        if name == "SampleAgentA":
-            module_path = os.path.join(self.agents_dir, "sample_agent_a.py")
-        elif name == "SampleAgentB":
-            module_path = os.path.join(self.agents_dir, "sample_agent_b.py")
-        elif name == "ConfigManager":
-            module_path = os.path.join(self.agents_dir, "config_manager.py")
-        elif name == "SystemParametersManager":
-            module_path = os.path.join(self.agents_dir, "system_parameters_manager.py")
-        else:
-            # Default path for other agents
-            module_path = os.path.join(self.agents_dir, f"{name.lower()}.py")
+        # Try to get the module path from the configuration first, then fall back to convention
+        # This makes the system more flexible for different agent locations
+        module_path = config.get("module_path")
+        
+        if module_path is None:
+            # For this PoC, we'll assume a simple mapping from name to file path
+            # In a more complex system, this would be part of the configuration
+            if name == "SampleAgentA":
+                module_path = os.path.join(self.agents_dir, "sample_agent_a.py")
+            elif name == "SampleAgentB":
+                module_path = os.path.join(self.agents_dir, "sample_agent_b.py")
+            elif name == "ConfigManager":
+                module_path = os.path.join(self.agents_dir, "config_manager.py")
+            elif name == "SystemParametersManager":
+                module_path = os.path.join(self.agents_dir, "system_parameters_manager.py")
+            else:
+                # Default path for other agents
+                module_path = os.path.join(self.agents_dir, f"{name.lower()}.py")
+        
+        # Ensure the module path exists
+        if not os.path.exists(module_path):
+            raise FileNotFoundError(f"Agent module not found at {module_path}")
         
         spec = importlib.util.spec_from_file_location(name, module_path)
         if spec is None:
@@ -98,6 +110,8 @@ class UCSRuntime:
         # This is a simplification - a real system would be more flexible
         class_name = config["name"]
         agent_class = getattr(module, class_name)
+        
+        # Initialize the agent with the configuration
         agent_instance = agent_class(config)
         
         # If the agent has a method to set the runtime reference, use it
@@ -108,20 +122,27 @@ class UCSRuntime:
 
     def load_all_agents(self) -> None:
         """Load all agents based on configuration files."""
-        # For this PoC, we'll explicitly load our sample agents
-        # A real system would scan the config directory
-        config_files = ["config_SampleAgentA.json", "config_SampleAgentB.json"]
+        # Use the configuration manager to load all agent configs
+        agent_configs = self.config_manager.load_all_agent_configs()
         
-        for config_file in config_files:
-            try:
-                config = self.load_agent_config(config_file)
-                self.agent_configs[config["name"]] = config
-                agent = self.initialize_agent(config)
-                if agent is not None:
-                    self.agents[config["name"]] = agent
-                    print(f"Loaded agent: {config['name']}")
-            except Exception as e:
-                print(f"Failed to load agent from {config_file}: {e}")
+        for agent_name, config in agent_configs.items():
+            # Only load agents that are enabled
+            if config.get("enabled", True):
+                try:
+                    # Get the merged configuration (defaults from code + values from config file)
+                    merged_config = self.config_manager.get_merged_config(agent_name)
+                    if merged_config is None:
+                        # Fallback to the raw config if merged config fails
+                        merged_config = config
+                    
+                    # Store the agent config
+                    self.agent_configs[agent_name] = merged_config
+                    agent = self.initialize_agent(merged_config)
+                    if agent is not None:
+                        self.agents[agent_name] = agent
+                        print(f"Loaded agent: {agent_name}")
+                except Exception as e:
+                    print(f"Failed to load agent {agent_name}: {e}")
         
         # Set the agent registry in the LLM service
         self.llm_service.set_agent_registry(self.agents)
@@ -154,17 +175,25 @@ class UCSRuntime:
         # Load agents specified in the configuration
         for agent_spec in config.get("agents", []):
             agent_name = agent_spec["name"]
-            agent_config_file = agent_spec["config_file"]
             
             try:
-                agent_config = self.load_agent_config(agent_config_file)
-                self.agent_configs[agent_name] = agent_config
-                agent = self.initialize_agent(agent_config)
-                if agent is not None:
-                    self.agents[agent_name] = agent
-                    print(f"Loaded agent: {agent_name}")
+                # Get the merged configuration (defaults from code + values from config file)
+                merged_config = self.config_manager.get_merged_config(agent_name)
+                if merged_config is None:
+                    # If merged config failed, try to load it directly from the specified config file
+                    agent_config_file = agent_spec.get("config_file")
+                    if agent_config_file:
+                        config_path = os.path.join(self.config_dir, agent_config_file)
+                        merged_config = self.load_agent_config(config_path)
+                
+                if merged_config:
+                    self.agent_configs[agent_name] = merged_config
+                    agent = self.initialize_agent(merged_config)
+                    if agent is not None:
+                        self.agents[agent_name] = agent
+                        print(f"Loaded agent: {agent_name}")
             except Exception as e:
-                print(f"Failed to load agent {agent_name} from {agent_config_file}: {e}")
+                print(f"Failed to load agent {agent_name}: {e}")
         
         # Set the agent registry in the LLM service
         self.llm_service.set_agent_registry(self.agents)

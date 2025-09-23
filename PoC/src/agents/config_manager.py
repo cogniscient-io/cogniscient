@@ -1,6 +1,8 @@
 """Configuration Manager Agent for handling configuration loading and management."""
 
 from agents.base import Agent
+import os
+import json
 
 
 class ConfigManager(Agent):
@@ -158,7 +160,7 @@ class ConfigManager(Agent):
             }
 
     def _get_config_description(self, config_name: str) -> str:
-        """Get a description for a configuration.
+        """Get a description for a configuration from its config file.
         
         Args:
             config_name (str): Name of the configuration.
@@ -166,9 +168,22 @@ class ConfigManager(Agent):
         Returns:
             str: Description of the configuration.
         """
-        descriptions = {
-            "dns_only": "Configuration for DNS lookups only",
-            "website_only": "Configuration for website checking only",
-            "combined": "Configuration for both DNS lookups and website checking"
-        }
-        return descriptions.get(config_name, "No description available")
+        try:
+            # Try to load the configuration file to get its description
+            if self.ucs_runtime is not None:
+                config_path = os.path.join(self.ucs_runtime.config_dir, "configs", f"{config_name}.json")
+                if os.path.exists(config_path):
+                    with open(config_path, "r") as f:
+                        config_data = json.load(f)
+                        return config_data.get("description", f"Configuration {config_name}")
+            
+            # Fallback to hardcoded descriptions if we can't load the file
+            descriptions = {
+                "dns_only": "Configuration for DNS lookups only",
+                "website_only": "Configuration for website checking only",
+                "combined": "Configuration for both DNS lookups and website checking"
+            }
+            return descriptions.get(config_name, f"Configuration {config_name}")
+        except Exception:
+            # If anything goes wrong, return a generic description
+            return f"Configuration {config_name}"

@@ -211,9 +211,8 @@ class LLMOrchestrator:
         prompt += "\nINSTRUCTIONS:\n"
         prompt += "1. First, determine if any tools need to be called to fulfill the user's request.\n"
         prompt += "2. You may make up to TWO tool calls to investigate an issue thoroughly.\n"
-        prompt += "3. For website accessibility checks, if the website check fails, perform a DNS lookup using SampleAgentA to determine if the domain exists.\n"
-        prompt += "4. After investigating, provide a clear explanation to the user about what you found and what it means.\n"
-        prompt += "5. Do NOT make endless recursive calls - limit yourself to the tools needed to answer the user's question.\n"
+        prompt += "3. After investigating, provide a clear explanation to the user about what you found and what it means.\n"
+        prompt += "4. Do NOT make endless recursive calls - limit yourself to the tools needed to answer the user's question.\n"
         prompt += "\nTo make a tool call, respond with a JSON object in the following EXACT format:\n"
         prompt += "{\n"
         prompt += '  "tool_call": {\n'
@@ -227,6 +226,13 @@ class LLMOrchestrator:
         prompt += "Do not include any other text, markdown, or formatting.\n"
         prompt += "If responding directly to the user, provide a helpful response in plain text.\n"
         prompt += "Only use the agent names and method names that are available.\n"
+        
+        # Add domain-specific context if available
+        additional_info = getattr(self.ucs_runtime, 'additional_prompt_info', {})
+        if additional_info:
+            domain_context = additional_info.get("domain_context", "")
+            if domain_context:
+                prompt = f"[DOMAIN CONTEXT: {domain_context}]\n\n{prompt}"
         
         try:
             # Track tool calls to prevent infinite loops
@@ -368,13 +374,24 @@ class LLMOrchestrator:
             final_prompt += "INSTRUCTIONS:\n"
             final_prompt += "Provide a clear, user-friendly response to the original user request based on all the tool call results above.\n"
             final_prompt += "Explain what was found and what it means in plain language.\n"
-            final_prompt += "IMPORTANT DISTINCTIONS:\n"
-            final_prompt += "- When checking a base URL (e.g., https://example.com), you're verifying the server is running\n"
-            final_prompt += "- When checking a specific URI (e.g., https://example.com/path/document), you're verifying both the server is running AND the specific document exists\n"
-            final_prompt += "- A 404 error means the specific document/URI doesn't exist, but the server might be running\n"
-            final_prompt += "- A DNS error means the domain itself doesn't exist\n"
-            final_prompt += "- A timeout or connection error means the server is unreachable\n"
-            final_prompt += "IMPORTANT: If any tool calls resulted in errors, especially DNS errors or website access errors, this means the website is NOT accessible.\n"
+            
+            # Add domain-specific instructions if available
+            additional_info = getattr(self.ucs_runtime, 'additional_prompt_info', {})
+            if additional_info:
+                domain_context = additional_info.get("domain_context", "")
+                if domain_context:
+                    final_prompt += f"DOMAIN CONTEXT: {domain_context}\n"
+                
+                instructions = additional_info.get("instructions", [])
+                if instructions:
+                    final_prompt += "DOMAIN-SPECIFIC INSTRUCTIONS:\n"
+                    for i, instruction in enumerate(instructions, 1):
+                        final_prompt += f"{i}. {instruction}\n"
+                
+                error_handling = additional_info.get("error_handling", "")
+                if error_handling:
+                    final_prompt += f"ERROR HANDLING GUIDANCE: {error_handling}\n"
+            
             final_prompt += "ADDITIONAL INSTRUCTIONS:\n"
             final_prompt += "After providing your response, please suggest any additional agents that would be helpful to better troubleshoot or investigate this issue.\n"
             final_prompt += "Format your response like this:\n"

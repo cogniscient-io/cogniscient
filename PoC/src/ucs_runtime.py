@@ -2,7 +2,8 @@
 
 import importlib.util
 import json
-from typing import Any, Dict
+import os
+from typing import Any, Dict, List
 from src.services.llm_service import LLMService
 from src.services.contextual_llm_service import ContextualLLMService
 import datetime
@@ -10,15 +11,18 @@ import datetime
 class UCSRuntime:
     """Core UCS runtime for loading and managing agents."""
 
-    def __init__(self, config_dir: str = "."):
+    def __init__(self, config_dir: str = ".", agents_dir: str = "src/agents"):
         """Initialize the UCS runtime.
         
         Args:
             config_dir (str): Directory to load agent configurations from.
+            agents_dir (str): Directory where agent modules are located.
         """
         self.config_dir = config_dir
+        self.agents_dir = agents_dir
         self.agents: Dict[str, Any] = {}
         self.agent_configs: Dict[str, Dict[str, Any]] = {}
+        self.additional_prompt_info: Dict[str, Any] = {}
         # Track last call information for each agent
         self.agent_last_call: Dict[str, Dict[str, Any]] = {}
         # Create the contextual LLM service without agent registry initially
@@ -52,7 +56,7 @@ class UCSRuntime:
         name = config["name"]
         # For this PoC, we'll assume a simple mapping from name to file path
         # In a more complex system, this would be part of the configuration
-        module_path = "src/agents/sample_agent_a.py" if name == "SampleAgentA" else "src/agents/sample_agent_b.py"
+        module_path = os.path.join(self.agents_dir, "sample_agent_a.py") if name == "SampleAgentA" else os.path.join(self.agents_dir, "sample_agent_b.py")
         
         spec = importlib.util.spec_from_file_location(name, module_path)
         if spec is None:
@@ -101,6 +105,82 @@ class UCSRuntime:
         
         # Set the agent registry in the LLM service
         self.llm_service.set_agent_registry(self.agents)
+
+    def load_configuration(self, config_name: str) -> None:
+        """Load a specific configuration which determines which agents to load.
+        
+        Args:
+            config_name (str): Name of the configuration to load (without .json extension).
+        """
+        config_path = os.path.join(self.config_dir, "configs", f"{config_name}.json")
+        if not os.path.exists(config_path):
+            raise ValueError(f"Configuration {config_name} not found at {config_path}")
+            
+        # Load the configuration
+        with open(config_path, "r") as f:
+            config = json.load(f)
+            
+        print(f"Loading configuration: {config['name']}")
+        
+        # Store additional prompt info temporarily
+        temp_additional_prompt_info = config.get("additional_prompt_info", {})
+        
+        # Unload all currently loaded agents
+        self.unload_all_agents()
+        
+        # Restore additional prompt info after unloading
+        self.additional_prompt_info = temp_additional_prompt_info
+        
+        # Load agents specified in the configuration
+        for agent_spec in config.get("agents", []):
+            agent_name = agent_spec["name"]
+            agent_config_file = agent_spec["config_file"]
+            
+            try:
+                agent_config = self.load_agent_config(agent_config_file)
+                self.agent_configs[agent_name] = agent_config
+                agent = self.initialize_agent(agent_config)
+                if agent is not None:
+                    self.agents[agent_name] = agent
+                    print(f"Loaded agent: {agent_name}")
+            except Exception as e:
+                print(f"Failed to load agent {agent_name} from {agent_config_file}: {e}")
+        
+        # Set the agent registry in the LLM service
+        self.llm_service.set_agent_registry(self.agents)
+
+    def unload_all_agents(self) -> None:
+        """Unload all currently loaded agents."""
+        # Shutdown all agents
+        self.shutdown()
+        
+        # Clear agent collections
+        self.agents.clear()
+        self.agent_configs.clear()
+        self.agent_last_call.clear()
+        self.additional_prompt_info.clear()
+        
+        # Update the LLM service with empty agent registry
+        self.llm_service.set_agent_registry(self.agents)
+        
+        print("All agents unloaded.")
+
+    def list_available_configurations(self) -> List[str]:
+        """List all available configuration files.
+        
+        Returns:
+            List[str]: List of available configuration names.
+        """
+        configs_dir = os.path.join(self.config_dir, "configs")
+        if not os.path.exists(configs_dir):
+            return []
+            
+        config_files = []
+        for file in os.listdir(configs_dir):
+            if file.endswith(".json"):
+                config_files.append(file[:-5])  # Remove .json extension
+                
+        return config_files
 
     def run_agent(self, agent_name: str, method_name: str, *args, **kwargs) -> Any:
         """Run a specific method on an agent.

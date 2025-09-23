@@ -2,7 +2,7 @@
 
 import os
 from agents.sample_agent_a import SampleAgentA
-from control_system.generator import generate_agent_config
+from agent_utils.generator import generate_agent_config
 
 
 def test_generate_agent_config():

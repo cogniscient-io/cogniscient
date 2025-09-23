@@ -2,7 +2,7 @@
 
 import os
 import tempfile
-from control_system.loader import load_agent_module
+from agent_utils.loader import load_agent_module
 
 
 def test_load_agent_module():

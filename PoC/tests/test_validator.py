@@ -1,6 +1,6 @@
 """Unit tests for the validator component."""
 
-from control_system.validator import validate_agent_config, load_schema
+from agent_utils.validator import validate_agent_config, load_schema
 
 
 def test_valid_agent_config():

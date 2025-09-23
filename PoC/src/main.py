@@ -1,4 +1,8 @@
-"""Main entry point for the dynamic control system."""
+"""Main entry point for the application.
+
+This module serves as the entry point for launching either the frontend server
+or for development purposes.
+"""
 
 import uvicorn
 import sys
@@ -7,27 +11,8 @@ import os
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from control_system.manager import ControlSystemManager
-from agents.sample_agent_a import SampleAgentA
-from agents.sample_agent_b import SampleAgentB
 from config.settings import settings
 
-def main():
-    """Main function to run the control system."""
-    # Initialize the control system manager
-    manager = ControlSystemManager()
-    
-    # Create and add sample agents
-    agent_a = SampleAgentA()
-    agent_b = SampleAgentB()
-    
-    manager.add_agent(agent_a)
-    manager.add_agent(agent_b)
-    
-    # NOTE: We no longer automatically generate config files to prevent duplication.
-    # Configuration files are maintained separately as JSON files.
-    
-    print("Control system initialized. Configuration files should be maintained separately.")
 
 def run_frontend():
     """Run the frontend server."""
@@ -52,8 +37,10 @@ def run_frontend():
                 port=settings.port, 
                 reload=settings.debug)
 
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "frontend":
         run_frontend()
     else:
-        main()
+        print("Use 'python src/main.py frontend' to start the frontend server.")
+        print("For programmatic access to the system, use UCSRuntime directly from src.ucs_runtime")

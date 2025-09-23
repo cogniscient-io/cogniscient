@@ -7,7 +7,9 @@ from typing import Any, Dict, List
 from src.services.llm_service import LLMService
 from src.services.contextual_llm_service import ContextualLLMService
 import datetime
-from config.agent_config_manager import AgentConfigManager
+from agent_utils.agent_config_manager import AgentConfigManager
+from agent_utils.agent_loader import AgentLoader
+from agent_utils.agent_coordinator import AgentCoordinator
 
 class UCSRuntime:
     """Core UCS runtime for loading and managing agents."""
@@ -21,8 +23,6 @@ class UCSRuntime:
         """
         self.config_dir = config_dir
         self.agents_dir = agents_dir
-        self.agents: Dict[str, Any] = {}
-        self.agent_configs: Dict[str, Dict[str, Any]] = {}
         self.additional_prompt_info: Dict[str, Any] = {}
         # Track last call information for each agent
         self.agent_last_call: Dict[str, Dict[str, Any]] = {}
@@ -33,8 +33,17 @@ class UCSRuntime:
         self.runtime_ref = self
         # Keep track of chat interfaces that need to be notified of configuration changes
         self.chat_interfaces: List[Any] = []
-        # Initialize the configuration manager to consolidate config handling
-        self.config_manager = AgentConfigManager(config_dir=config_dir, agents_dir=agents_dir)
+        
+        # Initialize agent management utilities for cleaner separation of concerns
+        self.agent_loader = AgentLoader(config_dir=config_dir, agents_dir=agents_dir)
+        self.agent_coordinator = AgentCoordinator(self.agent_loader)
+        
+        # Store references for backward compatibility but delegate functionality to agent_loader
+        self.agents = self.agent_loader.agents
+        self.agent_configs = self.agent_loader.agent_configs
+        
+        # Set the runtime reference for agents that need access to runtime functionality
+        self.agent_loader.set_runtime_ref(self)
 
     def load_agent_config(self, config_file: str) -> Dict[str, Any]:
         """Load an agent configuration from a JSON file.
@@ -122,27 +131,13 @@ class UCSRuntime:
 
     def load_all_agents(self) -> None:
         """Load all agents based on configuration files."""
-        # Use the configuration manager to load all agent configs
-        agent_configs = self.config_manager.load_all_agent_configs()
+        # Use the configuration manager to load all agent configs and load them
+        agent_configs = self.agent_loader.config_manager.load_all_agent_configs()
+        agent_names = list(agent_configs.keys())
+        self.agent_loader.load_specific_agents_by_name(agent_names)
         
-        for agent_name, config in agent_configs.items():
-            # Only load agents that are enabled
-            if config.get("enabled", True):
-                try:
-                    # Get the merged configuration (defaults from code + values from config file)
-                    merged_config = self.config_manager.get_merged_config(agent_name)
-                    if merged_config is None:
-                        # Fallback to the raw config if merged config fails
-                        merged_config = config
-                    
-                    # Store the agent config
-                    self.agent_configs[agent_name] = merged_config
-                    agent = self.initialize_agent(merged_config)
-                    if agent is not None:
-                        self.agents[agent_name] = agent
-                        print(f"Loaded agent: {agent_name}")
-                except Exception as e:
-                    print(f"Failed to load agent {agent_name}: {e}")
+        # Ensure agents have access to the runtime reference
+        self.agent_loader.set_runtime_ref(self)
         
         # Set the agent registry in the LLM service
         self.llm_service.set_agent_registry(self.agents)
@@ -173,27 +168,10 @@ class UCSRuntime:
         self.additional_prompt_info = temp_additional_prompt_info
         
         # Load agents specified in the configuration
-        for agent_spec in config.get("agents", []):
-            agent_name = agent_spec["name"]
-            
-            try:
-                # Get the merged configuration (defaults from code + values from config file)
-                merged_config = self.config_manager.get_merged_config(agent_name)
-                if merged_config is None:
-                    # If merged config failed, try to load it directly from the specified config file
-                    agent_config_file = agent_spec.get("config_file")
-                    if agent_config_file:
-                        config_path = os.path.join(self.config_dir, agent_config_file)
-                        merged_config = self.load_agent_config(config_path)
-                
-                if merged_config:
-                    self.agent_configs[agent_name] = merged_config
-                    agent = self.initialize_agent(merged_config)
-                    if agent is not None:
-                        self.agents[agent_name] = agent
-                        print(f"Loaded agent: {agent_name}")
-            except Exception as e:
-                print(f"Failed to load agent {agent_name}: {e}")
+        self.agent_loader.load_specific_agents(config.get("agents", []))
+        
+        # Ensure agents have access to the runtime reference
+        self.agent_loader.set_runtime_ref(self)
         
         # Set the agent registry in the LLM service
         self.llm_service.set_agent_registry(self.agents)
@@ -228,19 +206,15 @@ class UCSRuntime:
 
     def unload_all_agents(self) -> None:
         """Unload all currently loaded agents."""
-        # Shutdown all agents
-        self.shutdown()
+        # Delegate to the agent loader
+        self.agent_loader.unload_all_agents()
         
-        # Clear agent collections
-        self.agents.clear()
-        self.agent_configs.clear()
+        # Clear additional tracking
         self.agent_last_call.clear()
         # Note: We don't clear additional_prompt_info here as it's set by load_configuration
         
         # Update the LLM service with empty agent registry
         self.llm_service.set_agent_registry(self.agents)
-        
-        print("All agents unloaded.")
 
     def list_available_configurations(self) -> List[str]:
         """List all available configuration files.
@@ -280,23 +254,14 @@ class UCSRuntime:
             "timestamp": call_time.isoformat()
         }
         
-        if agent_name not in self.agents:
-            # Record the error and raise
-            call_info["result"] = {"error": f"Agent {agent_name} not loaded"}
-            self.agent_last_call[agent_name] = call_info
-            raise ValueError(f"Agent {agent_name} not loaded")
-            
-        agent = self.agents[agent_name]
-        if not hasattr(agent, method_name):
-            # Record the error and raise
-            call_info["result"] = {"error": f"Agent {agent_name} does not have method {method_name}"}
-            self.agent_last_call[agent_name] = call_info
-            raise ValueError(f"Agent {agent_name} does not have method {method_name}")
-            
         try:
-            method = getattr(agent, method_name)
-            result = method(*args, **kwargs)
+            # Use the agent loader to run the agent method
+            result = self.agent_loader.run_agent(agent_name, method_name, *args, **kwargs)
             call_info["result"] = result
+        except ValueError as e:
+            # Record the error and re-raise
+            call_info["result"] = {"error": str(e)}
+            raise
         except Exception as e:
             call_info["result"] = {"error": str(e)}
             raise
@@ -308,10 +273,8 @@ class UCSRuntime:
 
     def shutdown(self) -> None:
         """Shutdown all agents."""
-        for agent_name, agent in self.agents.items():
-            if hasattr(agent, "shutdown"):
-                agent.shutdown()
-        print("All agents shut down.")
+        # Delegate to the agent loader's unload functionality which handles shutdown
+        self.agent_loader.unload_all_agents()
 
 
 async def main():

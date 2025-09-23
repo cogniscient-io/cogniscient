@@ -7,8 +7,8 @@ between code and configuration files.
 import json
 import os
 from typing import Dict, Any, List, Optional
-from control_system.validator import validate_agent_config, load_schema
-from control_system.loader import load_agent_module
+from agent_utils.validator import validate_agent_config, load_schema
+from agent_utils.loader import load_agent_module
 
 
 class AgentConfigManager:

@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from src.orchestrator.chat_interface import ChatInterface
 from src.orchestrator.llm_orchestrator import LLMOrchestrator
 from src.ucs_runtime import UCSRuntime
+from src.config.settings import settings
 
 # Pydantic models for request/response validation
 class ChatRequest(BaseModel):
@@ -33,6 +34,16 @@ class StatusResponse(BaseModel):
     agent_configs: Dict[str, Any]
     agent_last_calls: Dict[str, Dict[str, Any]]
     system_status: str
+    system_parameters: Dict[str, Any] = {}
+
+class SystemParameterUpdate(BaseModel):
+    parameter_name: str
+    parameter_value: str
+
+class SystemParameterResponse(BaseModel):
+    status: str
+    message: str
+    parameters: Dict[str, Any] = {}
 
 # Initialize FastAPI app
 app = FastAPI(title="LLM Orchestration Frontend API", version="0.1.0")
@@ -87,13 +98,66 @@ async def get_status():
             system_status="initializing"
         )
     
+    # Get system parameters if SystemParametersManager is available
+    system_parameters = {}
+    if "SystemParametersManager" in ucs_runtime.agents:
+        try:
+            params_result = ucs_runtime.run_agent("SystemParametersManager", "get_system_parameters")
+            if params_result.get("status") == "success":
+                system_parameters = params_result.get("parameters", {})
+        except Exception:
+            pass
+    
     # Return information about loaded agents and system state
     return StatusResponse(
         agents=list(ucs_runtime.agents.keys()),
         agent_configs=ucs_runtime.agent_configs,
         agent_last_calls=ucs_runtime.agent_last_call,
-        system_status="running"
+        system_status="running",
+        system_parameters=system_parameters
     )
+
+@app.get("/api/system_parameters", response_model=SystemParameterResponse)
+async def get_system_parameters():
+    """Get current system parameters."""
+    if ucs_runtime is None or "SystemParametersManager" not in ucs_runtime.agents:
+        return SystemParameterResponse(
+            status="error",
+            message="SystemParametersManager not available",
+            parameters={}
+        )
+    
+    try:
+        result = ucs_runtime.run_agent("SystemParametersManager", "get_system_parameters")
+        return SystemParameterResponse(**result)
+    except Exception as e:
+        return SystemParameterResponse(
+            status="error",
+            message=f"Failed to get system parameters: {str(e)}",
+            parameters={}
+        )
+
+@app.post("/api/system_parameters", response_model=SystemParameterResponse)
+async def set_system_parameter(parameter_update: SystemParameterUpdate):
+    """Set a system parameter."""
+    if ucs_runtime is None or "SystemParametersManager" not in ucs_runtime.agents:
+        return SystemParameterResponse(
+            status="error",
+            message="SystemParametersManager not available",
+            parameters={}
+        )
+    
+    try:
+        result = ucs_runtime.run_agent("SystemParametersManager", "set_system_parameter",
+                                     parameter_name=parameter_update.parameter_name,
+                                     parameter_value=parameter_update.parameter_value)
+        return SystemParameterResponse(**result)
+    except Exception as e:
+        return SystemParameterResponse(
+            status="error",
+            message=f"Failed to set system parameter: {str(e)}",
+            parameters={}
+        )
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):

@@ -6,6 +6,7 @@ from typing import Dict, Any, List
 from src.services.llm_service import LLMService
 from src.services.contextual_llm_service import ContextualLLMService
 from src.ucs_runtime import UCSRuntime
+from src.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -200,6 +201,14 @@ class LLMOrchestrator:
         """
         # Initialize tool call tracking
         tool_calls = []
+        
+        # Check if we should compress based on context window size
+        context_size = self._calculate_context_size(conversation_history)
+        max_context_size = getattr(self, 'max_context_size', settings.max_context_size)
+        
+        if context_size > max_context_size:
+            # Compress the conversation history
+            conversation_history = await self._compress_conversation_history(conversation_history)
         
         # Construct prompt for LLM with agent information
         # The agent information is now automatically included by the ContextualLLMService
@@ -438,6 +447,56 @@ class LLMOrchestrator:
                 "response": "I encountered an error while processing your request. Please try again later.",
                 "tool_calls": tool_calls
             }
+
+    def _calculate_context_size(self, conversation_history: List[Dict[str, str]]) -> int:
+        """Calculate the total context size in characters.
+        
+        Args:
+            conversation_history (List[Dict[str, str]]): The conversation history.
+            
+        Returns:
+            int: Total number of characters in the conversation history.
+        """
+        total_chars = 0
+        for turn in conversation_history:
+            total_chars += len(turn.get("content", ""))
+        return total_chars
+
+    async def _compress_conversation_history(self, conversation_history: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        """Compress the conversation history to reduce context size.
+        
+        Args:
+            conversation_history (List[Dict[str, str]]): The conversation history.
+            
+        Returns:
+            List[Dict[str, str]]: Compressed conversation history.
+        """
+        if len(conversation_history) < 2:
+            return conversation_history
+            
+        # Use the LLM to summarize the conversation history
+        try:
+            compression_prompt = "Please summarize the following conversation history in a concise way, preserving the key points and context:\n\n"
+            for turn in conversation_history[:-2]:  # Exclude the last two entries
+                compression_prompt += f"{turn['role'].title()}: {turn['content']}\n"
+            
+            compression_prompt += "\nProvide a concise summary that captures the main topics and context of this conversation."
+            
+            compressed_summary = await self.llm_service.generate_response(compression_prompt)
+            
+            # Replace the conversation history with the summary
+            compressed_history = [
+                {"role": "system", "content": f"Previous conversation summary: {compressed_summary}"},
+                conversation_history[-2],  # Last user input
+                conversation_history[-1]   # Last assistant response
+            ]
+            
+            logger.info("Conversation history compressed successfully in orchestrator")
+            return compressed_history
+        except Exception as e:
+            logger.error(f"Failed to compress conversation history in orchestrator: {e}")
+            # If compression fails, just return the original history
+            return conversation_history
 
     def _generate_error_response(self, tool_calls: List[Dict[str, Any]], user_input: str) -> str:
         """Generate a correct response when we know the domain doesn't exist or the website is inaccessible.

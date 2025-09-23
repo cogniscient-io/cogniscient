@@ -3,6 +3,7 @@
 import logging
 from typing import Dict, Any, List
 from src.services.llm_service import LLMService
+from src.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -10,17 +11,23 @@ logger = logging.getLogger(__name__)
 class ChatInterface:
     """Chat interface for human-in-the-loop interaction with the LLM orchestrator."""
 
-    def __init__(self, orchestrator):
+    def __init__(self, orchestrator, max_history_length: int = None, compression_threshold: int = None):
         """Initialize chat interface with orchestrator.
         
         Args:
             orchestrator: The LLM orchestrator instance.
+            max_history_length (int, optional): Maximum number of conversation turns to keep.
+            compression_threshold (int, optional): Compress when history reaches this length.
         """
         self.orchestrator = orchestrator
         self.llm_service = LLMService()
         self.conversation_history: List[Dict[str, str]] = []
-        self.max_history_length = 20  # Maximum number of conversation turns to keep
-        self.compression_threshold = 15  # Compress when history reaches this length
+        self.max_history_length = max_history_length or settings.max_history_length
+        self.compression_threshold = compression_threshold or settings.compression_threshold
+        
+        # Validate parameters
+        if self.compression_threshold >= self.max_history_length:
+            raise ValueError("Compression threshold must be less than max history length")
         
         # Register this chat interface with the UCS runtime
         if hasattr(orchestrator, 'ucs_runtime'):
@@ -92,6 +99,33 @@ class ChatInterface:
         """Clear the conversation history."""
         self.conversation_history.clear()
         logger.info("Conversation history cleared")
+    
+    def get_context_window_size(self) -> int:
+        """Get the current context window size (total characters in conversation history).
+        
+        Returns:
+            int: Total number of characters in the conversation history.
+        """
+        total_chars = 0
+        for turn in self.conversation_history:
+            total_chars += len(turn.get("content", ""))
+        return total_chars
+    
+    def set_compression_parameters(self, max_history_length: int = None, compression_threshold: int = None) -> None:
+        """Set compression parameters.
+        
+        Args:
+            max_history_length (int, optional): Maximum number of conversation turns to keep.
+            compression_threshold (int, optional): Compress when history reaches this length.
+        """
+        if max_history_length is not None:
+            self.max_history_length = max_history_length
+        if compression_threshold is not None:
+            self.compression_threshold = compression_threshold
+            
+        # Validate parameters
+        if self.compression_threshold >= self.max_history_length:
+            raise ValueError("Compression threshold must be less than max history length")
     
     async def handle_approval_request(self, request: Dict[str, Any]) -> bool:
         """Handle approval requests from the orchestrator.

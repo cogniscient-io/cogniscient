@@ -66,6 +66,8 @@ class UCSRuntime:
             module_path = os.path.join(self.agents_dir, "sample_agent_b.py")
         elif name == "ConfigManager":
             module_path = os.path.join(self.agents_dir, "config_manager.py")
+        elif name == "SystemParametersManager":
+            module_path = os.path.join(self.agents_dir, "system_parameters_manager.py")
         else:
             # Default path for other agents
             module_path = os.path.join(self.agents_dir, f"{name.lower()}.py")

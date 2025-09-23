@@ -30,6 +30,8 @@ class UCSRuntime:
         # Agent registry will be set after agents are loaded
         # Set a reference to self in the runtime for agents to access
         self.runtime_ref = self
+        # Keep track of chat interfaces that need to be notified of configuration changes
+        self.chat_interfaces: List[Any] = []
 
     def load_agent_config(self, config_file: str) -> Dict[str, Any]:
         """Load an agent configuration from a JSON file.
@@ -164,6 +166,34 @@ class UCSRuntime:
         
         # Set the agent registry in the LLM service
         self.llm_service.set_agent_registry(self.agents)
+        
+        # Notify chat interfaces that the configuration has changed
+        self._notify_configuration_change()
+    
+    def _notify_configuration_change(self) -> None:
+        """Notify chat interfaces that the configuration has changed."""
+        for chat_interface in self.chat_interfaces:
+            if hasattr(chat_interface, "clear_conversation_history"):
+                chat_interface.clear_conversation_history()
+        print("Conversation history cleared due to configuration change")
+
+    def register_chat_interface(self, chat_interface) -> None:
+        """Register a chat interface to be notified of configuration changes.
+        
+        Args:
+            chat_interface: The chat interface to register.
+        """
+        if chat_interface not in self.chat_interfaces:
+            self.chat_interfaces.append(chat_interface)
+
+    def unregister_chat_interface(self, chat_interface) -> None:
+        """Unregister a chat interface.
+        
+        Args:
+            chat_interface: The chat interface to unregister.
+        """
+        if chat_interface in self.chat_interfaces:
+            self.chat_interfaces.remove(chat_interface)
 
     def unload_all_agents(self) -> None:
         """Unload all currently loaded agents."""

@@ -1,0 +1,10 @@
+{
+  "name": "ConfigManager",
+  "description": "Agent for managing system configurations",
+  "version": "1.0",
+  "enabled": true,
+  "settings": {
+    "timeout": 30,
+    "retries": 3
+  }
+}

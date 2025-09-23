@@ -5,6 +5,10 @@
     {
       "name": "SampleAgentB",
       "config_file": "config_SampleAgentB.json"
+    },
+    {
+      "name": "ConfigManager",
+      "config_file": "config_ConfigManager.json"
     }
   ],
   "additional_prompt_info": {

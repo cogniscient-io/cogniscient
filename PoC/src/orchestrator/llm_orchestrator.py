@@ -226,6 +226,8 @@ class LLMOrchestrator:
         prompt += "Do not include any other text, markdown, or formatting.\n"
         prompt += "If responding directly to the user, provide a helpful response in plain text.\n"
         prompt += "Only use the agent names and method names that are available.\n"
+        prompt += "Special Instructions:\n"
+        prompt += "- Use the ConfigManager agent for requests related to listing configurations, loading configurations, or listing loaded agents\n"
         
         # Add domain-specific context if available
         additional_info = getattr(self.ucs_runtime, 'additional_prompt_info', {})

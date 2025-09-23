@@ -28,6 +28,8 @@ class UCSRuntime:
         # Create the contextual LLM service without agent registry initially
         self.llm_service = ContextualLLMService(LLMService())
         # Agent registry will be set after agents are loaded
+        # Set a reference to self in the runtime for agents to access
+        self.runtime_ref = self
 
     def load_agent_config(self, config_file: str) -> Dict[str, Any]:
         """Load an agent configuration from a JSON file.
@@ -56,7 +58,15 @@ class UCSRuntime:
         name = config["name"]
         # For this PoC, we'll assume a simple mapping from name to file path
         # In a more complex system, this would be part of the configuration
-        module_path = os.path.join(self.agents_dir, "sample_agent_a.py") if name == "SampleAgentA" else os.path.join(self.agents_dir, "sample_agent_b.py")
+        if name == "SampleAgentA":
+            module_path = os.path.join(self.agents_dir, "sample_agent_a.py")
+        elif name == "SampleAgentB":
+            module_path = os.path.join(self.agents_dir, "sample_agent_b.py")
+        elif name == "ConfigManager":
+            module_path = os.path.join(self.agents_dir, "config_manager.py")
+        else:
+            # Default path for other agents
+            module_path = os.path.join(self.agents_dir, f"{name.lower()}.py")
         
         spec = importlib.util.spec_from_file_location(name, module_path)
         if spec is None:
@@ -84,11 +94,17 @@ class UCSRuntime:
         # This is a simplification - a real system would be more flexible
         class_name = config["name"]
         agent_class = getattr(module, class_name)
-        return agent_class(config)
+        agent_instance = agent_class(config)
+        
+        # If the agent has a method to set the runtime reference, use it
+        if hasattr(agent_instance, "set_runtime"):
+            agent_instance.set_runtime(self)
+            
+        return agent_instance
 
     def load_all_agents(self) -> None:
         """Load all agents based on configuration files."""
-        # For this PoC, we'll explicitly load our two sample agents
+        # For this PoC, we'll explicitly load our sample agents
         # A real system would scan the config directory
         config_files = ["config_SampleAgentA.json", "config_SampleAgentB.json"]
         
@@ -158,7 +174,7 @@ class UCSRuntime:
         self.agents.clear()
         self.agent_configs.clear()
         self.agent_last_call.clear()
-        self.additional_prompt_info.clear()
+        # Note: We don't clear additional_prompt_info here as it's set by load_configuration
         
         # Update the LLM service with empty agent registry
         self.llm_service.set_agent_registry(self.agents)

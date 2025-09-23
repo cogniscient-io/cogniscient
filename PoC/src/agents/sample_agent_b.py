@@ -30,11 +30,11 @@ class SampleAgentB(Agent):
             "enabled": True,
             "methods": {
                 "perform_website_check": {
-                    "description": "Check the status and gather diagnostics for a website",
+                    "description": "Check the status and gather diagnostics for a website or specific URI",
                     "parameters": {
                         "url": {
                             "type": "string",
-                            "description": "The URL of the website to check",
+                            "description": "The URL of the website or specific URI to check. Can be a base URL (e.g., https://example.com) or a specific path (e.g., https://example.com/path/document)",
                             "required": False
                         }
                     }
@@ -92,10 +92,21 @@ class SampleAgentB(Agent):
                 "headers": headers
             }
         except urllib.error.HTTPError as e:
+            # More specific error classification for HTTP errors
+            if e.code == 404:
+                error_type = "NOT_FOUND_ERROR"
+                message = f"Document not found (404): The requested URI does not exist on the server"
+            elif e.code >= 500:
+                error_type = "SERVER_ERROR"
+                message = f"Server error ({e.code}): {e.reason}"
+            else:
+                error_type = "HTTP_ERROR"
+                message = f"HTTP {e.code}: {e.reason}"
+                
             return {
                 "status": "error", 
-                "message": f"HTTP {e.code}: {e.reason}",
-                "error_type": "HTTP_ERROR",
+                "message": message,
+                "error_type": error_type,
                 "status_code": e.code
             }
         except urllib.error.URLError as e:

@@ -25,6 +25,10 @@ This project demonstrates an LLM-enhanced orchestration system that can adaptive
    ```bash
    pip install -r requirements.txt
    ```
+   Or install the packages directly:
+   ```bash
+   pip install litellm pydantic-settings pytest pytest-asyncio
+   ```
 
 2. Make sure Ollama is running with the Qwen3:8b model:
    ```bash

@@ -97,6 +97,7 @@ class SystemParametersManager(Agent):
             if self.ucs_runtime and hasattr(self.ucs_runtime, 'orchestrator'):
                 orchestrator = self.ucs_runtime.orchestrator
                 if hasattr(orchestrator, 'max_context_size'):
+                    # Include orchestrator value to verify it matches settings
                     parameters["orchestrator_max_context_size"] = orchestrator.max_context_size
             
             # Get parameters from chat interfaces if available
@@ -104,6 +105,7 @@ class SystemParametersManager(Agent):
                 chat_interfaces = self.ucs_runtime.chat_interfaces
                 if chat_interfaces:
                     chat_interface = chat_interfaces[0]  # Get first chat interface
+                    # Include chat interface values to verify they match settings
                     parameters["chat_max_history_length"] = chat_interface.max_history_length
                     parameters["chat_compression_threshold"] = chat_interface.compression_threshold
             
@@ -132,9 +134,14 @@ class SystemParametersManager(Agent):
             # Convert string value to appropriate type
             converted_value = self._convert_parameter_value(parameter_name, parameter_value)
             
+            # Import settings here to avoid circular imports
+            from src.config.settings import settings
+            
             # Set parameter based on name
             if parameter_name == "max_context_size":
-                # Update settings (this won't persist, but we can update runtime objects)
+                # Update both the global settings and runtime objects
+                settings.max_context_size = converted_value
+                
                 if self.ucs_runtime and hasattr(self.ucs_runtime, 'orchestrator'):
                     self.ucs_runtime.orchestrator.max_context_size = converted_value
                 return {
@@ -142,7 +149,9 @@ class SystemParametersManager(Agent):
                     "message": f"Max context size set to {converted_value}"
                 }
             elif parameter_name == "max_history_length":
-                # Update chat interfaces
+                # Update both the global settings and chat interfaces
+                settings.max_history_length = converted_value
+                
                 if self.ucs_runtime and hasattr(self.ucs_runtime, 'chat_interfaces'):
                     for chat_interface in self.ucs_runtime.chat_interfaces:
                         chat_interface.max_history_length = converted_value
@@ -154,7 +163,9 @@ class SystemParametersManager(Agent):
                     "message": f"Max history length set to {converted_value}"
                 }
             elif parameter_name == "compression_threshold":
-                # Update chat interfaces
+                # Update both the global settings and chat interfaces
+                settings.compression_threshold = converted_value
+                
                 if self.ucs_runtime and hasattr(self.ucs_runtime, 'chat_interfaces'):
                     for chat_interface in self.ucs_runtime.chat_interfaces:
                         chat_interface.compression_threshold = converted_value
@@ -164,6 +175,27 @@ class SystemParametersManager(Agent):
                 return {
                     "status": "success",
                     "message": f"Compression threshold set to {converted_value}"
+                }
+            elif parameter_name == "llm_model":
+                # Update the global settings
+                settings.llm_model = converted_value
+                return {
+                    "status": "success",
+                    "message": f"LLM model set to {converted_value}"
+                }
+            elif parameter_name == "llm_base_url":
+                # Update the global settings
+                settings.llm_base_url = converted_value
+                return {
+                    "status": "success",
+                    "message": f"LLM base URL set to {converted_value}"
+                }
+            elif parameter_name == "log_level":
+                # Update the global settings
+                settings.log_level = converted_value
+                return {
+                    "status": "success",
+                    "message": f"Log level set to {converted_value}"
                 }
             else:
                 return {

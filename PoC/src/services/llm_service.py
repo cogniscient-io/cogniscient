@@ -50,8 +50,9 @@ class LLMService:
         model: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
+        return_token_counts: bool = False,  # New parameter to return token counts
         **kwargs
-    ) -> str:
+    ) -> str | Dict[str, Any]:
         """Generate a response from the LLM API.
         
         Args:
@@ -59,10 +60,11 @@ class LLMService:
             model (str, optional): The model to use. If not provided, uses the instance model.
             temperature (float): Temperature for generation (0.0 to 1.0).
             max_tokens (int, optional): Maximum number of tokens to generate.
+            return_token_counts (bool): Whether to return token count information.
             **kwargs: Additional arguments to pass to the LLM API.
             
         Returns:
-            str: The generated response content.
+            Union[str, Dict[str, Any]]: The generated response content or a dict with response and token counts.
         """
         try:
             # Use the provided model or the instance model
@@ -110,8 +112,34 @@ class LLMService:
             logger.info(f"Token usage - Input: {input_tokens}, Output: {output_tokens}, Total: {input_tokens + output_tokens}")
             
             # Extract the content from the response
-            return response.choices[0].message.content
+            content = response.choices[0].message.content
+            
+            # Return token counts if requested
+            if return_token_counts:
+                return {
+                    "response": content,
+                    "token_counts": {
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
+                        "total_tokens": input_tokens + output_tokens
+                    }
+                }
+            
+            return content
                     
         except Exception as e:
             logger.error(f"Error calling LLM API: {str(e)}")
-            return f"Error: Unable to generate response ({str(e)})"
+            error_response = f"Error: Unable to generate response ({str(e)})"
+            
+            # Return error response with token counts if requested
+            if return_token_counts:
+                return {
+                    "response": error_response,
+                    "token_counts": {
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "total_tokens": 0
+                    }
+                }
+            
+            return error_response

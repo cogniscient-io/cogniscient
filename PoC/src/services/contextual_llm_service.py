@@ -31,8 +31,9 @@ class ContextualLLMService:
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         include_agent_capabilities: bool = True,
+        return_token_counts: bool = False,  # New parameter to return token counts
         **kwargs
-    ) -> str:
+    ) -> str | Dict[str, Any]:
         """Generate a response from the LLM API with contextual information.
         
         Args:
@@ -43,15 +44,32 @@ class ContextualLLMService:
             temperature (float): Temperature for generation (0.0 to 1.0).
             max_tokens (int, optional): Maximum number of tokens to generate.
             include_agent_capabilities (bool): Whether to include agent capabilities in the prompt.
+            return_token_counts (bool): Whether to return token count information.
             **kwargs: Additional arguments to pass to the LLM API.
             
         Returns:
-            str: The generated response content.
+            Union[str, Dict[str, Any]]: The generated response content or a dict with response and token counts.
         """
         if not self.llm_service:
             # Return a mock response if no LLM service is configured
             domain_context = f" [Domain: {domain}]" if domain else ""
-            return f"Mock response to: {prompt}{domain_context}"
+            response = f"Mock response to: {prompt}{domain_context}"
+            
+            # Return mock response with token counts if requested
+            if return_token_counts:
+                # For mock response, we'll count tokens using LiteLLM
+                import litellm
+                mock_tokens = litellm.token_counter(model=model or self.llm_service.model if self.llm_service else "gpt-3.5-turbo", text=response)
+                return {
+                    "response": response,
+                    "token_counts": {
+                        "input_tokens": 0,  # No input tokens for a mock response
+                        "output_tokens": mock_tokens,
+                        "total_tokens": mock_tokens
+                    }
+                }
+            
+            return response
         
         try:
             # Create messages with domain context if available
@@ -76,18 +94,41 @@ class ContextualLLMService:
                 
             messages.append({"role": "user", "content": prompt})
             
-            # Delegate to the underlying LLM service
-            return await self.llm_service.generate_response(
+            # Delegate to the underlying LLM service with token counting option
+            result = await self.llm_service.generate_response(
                 messages=messages,
                 model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                return_token_counts=return_token_counts,
                 **kwargs
             )
+            
+            # If the result from LLM service is a dict with token counts, return it as-is
+            if isinstance(result, dict) and "token_counts" in result:
+                return result
+            
+            # Otherwise, return the string response directly
+            return result
                     
         except Exception as e:
             logger.error(f"Error calling LLM API: {str(e)}")
-            return f"Error: Unable to generate response ({str(e)})"
+            error_response = f"Error: Unable to generate response ({str(e)})"
+            
+            # Return error response with token counts if requested
+            if return_token_counts:
+                import litellm
+                error_tokens = litellm.token_counter(model=model or self.llm_service.model, text=error_response)
+                return {
+                    "response": error_response,
+                    "token_counts": {
+                        "input_tokens": 0,  # No input tokens for an error response
+                        "output_tokens": error_tokens,
+                        "total_tokens": error_tokens
+                    }
+                }
+            
+            return error_response
 
     def _format_agent_capabilities(self, agent_registry: Dict[str, Any]) -> str:
         """Format agent capabilities for inclusion in system prompt.

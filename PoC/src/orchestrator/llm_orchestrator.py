@@ -52,7 +52,19 @@ class LLMOrchestrator:
         
         try:
             # Get LLM evaluation using the contextual LLM service
-            evaluation_text = await self.llm_service.generate_response(prompt)
+            evaluation_result = await self.llm_service.generate_response(prompt, return_token_counts=True)
+            
+            # Handle the response based on whether token counts were returned
+            if isinstance(evaluation_result, dict) and "token_counts" in evaluation_result:
+                evaluation_text = evaluation_result["response"]
+                token_counts = evaluation_result["token_counts"]
+            else:
+                evaluation_text = evaluation_result
+                token_counts = {
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_tokens": 0
+                }
             
             # Parse and validate the LLM response
             evaluation = self._parse_llm_json_response(evaluation_text)
@@ -61,6 +73,9 @@ class LLMOrchestrator:
             if "decision" not in evaluation:
                 evaluation["decision"] = "failure"
                 evaluation["reasoning"] = f"Missing 'decision' field in LLM response: {evaluation}"
+            
+            # Add token counts to the evaluation result
+            evaluation["token_counts"] = token_counts
             
             return evaluation
         except Exception as e:
@@ -201,6 +216,11 @@ class LLMOrchestrator:
         """
         # Initialize tool call tracking
         tool_calls = []
+        total_token_counts = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0
+        }
         
         # Check if we should compress based on context window size
         context_size = self._calculate_context_size(conversation_history)
@@ -252,8 +272,19 @@ class LLMOrchestrator:
             
             while len(tool_calls_made) < max_tool_calls:
                 # Get LLM response using contextual service (agent registry is now embedded)
-                llm_response = await self.llm_service.generate_response(prompt)
+                llm_response_result = await self.llm_service.generate_response(prompt, return_token_counts=True)
                 
+                # Handle the response based on whether token counts were returned
+                if isinstance(llm_response_result, dict) and "token_counts" in llm_response_result:
+                    llm_response = llm_response_result["response"]
+                    # Add token counts to the total
+                    token_counts = llm_response_result["token_counts"]
+                    total_token_counts["input_tokens"] += token_counts["input_tokens"]
+                    total_token_counts["output_tokens"] += token_counts["output_tokens"]
+                    total_token_counts["total_tokens"] += token_counts["total_tokens"]
+                else:
+                    llm_response = llm_response_result
+
                 # Try to parse as JSON for tool call
                 try:
                     response_json = self._parse_llm_json_response(llm_response)
@@ -262,7 +293,8 @@ class LLMOrchestrator:
                         # Return original response as direct response to user with tool call info
                         return {
                             "response": llm_response,
-                            "tool_calls": tool_calls
+                            "tool_calls": tool_calls,
+                            "token_counts": total_token_counts
                         }
                         
                     if "tool_call" in response_json:
@@ -367,7 +399,8 @@ class LLMOrchestrator:
                     if "error" in response_json:
                         return {
                             "response": llm_response,
-                            "tool_calls": tool_calls
+                            "tool_calls": tool_calls,
+                            "token_counts": total_token_counts
                         }
                         
             # If we've reached the maximum number of tool calls, we need to generate a final response
@@ -377,7 +410,8 @@ class LLMOrchestrator:
                 # We have a specific error response, use it
                 return {
                     "response": error_response,
-                    "tool_calls": tool_calls
+                    "tool_calls": tool_calls,
+                    "token_counts": total_token_counts
                 }
             
             # Generate a final prompt to get a user-friendly response
@@ -415,7 +449,18 @@ class LLMOrchestrator:
             final_prompt += "Do NOT include JSON or technical formatting.\n"
             final_prompt += "Just provide a helpful response to the user.\n"
             
-            final_response = await self.llm_service.generate_response(final_prompt)
+            final_response_result = await self.llm_service.generate_response(final_prompt, return_token_counts=True)
+            
+            # Handle the response based on whether token counts were returned
+            if isinstance(final_response_result, dict) and "token_counts" in final_response_result:
+                final_response = final_response_result["response"]
+                # Add token counts to the total
+                token_counts = final_response_result["token_counts"]
+                total_token_counts["input_tokens"] += token_counts["input_tokens"]
+                total_token_counts["output_tokens"] += token_counts["output_tokens"]
+                total_token_counts["total_tokens"] += token_counts["total_tokens"]
+            else:
+                final_response = final_response_result
             
             # Extract suggested agents from the response
             suggested_agents = self._extract_suggested_agents(final_response)
@@ -428,7 +473,8 @@ class LLMOrchestrator:
                     return {
                         "response": response_json["response"],
                         "tool_calls": tool_calls,
-                        "suggested_agents": response_json.get("suggested_agents", suggested_agents)
+                        "suggested_agents": response_json.get("suggested_agents", suggested_agents),
+                        "token_counts": total_token_counts
                     }
             except:
                 # If parsing fails, treat it as a regular response
@@ -438,14 +484,16 @@ class LLMOrchestrator:
             return {
                 "response": final_response,
                 "tool_calls": tool_calls,
-                "suggested_agents": suggested_agents
+                "suggested_agents": suggested_agents,
+                "token_counts": total_token_counts
             }
             
         except Exception as e:
             logger.error(f"Error processing user request: {e}")
             return {
                 "response": "I encountered an error while processing your request. Please try again later.",
-                "tool_calls": tool_calls
+                "tool_calls": tool_calls,
+                "token_counts": total_token_counts
             }
 
     def _calculate_context_size(self, conversation_history: List[Dict[str, str]]) -> int:
@@ -482,7 +530,13 @@ class LLMOrchestrator:
             
             compression_prompt += "\nProvide a concise summary that captures the main topics and context of this conversation."
             
-            compressed_summary = await self.llm_service.generate_response(compression_prompt)
+            compressed_summary_result = await self.llm_service.generate_response(compression_prompt, return_token_counts=True)
+            
+            # Handle the response based on whether token counts were returned
+            if isinstance(compressed_summary_result, dict) and "token_counts" in compressed_summary_result:
+                compressed_summary = compressed_summary_result["response"]
+            else:
+                compressed_summary = compressed_summary_result
             
             # Replace the conversation history with the summary
             compressed_history = [

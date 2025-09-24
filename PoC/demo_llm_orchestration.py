@@ -42,7 +42,10 @@ async def demo_llm_orchestration():
     user_input = "What agents are currently loaded?"
     response = await chat_interface.process_user_input(user_input)
     print(f"User: {user_input}")
-    print(f"Assistant: {response}")
+    if isinstance(response, dict) and "response_with_tokens" in response:
+        print(f"Assistant: {response['response_with_tokens']}")
+    else:
+        print(f"Assistant: {response}")
     
     # Demonstrate LLM-driven website checking through chat interface
     print("\n--- LLM-Driven Website Checking Demo ---")
@@ -51,13 +54,19 @@ async def demo_llm_orchestration():
     user_input = "Can you check if https://httpbin.org/delay/1 is accessible?"
     response = await chat_interface.process_user_input(user_input)
     print(f"User: {user_input}")
-    print(f"Assistant: {response}")
+    if isinstance(response, dict) and "response_with_tokens" in response:
+        print(f"Assistant: {response['response_with_tokens']}")
+    else:
+        print(f"Assistant: {response}")
     
     # Test website check with error
     user_input = "Please verify the status of https://this-domain-should-not-exist-12345.com"
     response = await chat_interface.process_user_input(user_input)
     print(f"User: {user_input}")
-    print(f"Assistant: {response}")
+    if isinstance(response, dict) and "response_with_tokens" in response:
+        print(f"Assistant: {response['response_with_tokens']}")
+    else:
+        print(f"Assistant: {response}")
     
     print("\n=== Demo Complete ===")
 

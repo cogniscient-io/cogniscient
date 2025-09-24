@@ -27,7 +27,7 @@ This project demonstrates an LLM-enhanced orchestration system that can adaptive
    ```
    Or install the packages directly:
    ```bash
-   pip install litellm pydantic-settings pytest pytest-asyncio
+   pip install litellm pydantic-settings pytest pytest-asyncio uvicorn fastapi dnspython
    ```
 
 2. Make sure Ollama is running with the Qwen3:8b model:

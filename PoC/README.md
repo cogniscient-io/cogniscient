@@ -15,8 +15,9 @@ This project demonstrates an LLM-enhanced orchestration system that can adaptive
 ## Prerequisites
 
 - Python 3.8 or higher
-- Ollama running on `http://192.168.0.230:11434` (or update the settings in `.env` and `src/config/settings.py`)
+- Ollama running on `http://<ip_addr>:11434` (or update the settings in `.env` and `src/config/settings.py`)
 - Qwen3:8b model installed in Ollama (or update the model name in settings)
+- Any model should work, really, but I'm testing locally using this smaller model.
 
 ## Installation
 
@@ -38,7 +39,7 @@ The system can be configured through:
 
 Key configuration options:
 - `LLM_MODEL`: The model to use (default: `ollama_chat/qwen3:8b`)
-- `LLM_BASE_URL`: The Ollama server URL (default: `http://192.168.0.230:11434`)
+- `LLM_BASE_URL`: The Ollama server URL (default: `http://<ip_addr>:11434`)
 - `LLM_API_KEY`: API key if required (default: `ollama`)
 
 ## How It Works

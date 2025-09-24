@@ -91,8 +91,23 @@ class LLMService:
             # Add any additional kwargs
             request_kwargs.update(kwargs)
             
+            # Count input tokens before making the API request
+            input_tokens = litellm.token_counter(
+                model=model_to_use,
+                messages=messages
+            )
+            
             # Make the API request
             response = await acompletion(**request_kwargs)
+            
+            # Count output tokens from the response
+            output_tokens = litellm.token_counter(
+                model=model_to_use,
+                text=response.choices[0].message.content
+            )
+            
+            # Log token usage
+            logger.info(f"Token usage - Input: {input_tokens}, Output: {output_tokens}, Total: {input_tokens + output_tokens}")
             
             # Extract the content from the response
             return response.choices[0].message.content

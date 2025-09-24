@@ -101,7 +101,7 @@ class ContextualLLMService:
         if not agent_registry:
             return ""
             
-        capabilities_str = "\n[AGENT_REGISTRY]\n"
+        capabilities_str = "\\n[AGENT_REGISTRY]\n"
         for name, agent in agent_registry.items():
             # Try to get agent description
             desc = getattr(agent, "description", f"Agent {name}")

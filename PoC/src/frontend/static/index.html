@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LLM Orchestration Frontend</title>
+    <!-- Include Marked.js from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -88,11 +90,61 @@
         h1, h2, h3 {
             color: #333;
         }
-        .tool-call {
+        .tool-call-message {
             background-color: #fff3e0;
             border-left: 4px solid #ff9800;
             padding: 10px;
             margin: 10px 0;
+        }
+        .tool-call-header {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .tool-call-parameters {
+            font-size: 0.9em;
+        }
+        .tool-response-message {
+            background-color: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        .tool-response-header {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .tool-response-result {
+            font-size: 0.9em;
+        }
+        .tool-response-error {
+            font-size: 0.9em;
+            color: #f44336;
+        }
+        .suggested-agents-message {
+            background-color: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        .suggested-agents-header {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .suggested-agent {
+            margin: 5px 0;
+            padding: 5px;
+            background-color: #bbdefb;
+            border-radius: 3px;
+        }
+        .suggested-agent-name {
+            font-weight: bold;
+        }
+        .suggested-agent-description {
+            font-size: 0.9em;
+        }
+        .suggested-agent-capabilities {
+            font-size: 0.8em;
+            font-style: italic;
         }
     </style>
 </head>
@@ -128,6 +180,13 @@
     </div>
 
     <script>
+        // Configure Marked.js options
+        marked.setOptions({
+            gfm: true,
+            breaks: true,
+            smartypants: true
+        });
+        
         // Global variables
         let conversationHistory = [];
         
@@ -189,21 +248,26 @@
                     body: JSON.stringify({ message: message }),
                 });
                 
-                const chatResponse = await response.json();
+                const data = await response.json();
                 
-                // Add assistant response to chat history
-                addMessageToChat('assistant', chatResponse.response);
-                
-                // Display tool calls if any
-                if (chatResponse.tool_calls && chatResponse.tool_calls.length > 0) {
-                    chatResponse.tool_calls.forEach(toolCall => {
-                        const toolCallText = `Tool Call: ${toolCall.agent_name}.${toolCall.method_name}(${JSON.stringify(toolCall.parameters)})`;
-                        addMessageToChat('assistant', toolCallText);
+                // Add tool calls and responses to chat if they exist
+                if (data.tool_calls && data.tool_calls.length > 0) {
+                    data.tool_calls.forEach(toolCall => {
+                        addToolCallToChat(toolCall);
+                        addToolResponseToChat(toolCall);
                     });
                 }
                 
+                // Add suggested agents to chat if they exist
+                if (data.suggested_agents && data.suggested_agents.length > 0) {
+                    addSuggestedAgentsToChat(data.suggested_agents);
+                }
+                
+                // Add assistant response to chat
+                addMessageToChat('assistant', data.response);
+                
                 // Update conversation history
-                conversationHistory = chatResponse.conversation_history;
+                conversationHistory = data.conversation_history;
                 
                 // Refresh system status
                 await fetchSystemStatus();
@@ -218,8 +282,84 @@
             const chatHistory = document.getElementById('chat-history');
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${role}-message`;
-            messageDiv.textContent = content;
+            
+            // Check if content is a JSON string that might contain markdown
+            let displayContent = content;
+            try {
+                // Try to parse as JSON to see if it's a structured response
+                const parsed = JSON.parse(content);
+                // If it's an object with a response property, use that
+                if (parsed && typeof parsed === 'object' && parsed.response) {
+                    displayContent = parsed.response;
+                }
+            } catch (e) {
+                // Not JSON, use content as is
+            }
+            
+            // Render markdown content
+            messageDiv.innerHTML = marked.parse(displayContent);
             chatHistory.appendChild(messageDiv);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+        
+        // Function to add a tool call to the chat history
+        function addToolCallToChat(toolCall) {
+            const chatHistory = document.getElementById('chat-history');
+            const toolCallDiv = document.createElement('div');
+            toolCallDiv.classList.add('message', 'tool-call-message');
+            
+            let toolCallContent = `<div class="tool-call-header">🔧 Tool Call: ${toolCall.agent_name}.${toolCall.method_name}</div>`;
+            
+            if (toolCall.parameters && Object.keys(toolCall.parameters).length > 0) {
+                toolCallContent += `<div class="tool-call-parameters"><strong>Parameters:</strong> ${JSON.stringify(toolCall.parameters)}</div>`;
+            }
+            
+            toolCallDiv.innerHTML = toolCallContent;
+            chatHistory.appendChild(toolCallDiv);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+        
+        // Function to add a tool response to the chat history
+        function addToolResponseToChat(toolCall) {
+            const chatHistory = document.getElementById('chat-history');
+            const toolResponseDiv = document.createElement('div');
+            toolResponseDiv.classList.add('message', 'tool-response-message');
+            
+            let toolResponseContent = `<div class="tool-response-header">✅ Tool Response: ${toolCall.agent_name}.${toolCall.method_name}</div>`;
+            
+            if (toolCall.result) {
+                if (toolCall.result.error) {
+                    toolResponseContent += `<div class="tool-response-error"><strong>Error:</strong> ${toolCall.result.error}</div>`;
+                } else {
+                    toolResponseContent += `<div class="tool-response-result"><strong>Result:</strong> ${JSON.stringify(toolCall.result)}</div>`;
+                }
+            }
+            
+            toolResponseDiv.innerHTML = toolResponseContent;
+            chatHistory.appendChild(toolResponseDiv);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+        
+        // Function to add suggested agents to the chat history
+        function addSuggestedAgentsToChat(suggestedAgents) {
+            const chatHistory = document.getElementById('chat-history');
+            const suggestedAgentsDiv = document.createElement('div');
+            suggestedAgentsDiv.classList.add('message', 'suggested-agents-message');
+            
+            let suggestedAgentsContent = `<div class="suggested-agents-header">💡 Suggested Agents:</div>`;
+            
+            suggestedAgents.forEach(agent => {
+                suggestedAgentsContent += `<div class="suggested-agent">`;
+                suggestedAgentsContent += `<div class="suggested-agent-name"><strong>${agent.name}</strong></div>`;
+                suggestedAgentsContent += `<div class="suggested-agent-description">${agent.description}</div>`;
+                if (agent.capabilities && agent.capabilities.length > 0) {
+                    suggestedAgentsContent += `<div class="suggested-agent-capabilities"><strong>Capabilities:</strong> ${agent.capabilities.join(', ')}</div>`;
+                }
+                suggestedAgentsContent += `</div>`;
+            });
+            
+            suggestedAgentsDiv.innerHTML = suggestedAgentsContent;
+            chatHistory.appendChild(suggestedAgentsDiv);
             chatHistory.scrollTop = chatHistory.scrollHeight;
         }
         

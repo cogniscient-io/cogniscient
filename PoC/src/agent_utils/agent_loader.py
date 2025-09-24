@@ -2,6 +2,7 @@
 Agent Loader - Handles the loading and initialization of agents from configuration files.
 """
 
+import asyncio
 import importlib.util
 import json
 import os
@@ -9,6 +10,7 @@ import re
 from typing import Any, Dict, List
 from .loader import load_agent_module
 from src.agent_utils.agent_config_manager import AgentConfigManager
+from src.agent_utils.external_agent_registry import ExternalAgentRegistry
 
 
 class AgentLoader:
@@ -24,6 +26,7 @@ class AgentLoader:
         self.config_dir = config_dir
         self.agents_dir = agents_dir
         self.config_manager = AgentConfigManager(config_dir=config_dir, agents_dir=agents_dir)
+        self.external_agent_registry = ExternalAgentRegistry()
         self.agents: Dict[str, Any] = {}
         self.agent_configs: Dict[str, Dict[str, Any]] = {}
     
@@ -203,6 +206,59 @@ class AgentLoader:
         """
         return self.agents.copy()
     
+    def register_external_agent(self, agent_config: Dict[str, Any]) -> bool:
+        """Register an external agent.
+        
+        Args:
+            agent_config: Configuration for the external agent
+            
+        Returns:
+            bool: True if registration was successful, False otherwise
+        """
+        # Register with the external agent registry
+        registration_success = self.external_agent_registry.register_agent(agent_config)
+        
+        if registration_success:
+            # Add to our local agents dict as well to maintain a unified interface
+            agent_name = agent_config["name"]
+            external_agent = self.external_agent_registry.get_agent(agent_name)
+            self.agents[agent_name] = external_agent
+            self.agent_configs[agent_name] = agent_config
+            
+        return registration_success
+    
+    def deregister_external_agent(self, agent_name: str) -> bool:
+        """Deregister an external agent.
+        
+        Args:
+            agent_name: Name of the external agent to deregister
+            
+        Returns:
+            bool: True if deregistration was successful, False otherwise
+        """
+        # Remove from the external agent registry
+        deregistration_success = self.external_agent_registry.deregister_agent(agent_name)
+        
+        if deregistration_success:
+            # Remove from our local agents dict as well
+            if agent_name in self.agents:
+                del self.agents[agent_name]
+            if agent_name in self.agent_configs:
+                del self.agent_configs[agent_name]
+        
+        return deregistration_success
+    
+    def get_external_agent(self, agent_name: str):
+        """Get an external agent by name.
+        
+        Args:
+            agent_name: Name of the external agent to retrieve
+            
+        Returns:
+            The external agent or None if not found
+        """
+        return self.external_agent_registry.get_agent(agent_name)
+    
     def run_agent(self, agent_name: str, method_name: str, *args, **kwargs) -> Any:
         """Run a specific method on an agent.
         
@@ -216,11 +272,30 @@ class AgentLoader:
             The result of the method execution.
         """
         if agent_name not in self.agents:
-            raise ValueError(f"Agent {agent_name} not loaded")
+            # Check if it's an external agent that might have been registered
+            external_agent = self.external_agent_registry.get_agent(agent_name)
+            if external_agent:
+                self.agents[agent_name] = external_agent
+            else:
+                raise ValueError(f"Agent {agent_name} not loaded")
             
         agent = self.agents[agent_name]
         if not hasattr(agent, method_name):
             raise ValueError(f"Agent {agent_name} does not have method {method_name}")
             
         method = getattr(agent, method_name)
-        return method(*args, **kwargs)
+        
+        # Handle both sync and async methods
+        if asyncio.iscoroutinefunction(method):
+            # If we're inside an event loop, schedule the async call, otherwise run it
+            try:
+                loop = asyncio.get_running_loop()
+                # If we're inside an event loop, we can't use asyncio.run directly
+                # Instead, we need to await the method or run it in a new task
+                # For this case, we'll just run the coroutine (the caller should await)
+                return method(*args, **kwargs)
+            except RuntimeError:
+                # No event loop running, safe to use asyncio.run
+                return asyncio.run(method(*args, **kwargs))
+        else:
+            return method(*args, **kwargs)

@@ -1,11 +1,12 @@
 """FastAPI backend for the LLM Orchestration Frontend."""
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import asyncio
 import sys
 import os
@@ -45,6 +46,32 @@ class SystemParameterResponse(BaseModel):
     message: str
     parameters: Dict[str, Any] = {}
 
+# Pydantic models for external agent registration
+class ExternalAgentRequest(BaseModel):
+    name: str
+    description: str
+    version: str
+    endpoint_url: str
+    methods: Dict[str, Dict]
+    authentication: Optional[Dict] = None
+    health_check_url: Optional[str] = None
+    settings: Optional[Dict] = None
+
+class ExternalAgentResponse(BaseModel):
+    status: str
+    message: str
+    agent_info: Optional[Dict[str, Any]] = None
+
+class ExternalAgentListResponse(BaseModel):
+    status: str
+    agents: List[str]
+
+class HealthCheckResponse(BaseModel):
+    status: str
+    health_status: str
+    last_check: Optional[float] = None
+    error_message: Optional[str] = None
+
 # Initialize FastAPI app
 app = FastAPI(title="LLM Orchestration Frontend API", version="0.1.0")
 
@@ -67,6 +94,32 @@ ucs_runtime = None
 orchestrator = None
 chat_interface = None
 
+# Security setup
+security = HTTPBearer()
+
+def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Verify the API key for protected endpoints."""
+    # In a real implementation, you would validate against a secure store of API keys
+    # For this demo, we'll use a fixed key from settings
+    expected_api_key = getattr(settings, "EXTERNAL_AGENT_REGISTRATION_API_KEY", "demo-key-for-external-agent-registration")
+    
+    if credentials.credentials != expected_api_key:
+        raise HTTPException(status_code=401, detail="Invalid API Key")
+    return credentials.credentials
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up backend components on shutdown."""
+    global ucs_runtime
+    
+    if ucs_runtime:
+        # Stop health monitoring for external agents
+        await ucs_runtime.agent_loader.external_agent_registry.stop_health_checks()
+        
+        # Shutdown all agents
+        ucs_runtime.shutdown()
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize backend components on startup."""
@@ -77,6 +130,9 @@ async def startup_event():
     ucs_runtime.load_all_agents()
     orchestrator = LLMOrchestrator(ucs_runtime)
     chat_interface = ChatInterface(orchestrator)
+    
+    # Start health monitoring for external agents
+    await ucs_runtime.agent_loader.external_agent_registry.start_health_checks()
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
@@ -193,3 +249,177 @@ async def chat(request: ChatRequest):
         suggested_agents=suggested_agents,
         conversation_history=chat_interface.conversation_history
     )
+
+# External Agent Registration Endpoints
+@app.post("/api/agents/external/register", response_model=ExternalAgentResponse)
+async def register_external_agent(agent_request: ExternalAgentRequest, api_key: str = Depends(verify_api_key)):
+    """Register a new external agent via REST API."""
+    if ucs_runtime is None:
+        return ExternalAgentResponse(
+            status="error",
+            message="System is not initialized"
+        )
+    
+    try:
+        # Prepare the agent configuration
+        agent_config = {
+            "name": agent_request.name,
+            "description": agent_request.description,
+            "version": agent_request.version,
+            "endpoint_url": agent_request.endpoint_url,
+            "methods": agent_request.methods,
+            "enabled": True
+        }
+        
+        if agent_request.authentication:
+            agent_config["authentication"] = agent_request.authentication
+            
+        if agent_request.health_check_url:
+            agent_config["health_check_url"] = agent_request.health_check_url
+            
+        if agent_request.settings:
+            agent_config["settings"] = agent_request.settings
+        
+        # Attempt to validate the agent endpoint before registration
+        validation_result = await ucs_runtime.agent_loader.external_agent_registry.validate_agent_endpoint(agent_config)
+        if validation_result["status"] != "success":
+            return ExternalAgentResponse(
+                status="error",
+                message=f"Failed to validate agent endpoint: {validation_result['message']}"
+            )
+        
+        # Register the external agent
+        registration_success = ucs_runtime.agent_loader.register_external_agent(agent_config)
+        
+        if registration_success:
+            return ExternalAgentResponse(
+                status="success",
+                message=f"Successfully registered external agent: {agent_request.name}",
+                agent_info=agent_config
+            )
+        else:
+            return ExternalAgentResponse(
+                status="error",
+                message=f"Failed to register external agent: {agent_request.name}"
+            )
+    except Exception as e:
+        return ExternalAgentResponse(
+            status="error",
+            message=f"Exception during external agent registration: {str(e)}"
+        )
+
+@app.delete("/api/agents/external/{agent_name}", response_model=ExternalAgentResponse)
+async def deregister_external_agent(agent_name: str, api_key: str = Depends(verify_api_key)):
+    """Deregister an external agent via REST API."""
+    if ucs_runtime is None:
+        return ExternalAgentResponse(
+            status="error",
+            message="System is not initialized"
+        )
+    
+    try:
+        # Deregister the external agent
+        deregistration_success = ucs_runtime.agent_loader.deregister_external_agent(agent_name)
+        
+        if deregistration_success:
+            return ExternalAgentResponse(
+                status="success",
+                message=f"Successfully deregistered external agent: {agent_name}"
+            )
+        else:
+            return ExternalAgentResponse(
+                status="error",
+                message=f"Failed to deregister external agent: {agent_name} (agent not found or other error)"
+            )
+    except Exception as e:
+        return ExternalAgentResponse(
+            status="error",
+            message=f"Exception during external agent deregistration: {str(e)}"
+        )
+
+@app.get("/api/agents/external", response_model=ExternalAgentListResponse)
+async def list_external_agents():
+    """List all registered external agents."""
+    if ucs_runtime is None:
+        return ExternalAgentListResponse(
+            status="error",
+            agents=[]
+        )
+    
+    try:
+        # Get registered external agents from the registry
+        external_agent_names = ucs_runtime.agent_loader.external_agent_registry.list_agents()
+        return ExternalAgentListResponse(
+            status="success",
+            agents=external_agent_names
+        )
+    except Exception as e:
+        return ExternalAgentListResponse(
+            status="error",
+            message=f"Exception during listing external agents: {str(e)}",
+            agents=[]
+        )
+
+@app.get("/api/agents/external/{agent_name}", response_model=ExternalAgentResponse)
+async def get_external_agent(agent_name: str):
+    """Get details about a specific external agent."""
+    if ucs_runtime is None:
+        return ExternalAgentResponse(
+            status="error",
+            message="System is not initialized"
+        )
+    
+    try:
+        # Get the agent configuration
+        agent_config = ucs_runtime.agent_loader.external_agent_registry.get_agent_config(agent_name)
+        
+        if agent_config:
+            return ExternalAgentResponse(
+                status="success",
+                message=f"Found external agent: {agent_name}",
+                agent_info=agent_config
+            )
+        else:
+            return ExternalAgentResponse(
+                status="error",
+                message=f"External agent not found: {agent_name}"
+            )
+    except Exception as e:
+        return ExternalAgentResponse(
+            status="error",
+            message=f"Exception during getting external agent: {str(e)}"
+        )
+
+@app.get("/api/agents/external/{agent_name}/health", response_model=HealthCheckResponse)
+async def get_external_agent_health(agent_name: str):
+    """Check health status of an external agent."""
+    if ucs_runtime is None:
+        return HealthCheckResponse(
+            status="error",
+            health_status="unknown",
+            error_message="System is not initialized"
+        )
+    
+    try:
+        # Get health status from the registry
+        health_info = await ucs_runtime.agent_loader.external_agent_registry.get_agent_health(agent_name)
+        
+        if health_info:
+            return HealthCheckResponse(
+                status="success",
+                health_status=health_info["health_status"],
+                last_check=health_info["last_health_check"],
+                error_message=health_info.get("health_status_error")
+            )
+        else:
+            return HealthCheckResponse(
+                status="error",
+                health_status="not_found",
+                error_message=f"External agent not found: {agent_name}"
+            )
+    except Exception as e:
+        return HealthCheckResponse(
+            status="error",
+            health_status="unknown",
+            error_message=f"Exception during health check: {str(e)}"
+        )

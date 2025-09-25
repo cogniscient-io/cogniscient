@@ -10,6 +10,8 @@ import datetime
 from agent_utils.agent_config_manager import AgentConfigManager
 from agent_utils.agent_loader import AgentLoader
 from agent_utils.agent_coordinator import AgentCoordinator
+from src.services.config_service import ConfigService
+from src.services.system_parameters_service import SystemParametersService
 
 class UCSRuntime:
     """Core UCS runtime for loading and managing agents."""
@@ -33,6 +35,14 @@ class UCSRuntime:
         self.runtime_ref = self
         # Keep track of chat interfaces that need to be notified of configuration changes
         self.chat_interfaces: List[Any] = []
+        
+        # Initialize core system services that should always be available
+        self.config_service = ConfigService()
+        self.system_parameters_service = SystemParametersService()
+        
+        # Set runtime references in the services
+        self.config_service.set_runtime(self)
+        self.system_parameters_service.set_runtime(self)
         
         # Initialize agent management utilities for cleaner separation of concerns
         self.agent_loader = AgentLoader(config_dir=config_dir, agents_dir=agents_dir)
@@ -133,7 +143,9 @@ class UCSRuntime:
         """Load all agents based on configuration files."""
         # Use the configuration manager to load all agent configs and load them
         agent_configs = self.agent_loader.config_manager.load_all_agent_configs()
-        agent_names = list(agent_configs.keys())
+        # Exclude the ConfigManager and SystemParametersManager since they're now services
+        agent_names = [name for name in agent_configs.keys() 
+                      if name not in ["ConfigManager", "SystemParametersManager"]]
         self.agent_loader.load_specific_agents_by_name(agent_names)
         
         # Ensure agents have access to the runtime reference
@@ -148,14 +160,12 @@ class UCSRuntime:
         Args:
             config_name (str): Name of the configuration to load (without .json extension).
         """
-        config_path = os.path.join(self.config_dir, "configs", f"{config_name}.json")
-        if not os.path.exists(config_path):
-            raise ValueError(f"Configuration {config_name} not found at {config_path}")
+        # Use the ConfigService to load the configuration
+        result = self.config_service.load_configuration(config_name)
+        if result["status"] == "error":
+            raise ValueError(result["message"])
             
-        # Load the configuration
-        with open(config_path, "r") as f:
-            config = json.load(f)
-            
+        config = result["configuration"]
         print(f"Loading configuration: {config['name']}")
         
         # Store additional prompt info temporarily
@@ -167,8 +177,10 @@ class UCSRuntime:
         # Restore additional prompt info after unloading
         self.additional_prompt_info = temp_additional_prompt_info
         
-        # Load agents specified in the configuration
-        self.agent_loader.load_specific_agents(config.get("agents", []))
+        # Load agents specified in the configuration, excluding system services
+        agent_specs = [agent_spec for agent_spec in config.get("agents", []) 
+                      if agent_spec["name"] not in ["ConfigManager", "SystemParametersManager"]]
+        self.agent_loader.load_specific_agents(agent_specs)
         
         # Ensure agents have access to the runtime reference
         self.agent_loader.set_runtime_ref(self)
@@ -222,16 +234,12 @@ class UCSRuntime:
         Returns:
             List[str]: List of available configuration names.
         """
-        configs_dir = os.path.join(self.config_dir, "configs")
-        if not os.path.exists(configs_dir):
+        # Use the ConfigService to get available configurations
+        result = self.config_service.list_configurations()
+        if result["status"] == "success":
+            return [config["name"] for config in result["configurations"]]
+        else:
             return []
-            
-        config_files = []
-        for file in os.listdir(configs_dir):
-            if file.endswith(".json"):
-                config_files.append(file[:-5])  # Remove .json extension
-                
-        return config_files
 
     def run_agent(self, agent_name: str, method_name: str, *args, **kwargs) -> Any:
         """Run a specific method on an agent.
@@ -245,6 +253,14 @@ class UCSRuntime:
         Returns:
             The result of the method execution.
         """
+        # Check if this is a request for the config service
+        if agent_name == "ConfigManager":
+            return self._handle_config_service_request(method_name, *args, **kwargs)
+        
+        # Check if this is a request for the system parameters service
+        if agent_name == "SystemParametersManager":
+            return self._handle_system_parameters_service_request(method_name, *args, **kwargs)
+        
         # Record the call information
         call_time = datetime.datetime.now()
         call_info = {
@@ -270,6 +286,34 @@ class UCSRuntime:
             self.agent_last_call[agent_name] = call_info
             
         return result
+
+    def _handle_config_service_request(self, method_name: str, *args, **kwargs) -> Any:
+        """Handle requests that should be directed to the ConfigService.
+        
+        Args:
+            method_name (str): Name of the method to execute on ConfigService.
+            *args: Positional arguments to pass to the method.
+            **kwargs: Keyword arguments to pass to the method.
+            
+        Returns:
+            The result of the method execution on ConfigService.
+        """
+        method = getattr(self.config_service, method_name)
+        return method(*args, **kwargs)
+
+    def _handle_system_parameters_service_request(self, method_name: str, *args, **kwargs) -> Any:
+        """Handle requests that should be directed to the SystemParametersService.
+        
+        Args:
+            method_name (str): Name of the method to execute on SystemParametersService.
+            *args: Positional arguments to pass to the method.
+            **kwargs: Keyword arguments to pass to the method.
+            
+        Returns:
+            The result of the method execution on SystemParametersService.
+        """
+        method = getattr(self.system_parameters_service, method_name)
+        return method(*args, **kwargs)
 
     def shutdown(self) -> None:
         """Shutdown all agents."""

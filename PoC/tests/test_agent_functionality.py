@@ -16,22 +16,25 @@ async def test_agent_functionality_with_different_configs():
     ucs_runtime.load_configuration("dns_only")
     assert "SampleAgentA" in ucs_runtime.agents
     assert "SampleAgentB" not in ucs_runtime.agents
-    assert "ConfigManager" in ucs_runtime.agents
-    assert "SystemParametersManager" in ucs_runtime.agents
+    # ConfigManager and SystemParametersManager are now system services, not loaded agents
+    assert "ConfigManager" not in ucs_runtime.agents
+    assert "SystemParametersManager" not in ucs_runtime.agents
     
     # Test website only configuration
     ucs_runtime.load_configuration("website_only")
     assert "SampleAgentB" in ucs_runtime.agents
     assert "SampleAgentA" not in ucs_runtime.agents
-    assert "ConfigManager" in ucs_runtime.agents
-    assert "SystemParametersManager" in ucs_runtime.agents
+    # ConfigManager and SystemParametersManager are now system services, not loaded agents
+    assert "ConfigManager" not in ucs_runtime.agents
+    assert "SystemParametersManager" not in ucs_runtime.agents
     
     # Test combined configuration
     ucs_runtime.load_configuration("combined")
     assert "SampleAgentA" in ucs_runtime.agents
     assert "SampleAgentB" in ucs_runtime.agents
-    assert "ConfigManager" in ucs_runtime.agents
-    assert "SystemParametersManager" in ucs_runtime.agents
+    # ConfigManager and SystemParametersManager are now system services, not loaded agents
+    assert "ConfigManager" not in ucs_runtime.agents
+    assert "SystemParametersManager" not in ucs_runtime.agents
 
 
 @pytest.mark.asyncio

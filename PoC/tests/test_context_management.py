@@ -67,7 +67,7 @@ async def test_conversation_history_management():
 
 @pytest.mark.asyncio
 async def test_system_parameters_management():
-    """Test the system parameters manager agent."""
+    """Test the system parameters manager service."""
     # Initialize UCS runtime and chat interface
     ucs_runtime = UCSRuntime()
     ucs_runtime.load_configuration("combined")
@@ -75,7 +75,7 @@ async def test_system_parameters_management():
     orchestrator = LLMOrchestrator(ucs_runtime)
     chat_interface = ChatInterface(orchestrator)
     
-    # Test getting system parameters
+    # Test getting system parameters - still accessible through the same interface
     result = ucs_runtime.run_agent("SystemParametersManager", "get_system_parameters")
     assert result["status"] == "success"
     assert "parameters" in result

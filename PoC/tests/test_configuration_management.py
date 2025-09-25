@@ -25,16 +25,18 @@ async def test_config_loading_functionality():
     ucs_runtime.load_configuration("website_only")
     website_agents = list(ucs_runtime.agents.keys())
     assert "SampleAgentB" in website_agents
-    assert "ConfigManager" in website_agents
-    assert "SystemParametersManager" in website_agents
+    # ConfigManager and SystemParametersManager are now system services, not loaded agents
+    assert "ConfigManager" not in website_agents
+    assert "SystemParametersManager" not in website_agents
     assert "SampleAgentA" not in website_agents
     
     # Test loading DNS only configuration
     ucs_runtime.load_configuration("dns_only")
     dns_agents = list(ucs_runtime.agents.keys())
     assert "SampleAgentA" in dns_agents
-    assert "ConfigManager" in dns_agents
-    assert "SystemParametersManager" in dns_agents
+    # ConfigManager and SystemParametersManager are now system services, not loaded agents
+    assert "ConfigManager" not in dns_agents
+    assert "SystemParametersManager" not in dns_agents
     assert "SampleAgentB" not in dns_agents
     
     # Test loading combined configuration
@@ -42,8 +44,9 @@ async def test_config_loading_functionality():
     combined_agents = list(ucs_runtime.agents.keys())
     assert "SampleAgentA" in combined_agents
     assert "SampleAgentB" in combined_agents
-    assert "ConfigManager" in combined_agents
-    assert "SystemParametersManager" in combined_agents
+    # ConfigManager and SystemParametersManager are now system services, not loaded agents
+    assert "ConfigManager" not in combined_agents
+    assert "SystemParametersManager" not in combined_agents
     
     # Test listing available configurations
     configs = ucs_runtime.list_available_configurations()
@@ -59,7 +62,7 @@ async def test_config_manager_descriptions():
     ucs_runtime = UCSRuntime()
     ucs_runtime.load_configuration("combined")
     
-    # Test listing configurations
+    # Test listing configurations - still accessible through the same interface
     result = ucs_runtime.run_agent("ConfigManager", "list_configurations")
     assert result["status"] == "success"
     assert "configurations" in result
@@ -91,7 +94,8 @@ async def test_llm_driven_config_management():
     # Test listing loaded agents
     result = await chat_interface.process_user_input("What agents are currently loaded?")
     assert "response" in result
-    assert "ConfigManager" in result["response"]
+    # Confirm that actual agents (not system services) are mentioned in the response
+    assert "SampleAgentA" in result["response"] or "SampleAgentB" in result["response"]
     
     # Test loading a specific configuration
     result = await chat_interface.process_user_input("Please load the website only configuration")

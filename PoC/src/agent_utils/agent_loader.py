@@ -109,6 +109,10 @@ class AgentLoader:
         agent_configs = self.config_manager.load_all_agent_configs()
         
         for agent_name, config in agent_configs.items():
+            # Skip system services that are now handled as services, not agents
+            if agent_name in ["ConfigManager", "SystemParametersManager"]:
+                continue
+                
             # Only load agents that are enabled
             if config.get("enabled", True):
                 try:
@@ -135,6 +139,11 @@ class AgentLoader:
         """
         for agent_spec in agent_specs:
             agent_name = agent_spec["name"]
+            
+            # Skip system services that are now handled as services, not agents
+            if agent_name in ["ConfigManager", "SystemParametersManager"]:
+                continue
+                
             config_file = agent_spec.get("config_file", f"config_{agent_name}.json")
             
             try:

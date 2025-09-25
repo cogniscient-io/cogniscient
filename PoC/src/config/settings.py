@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     # Application settings
     log_level: str = "INFO"
     
+    # Add config directory setting
+    config_dir: str = "."
+    
     class Config:
         env_file = ".env"
         case_sensitive = False

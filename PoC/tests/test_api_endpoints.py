@@ -53,10 +53,8 @@ async def test_system_parameters_api_functionality():
     assert result["status"] == "success"
     params = result["parameters"]
     
-    # Note: The settings module parameters won't change, but the runtime objects should
-    # have been updated
-    if "chat_max_history_length" in params:
-        assert params["chat_max_history_length"] == 10
+    # Verify the parameter was set in the settings
+    assert params["max_history_length"] == 10
 
 
 if __name__ == "__main__":

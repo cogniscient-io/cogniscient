@@ -202,6 +202,10 @@ class LLMOrchestrator:
                             "parameters": parameters
                         }
                         
+                        # Add token counts for this tool call if available
+                        if isinstance(llm_response_result, dict) and "token_counts" in llm_response_result:
+                            tool_call_info["token_counts"] = llm_response_result["token_counts"]
+                        
                         # Send tool call event to frontend
                         await send_stream_event("tool_call", None, tool_call_info)
                         
@@ -369,6 +373,11 @@ class LLMOrchestrator:
                     # Send the final response
                     await send_stream_event("assistant_response", response_json["response"], None)
                     
+                    # Send token counts separately if available
+                    logger.debug(f"Sending final token counts: {total_token_counts}")
+                    await send_stream_event("token_counts", None, total_token_counts)
+                    logger.debug("Sent final token counts event")
+                    
                     return {
                         "response": response_json["response"],
                         "tool_calls": tool_calls,
@@ -386,6 +395,11 @@ class LLMOrchestrator:
             # Send the final response
             await send_stream_event("assistant_response", final_response, None)
             
+            # Send token counts separately if available
+            logger.debug(f"Sending final token counts (second path): {total_token_counts}")
+            await send_stream_event("token_counts", None, total_token_counts)
+            logger.debug("Sent final token counts event (second path)")
+            
             # Return the response with any extracted suggested agents
             return {
                 "response": final_response,
@@ -396,6 +410,7 @@ class LLMOrchestrator:
             
         except Exception as e:
             logger.error(f"Error processing user request: {e}")
+            logger.error(f"Exception traceback: ", exc_info=True)
             await send_stream_event("assistant_response", "I encountered an error while processing your request. Please try again later.", None)
             return {
                 "response": "I encountered an error while processing your request. Please try again later.",

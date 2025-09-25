@@ -130,14 +130,11 @@ class ChatInterface:
             token_counts = result["token_counts"]
             response = result.get("response", "")
             
-            # Format the response to include token counts
-            response_with_tokens = f"{response}\n\n[Token Usage: Input: {token_counts['input_tokens']}, Output: {token_counts['output_tokens']}, Total: {token_counts['total_tokens']}]"
+            # Add the response to conversation history without token counts (token counts are sent separately in streaming)
+            self.conversation_history.append({"role": "assistant", "content": response})
             
-            # Add the response with token counts to conversation history
-            self.conversation_history.append({"role": "assistant", "content": response_with_tokens})
-            
-            # Update the result to include the formatted response
-            result["response_with_tokens"] = response_with_tokens
+            # Update the result to include the response without token counts
+            result["response_with_tokens"] = response
         else:
             # Add response to conversation history as before
             response = result.get("response", result) if isinstance(result, dict) else result

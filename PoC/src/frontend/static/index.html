@@ -145,6 +145,13 @@
             font-size: 0.8em;
             font-style: italic;
         }
+        .token-counts {
+            font-size: 0.8em;
+            color: #666;
+            margin-top: 5px;
+            padding: 5px;
+            border-top: 1px solid #eee;
+        }
     </style>
 </head>
 <body>
@@ -285,8 +292,39 @@
                                             responseDiv.className = 'message assistant-message temp-assistant-response';
                                             chatHistory.appendChild(responseDiv);
                                         }
-                                        responseDiv.innerHTML = marked.parse(assistantMessage);
+                                        // Add a placeholder for token counts
+                                        let responseWithTokens = marked.parse(assistantMessage);
+                                        responseWithTokens += '<div class="token-counts-placeholder" style="font-size: 0.8em; color: #666; margin-top: 5px; padding: 5px; border-top: 1px solid #eee;"><em>Calculating token usage...</em></div>';
+                                        responseDiv.innerHTML = responseWithTokens;
                                         chatHistory.scrollTop = chatHistory.scrollHeight;
+                                        break;
+                                        
+                                    case 'token_counts':
+                                        // Update token count information in the assistant response
+                                        const tokenPlaceholder = document.querySelector('.token-counts-placeholder');
+                                        if (tokenPlaceholder) {
+                                            tokenPlaceholder.innerHTML = `<strong>Token Usage:</strong> Input: ${event.data.input_tokens}, Output: ${event.data.output_tokens}, Total: ${event.data.total_tokens}`;
+                                            tokenPlaceholder.className = 'token-counts';
+                                        } else {
+                                            // If no placeholder, add token count information to the assistant response
+                                            const tokenInfo = document.createElement('div');
+                                            tokenInfo.className = 'token-counts';
+                                            tokenInfo.style.fontSize = '0.8em';
+                                            tokenInfo.style.color = '#666';
+                                            tokenInfo.style.marginTop = '5px';
+                                            tokenInfo.style.padding = '5px';
+                                            tokenInfo.style.borderTop = '1px solid #eee';
+                                            tokenInfo.innerHTML = `<strong>Token Usage:</strong> Input: ${event.data.input_tokens}, Output: ${event.data.output_tokens}, Total: ${event.data.total_tokens}`;
+                                            
+                                            // Add to the assistant response div
+                                            let tokenDiv = document.querySelector('.temp-assistant-response');
+                                            if (!tokenDiv) {
+                                                tokenDiv = document.querySelector('.assistant-message:not(.temp-assistant-response)');
+                                            }
+                                            if (tokenDiv) {
+                                                tokenDiv.appendChild(tokenInfo);
+                                            }
+                                        }
                                         break;
                                         
                                     case 'final_response':
@@ -340,10 +378,17 @@
             const toolCallDiv = document.createElement('div');
             toolCallDiv.classList.add('message', 'tool-call-message');
             
-            let toolCallContent = '<div class=\"tool-call-header\">🔧 Tool Call: ' + toolCall.agent_name + '.' + toolCall.method_name + '</div>';
+            let toolCallContent = '<div class="tool-call-header">🔧 Tool Call: ' + toolCall.agent_name + '.' + toolCall.method_name + '</div>';
             
             if (toolCall.parameters && Object.keys(toolCall.parameters).length > 0) {
-                toolCallContent += '<div class=\"tool-call-parameters\"><strong>Parameters:</strong> ' + JSON.stringify(toolCall.parameters) + '</div>';
+                toolCallContent += '<div class="tool-call-parameters"><strong>Parameters:</strong> ' + JSON.stringify(toolCall.parameters) + '</div>';
+            }
+            
+            // Add token counts if available
+            if (toolCall.token_counts) {
+                toolCallContent += '<div class="tool-call-token-counts" style="font-size: 0.8em; color: #666; margin-top: 5px; padding: 5px; border-top: 1px solid #eee;">';
+                toolCallContent += '<strong>Token Usage:</strong> Input: ' + toolCall.token_counts.input_tokens + ', Output: ' + toolCall.token_counts.output_tokens + ', Total: ' + toolCall.token_counts.total_tokens;
+                toolCallContent += '</div>';
             }
             
             toolCallDiv.innerHTML = toolCallContent;
@@ -356,14 +401,21 @@
             const toolResponseDiv = document.createElement('div');
             toolResponseDiv.classList.add('message', 'tool-response-message');
             
-            let toolResponseContent = '<div class=\"tool-response-header\">✅ Tool Response: ' + toolCall.agent_name + '.' + toolCall.method_name + '</div>';
+            let toolResponseContent = '<div class="tool-response-header">✅ Tool Response: ' + toolCall.agent_name + '.' + toolCall.method_name + '</div>';
             
             if (toolCall.result) {
                 if (toolCall.result.error) {
-                    toolResponseContent += '<div class=\"tool-response-error\"><strong>Error:</strong> ' + toolCall.result.error + '</div>';
+                    toolResponseContent += '<div class="tool-response-error"><strong>Error:</strong> ' + toolCall.result.error + '</div>';
                 } else {
-                    toolResponseContent += '<div class=\"tool-response-result\"><strong>Result:</strong> ' + JSON.stringify(toolCall.result) + '</div>';
+                    toolResponseContent += '<div class="tool-response-result"><strong>Result:</strong> ' + JSON.stringify(toolCall.result) + '</div>';
                 }
+            }
+            
+            // Add token counts if available
+            if (toolCall.token_counts) {
+                toolResponseContent += '<div class="tool-response-token-counts" style="font-size: 0.8em; color: #666; margin-top: 5px; padding: 5px; border-top: 1px solid #eee;">';
+                toolResponseContent += '<strong>Token Usage:</strong> Input: ' + toolCall.token_counts.input_tokens + ', Output: ' + toolCall.token_counts.output_tokens + ', Total: ' + toolCall.token_counts.total_tokens;
+                toolResponseContent += '</div>';
             }
             
             toolResponseDiv.innerHTML = toolResponseContent;

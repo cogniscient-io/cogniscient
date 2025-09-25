@@ -1,7 +1,9 @@
 """Chat Interface for LLM-Enhanced Adaptive Control System."""
 
+import asyncio
+import json
 import logging
-from typing import Dict, Any, List
+from typing import AsyncGenerator, Callable, Dict, Any, List
 from src.services.llm_service import LLMService
 from src.config.settings import settings
 
@@ -75,6 +77,87 @@ class ChatInterface:
             self._trim_conversation_history()
         
         return result
+
+    async def _compress_conversation_history_streaming(self, conversation_history: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        """Compress the conversation history to reduce context size using streaming."""
+        if len(conversation_history) < 2:
+            return conversation_history
+            
+        # Use the LLM to summarize the conversation history
+        try:
+            compression_prompt = "Please summarize the following conversation history in a concise way, preserving the key points and context:\n\n"
+            for turn in conversation_history[:-2]:  # Exclude the last two entries
+                compression_prompt += f"{turn['role'].title()}: {turn['content']}\n"
+            
+            compression_prompt += "\nProvide a concise summary that captures the main topics and context of this conversation."
+            
+            compressed_summary = await self.llm_service.generate_response(compression_prompt)
+            
+            # Replace the conversation history with the summary
+            result = [
+                {"role": "system", "content": f"Previous conversation summary: {compressed_summary}"},
+                conversation_history[-2],  # Last user input
+                conversation_history[-1]   # Last assistant response
+            ]
+            
+            logger.info("Conversation history compressed successfully in chat interface")
+            return result
+        except Exception as e:
+            logger.error(f"Failed to compress conversation history in chat interface: {e}")
+            # If compression fails, just return the original history
+            return conversation_history
+
+    async def process_user_input_streaming(self, user_input: str, conversation_history: List[Dict[str, str]], 
+                                          send_stream_event: Callable[[str, str, Dict[str, Any]], Any]) -> None:
+        """Process user input and generate response with streaming support.
+        
+        Args:
+            user_input (str): The user's input message.
+            conversation_history (List[Dict[str, str]]): The conversation history.
+            send_stream_event (Callable): Function to send streaming events
+        """
+        # Check if we need to compress the conversation history
+        if len(conversation_history) >= self.compression_threshold:
+            compressed_history = await self._compress_conversation_history_streaming(conversation_history)
+            conversation_history = compressed_history
+            # Note: We don't update self.conversation_history yet since this is just for processing
+        
+        # Generate response using LLM orchestrator which handles agent selection
+        result = await self.orchestrator.process_user_request_streaming(user_input, conversation_history, send_stream_event)
+        
+        # Check if token counts are available in the result
+        if isinstance(result, dict) and "token_counts" in result:
+            token_counts = result["token_counts"]
+            response = result.get("response", "")
+            
+            # Format the response to include token counts
+            response_with_tokens = f"{response}\n\n[Token Usage: Input: {token_counts['input_tokens']}, Output: {token_counts['output_tokens']}, Total: {token_counts['total_tokens']}]"
+            
+            # Add the response with token counts to conversation history
+            self.conversation_history.append({"role": "assistant", "content": response_with_tokens})
+            
+            # Update the result to include the formatted response
+            result["response_with_tokens"] = response_with_tokens
+        else:
+            # Add response to conversation history as before
+            response = result.get("response", result) if isinstance(result, dict) else result
+            self.conversation_history.append({"role": "assistant", "content": response})
+        
+        # Trim conversation history if it's too long
+        if len(self.conversation_history) > self.max_history_length:
+            self._trim_conversation_history()
+
+    async def _send_streaming_event(self, event_type: str, content: str = None, data: Dict[str, Any] = None):
+        """Create a streaming event to yield to the frontend."""
+        event = {
+            "type": event_type,
+        }
+        if content is not None:
+            event["content"] = content
+        if data is not None:
+            event["data"] = data
+        
+        return event
     
     async def _compress_conversation_history(self) -> None:
         """Compress the conversation history to reduce context length."""

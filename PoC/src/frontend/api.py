@@ -3,11 +3,12 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 import asyncio
+import json
 import sys
 import os
 
@@ -29,6 +30,12 @@ class ChatResponse(BaseModel):
     tool_calls: List[Dict[str, Any]] = []
     suggested_agents: List[Dict[str, Any]] = []
     conversation_history: List[Dict[str, str]]
+
+# Streaming response event
+class StreamEvent(BaseModel):
+    type: str  # assistant_response, tool_call, tool_response, suggested_agents, final_response
+    content: Optional[str] = None
+    data: Optional[Dict[str, Any]] = None
 
 class StatusResponse(BaseModel):
     agents: List[str]
@@ -249,6 +256,79 @@ async def chat(request: ChatRequest):
         suggested_agents=suggested_agents,
         conversation_history=chat_interface.conversation_history
     )
+
+@app.post("/api/stream_chat")
+async def stream_chat(request: ChatRequest):
+    """Process chat messages with streaming response."""
+    if chat_interface is None:
+        def error_generator():
+            event = {"type": "assistant_response", "content": "System is still initializing. Please try again in a moment."}
+            yield f"data: {json.dumps(event)}\n\n"
+            yield f"data: [DONE]\n\n"
+        return StreamingResponse(error_generator(), media_type="text/event-stream")
+    
+    # Create an asyncio queue to handle communication between the processing task and the response generator
+    event_queue = asyncio.Queue()
+    
+    async def send_stream_event(event_type: str, content: str = None, data: Dict[str, Any] = None):
+        event = {
+            "type": event_type,
+        }
+        if content is not None:
+            event["content"] = content
+        if data is not None:
+            event["data"] = data
+        
+        await event_queue.put(event)
+    
+    async def process_request():
+        """Background task to process the request and send events to the queue."""
+        try:
+            # Add user input to conversation history
+            chat_interface.conversation_history.append({"role": "user", "content": request.message})
+            
+            # Process user input through chat interface with streaming
+            await chat_interface.process_user_input_streaming(
+                request.message, 
+                chat_interface.conversation_history, 
+                send_stream_event
+            )
+            
+            # Send final response with updated conversation history
+            final_event = {
+                "type": "final_response",
+                "data": {
+                    "conversation_history": chat_interface.conversation_history
+                }
+            }
+            await event_queue.put(final_event)
+            
+        except Exception as e:
+            error_event = {"type": "assistant_response", "content": f"Error processing your request: {str(e)}"}
+            await event_queue.put(error_event)
+        finally:
+            # Signal completion
+            await event_queue.put(None)  # None signals end of stream
+    
+    async def event_generator():
+        """Generator that yields events from the queue."""
+        # Start the background processing task
+        task = asyncio.create_task(process_request())
+        
+        # Yield events from the queue as they come in
+        while True:
+            event = await event_queue.get()
+            if event is None:  # End signal
+                break
+            yield f"data: {json.dumps(event)}\n\n"
+        
+        # Signal end of stream
+        yield f"data: [DONE]\n\n"
+        
+        # Wait for the processing task to complete
+        await task
+    
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 # External Agent Registration Endpoints
 @app.post("/api/agents/external/register", response_model=ExternalAgentResponse)

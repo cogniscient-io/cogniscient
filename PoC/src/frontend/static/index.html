@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LLM Orchestration Frontend</title>
-    <!-- Include Marked.js from CDN -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         body {
@@ -180,43 +179,34 @@
     </div>
 
     <script>
-        // Configure Marked.js options
         marked.setOptions({
             gfm: true,
             breaks: true,
             smartypants: true
         });
         
-        // Global variables
         let conversationHistory = [];
         
-        // Function to fetch and display system status
         async function fetchSystemStatus() {
             try {
                 const response = await fetch('/api/status');
                 const statusData = await response.json();
                 
-                // Display system status
-                document.getElementById('system-status').innerHTML = `
-                    <p><strong>Status:</strong> ${statusData.system_status}</p>
-                `;
+                document.getElementById('system-status').innerHTML = 
+                    '<p><strong>Status:</strong> ' + statusData.system_status + '</p>';
                 
-                // Display loaded agents
-                const agentsList = statusData.agents.map(agent => `<li>${agent}</li>`).join('');
-                document.getElementById('loaded-agents').innerHTML = `
-                    <ul>${agentsList}</ul>
-                `;
+                const agentsList = statusData.agents.map(agent => '<li>' + agent + '</li>').join('');
+                document.getElementById('loaded-agents').innerHTML = 
+                    '<ul>' + agentsList + '</ul>';
                 
-                // Display system parameters if available
                 if (statusData.system_parameters && Object.keys(statusData.system_parameters).length > 0) {
                     let parametersHtml = '';
                     for (const [key, value] of Object.entries(statusData.system_parameters)) {
-                        parametersHtml += `
-                            <div class="parameter-item">
-                                <span class="parameter-name">${key}:</span>
-                                <span class="parameter-value">${value}</span>
-                            </div>
-                        `;
+                        parametersHtml += 
+                            '<div class=\"parameter-item\">' +
+                                '<span class=\"parameter-name\">' + key + ':</span>' +
+                                '<span class=\"parameter-value\">' + value + '</span>' +
+                            '</div>';
                     }
                     document.getElementById('system-parameters').innerHTML = parametersHtml;
                 } else {
@@ -228,19 +218,19 @@
             }
         }
         
-        // Function to send a message
         async function sendMessage() {
             const inputElement = document.getElementById('user-input');
             const message = inputElement.value.trim();
             
             if (!message) return;
             
-            // Add user message to chat history
             addMessageToChat('user', message);
             inputElement.value = '';
             
             try {
-                const response = await fetch('/api/chat', {
+                const chatHistory = document.getElementById('chat-history');
+                
+                const response = await fetch('/api/stream_chat', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -248,28 +238,86 @@
                     body: JSON.stringify({ message: message }),
                 });
                 
-                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error('HTTP error! status: ' + response.status);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let assistantMessage = '';
                 
-                // Add tool calls and responses to chat if they exist
-                if (data.tool_calls && data.tool_calls.length > 0) {
-                    data.tool_calls.forEach(toolCall => {
-                        addToolCallToChat(toolCall);
-                        addToolResponseToChat(toolCall);
-                    });
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value, { stream: true });
+                    
+                    const lines = chunk.split('\n');
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const jsonStr = line.slice(6);
+                            if (jsonStr.trim() === '[DONE]') {
+                                break;
+                            }
+                            
+                            try {
+                                const event = JSON.parse(jsonStr);
+                                
+                                switch (event.type) {
+                                    case 'tool_call':
+                                        addToolCallToChat(event.data);
+                                        break;
+                                        
+                                    case 'tool_response':
+                                        addToolResponseToChat(event.data);
+                                        break;
+                                        
+                                    case 'suggested_agents':
+                                        addSuggestedAgentsToChat(event.data);
+                                        break;
+                                        
+                                    case 'assistant_response':
+                                        assistantMessage += event.content;
+                                        // Create or update the assistant response div after tool-related messages
+                                        let responseDiv = document.querySelector('.temp-assistant-response');
+                                        if (!responseDiv) {
+                                            responseDiv = document.createElement('div');
+                                            responseDiv.className = 'message assistant-message temp-assistant-response';
+                                            chatHistory.appendChild(responseDiv);
+                                        }
+                                        responseDiv.innerHTML = marked.parse(assistantMessage);
+                                        chatHistory.scrollTop = chatHistory.scrollHeight;
+                                        break;
+                                        
+                                    case 'final_response':
+                                        // Update conversation history from final response
+                                        conversationHistory = event.data.conversation_history;
+                                        // Remove the temporary class and finalize the assistant message
+                                        const finalResponseDiv = document.querySelector('.temp-assistant-response');
+                                        if (finalResponseDiv) {
+                                            finalResponseDiv.classList.remove('temp-assistant-response');
+                                        }
+                                        break;
+                                }
+                            } catch (e) {
+                                console.error('Error parsing SSE event:', e);
+                            }
+                        }
+                    }
                 }
                 
-                // Add suggested agents to chat if they exist
-                if (data.suggested_agents && data.suggested_agents.length > 0) {
-                    addSuggestedAgentsToChat(data.suggested_agents);
+                // Ensure the final response is completely displayed
+                if (assistantMessage) {
+                    const finalResponseDiv = document.querySelector('.assistant-message:not(.temp-assistant-response), .temp-assistant-response');
+                    if (finalResponseDiv) {
+                        finalResponseDiv.innerHTML = marked.parse(assistantMessage);
+                        chatHistory.scrollTop = chatHistory.scrollHeight;
+                    }
+                } else {
+                    // If no assistant message was streamed, add a final message
+                    addMessageToChat('assistant', 'Processing complete.');
                 }
                 
-                // Add assistant response to chat
-                addMessageToChat('assistant', data.response);
-                
-                // Update conversation history
-                conversationHistory = data.conversation_history;
-                
-                // Refresh system status
                 await fetchSystemStatus();
             } catch (error) {
                 console.error('Error sending message:', error);
@@ -277,41 +325,25 @@
             }
         }
         
-        // Function to add a message to the chat history
         function addMessageToChat(role, content) {
             const chatHistory = document.getElementById('chat-history');
             const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${role}-message`;
+            messageDiv.className = 'message ' + role + '-message';
             
-            // Check if content is a JSON string that might contain markdown
-            let displayContent = content;
-            try {
-                // Try to parse as JSON to see if it's a structured response
-                const parsed = JSON.parse(content);
-                // If it's an object with a response property, use that
-                if (parsed && typeof parsed === 'object' && parsed.response) {
-                    displayContent = parsed.response;
-                }
-            } catch (e) {
-                // Not JSON, use content as is
-            }
-            
-            // Render markdown content
-            messageDiv.innerHTML = marked.parse(displayContent);
+            messageDiv.innerHTML = marked.parse(content);
             chatHistory.appendChild(messageDiv);
             chatHistory.scrollTop = chatHistory.scrollHeight;
         }
         
-        // Function to add a tool call to the chat history
         function addToolCallToChat(toolCall) {
             const chatHistory = document.getElementById('chat-history');
             const toolCallDiv = document.createElement('div');
             toolCallDiv.classList.add('message', 'tool-call-message');
             
-            let toolCallContent = `<div class="tool-call-header">🔧 Tool Call: ${toolCall.agent_name}.${toolCall.method_name}</div>`;
+            let toolCallContent = '<div class=\"tool-call-header\">🔧 Tool Call: ' + toolCall.agent_name + '.' + toolCall.method_name + '</div>';
             
             if (toolCall.parameters && Object.keys(toolCall.parameters).length > 0) {
-                toolCallContent += `<div class="tool-call-parameters"><strong>Parameters:</strong> ${JSON.stringify(toolCall.parameters)}</div>`;
+                toolCallContent += '<div class=\"tool-call-parameters\"><strong>Parameters:</strong> ' + JSON.stringify(toolCall.parameters) + '</div>';
             }
             
             toolCallDiv.innerHTML = toolCallContent;
@@ -319,19 +351,18 @@
             chatHistory.scrollTop = chatHistory.scrollHeight;
         }
         
-        // Function to add a tool response to the chat history
         function addToolResponseToChat(toolCall) {
             const chatHistory = document.getElementById('chat-history');
             const toolResponseDiv = document.createElement('div');
             toolResponseDiv.classList.add('message', 'tool-response-message');
             
-            let toolResponseContent = `<div class="tool-response-header">✅ Tool Response: ${toolCall.agent_name}.${toolCall.method_name}</div>`;
+            let toolResponseContent = '<div class=\"tool-response-header\">✅ Tool Response: ' + toolCall.agent_name + '.' + toolCall.method_name + '</div>';
             
             if (toolCall.result) {
                 if (toolCall.result.error) {
-                    toolResponseContent += `<div class="tool-response-error"><strong>Error:</strong> ${toolCall.result.error}</div>`;
+                    toolResponseContent += '<div class=\"tool-response-error\"><strong>Error:</strong> ' + toolCall.result.error + '</div>';
                 } else {
-                    toolResponseContent += `<div class="tool-response-result"><strong>Result:</strong> ${JSON.stringify(toolCall.result)}</div>`;
+                    toolResponseContent += '<div class=\"tool-response-result\"><strong>Result:</strong> ' + JSON.stringify(toolCall.result) + '</div>';
                 }
             }
             
@@ -340,22 +371,21 @@
             chatHistory.scrollTop = chatHistory.scrollHeight;
         }
         
-        // Function to add suggested agents to the chat history
         function addSuggestedAgentsToChat(suggestedAgents) {
             const chatHistory = document.getElementById('chat-history');
             const suggestedAgentsDiv = document.createElement('div');
             suggestedAgentsDiv.classList.add('message', 'suggested-agents-message');
             
-            let suggestedAgentsContent = `<div class="suggested-agents-header">💡 Suggested Agents:</div>`;
+            let suggestedAgentsContent = '<div class=\"suggested-agents-header\">💡 Suggested Agents:</div>';
             
             suggestedAgents.forEach(agent => {
-                suggestedAgentsContent += `<div class="suggested-agent">`;
-                suggestedAgentsContent += `<div class="suggested-agent-name"><strong>${agent.name}</strong></div>`;
-                suggestedAgentsContent += `<div class="suggested-agent-description">${agent.description}</div>`;
+                suggestedAgentsContent += '<div class=\"suggested-agent\">';
+                suggestedAgentsContent += '<div class=\"suggested-agent-name\"><strong>' + agent.name + '</strong></div>';
+                suggestedAgentsContent += '<div class=\"suggested-agent-description\">' + agent.description + '</div>';
                 if (agent.capabilities && agent.capabilities.length > 0) {
-                    suggestedAgentsContent += `<div class="suggested-agent-capabilities"><strong>Capabilities:</strong> ${agent.capabilities.join(', ')}</div>`;
+                    suggestedAgentsContent += '<div class=\"suggested-agent-capabilities\"><strong>Capabilities:</strong> ' + agent.capabilities.join(', ') + '</div>';
                 }
-                suggestedAgentsContent += `</div>`;
+                suggestedAgentsContent += '</div>';
             });
             
             suggestedAgentsDiv.innerHTML = suggestedAgentsContent;
@@ -363,22 +393,17 @@
             chatHistory.scrollTop = chatHistory.scrollHeight;
         }
         
-        // Function to handle Enter key press
         function handleKeyPress(event) {
             if (event.key === 'Enter') {
                 sendMessage();
             }
         }
         
-        // Initialize the application
         document.addEventListener('DOMContentLoaded', function() {
-            // Set up event listeners
             document.getElementById('user-input').addEventListener('keypress', handleKeyPress);
             
-            // Fetch initial system status
             fetchSystemStatus();
             
-            // Add welcome message
             addMessageToChat('assistant', 'Welcome to the LLM Orchestration System! How can I help you today?');
         });
     </script>

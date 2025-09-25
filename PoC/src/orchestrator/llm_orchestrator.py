@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import Dict, Any, List
+from typing import AsyncGenerator, Callable, Dict, Any, List
 from src.services.llm_service import LLMService
 from src.services.contextual_llm_service import ContextualLLMService
 from src.ucs_runtime import UCSRuntime
@@ -81,6 +81,327 @@ class LLMOrchestrator:
         except Exception as e:
             logger.error(f"Error evaluating agent output: {e}")
             return {"decision": "failure", "reasoning": f"Error in evaluation: {str(e)}"}
+
+    async def process_user_request_streaming(self, user_input: str, conversation_history: List[Dict[str, str]], 
+                                           send_stream_event: Callable[[str, str, Dict[str, Any]], Any]) -> AsyncGenerator[Dict[str, Any], None]:
+        """Process user request using LLM to determine appropriate agents with streaming support.
+        
+        Args:
+            user_input (str): The user's input message.
+            conversation_history (List[Dict[str, str]]): The conversation history.
+            send_stream_event (Callable): Function to send streaming events
+            
+        Yields:
+            dict: Streaming events containing response parts, tool calls, etc.
+        """
+        # Initialize tool call tracking
+        tool_calls = []
+        total_token_counts = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0
+        }
+        
+        # Check if we should compress based on context window size
+        context_size = self._calculate_context_size(conversation_history)
+        max_context_size = getattr(self, 'max_context_size', settings.max_context_size)
+        
+        if context_size > max_context_size:
+            # Compress the conversation history
+            conversation_history = await self._compress_conversation_history(conversation_history)
+        
+        # Construct prompt for LLM with agent information
+        # The agent information is now automatically included by the ContextualLLMService
+        # These prompts are more prescriptive because I'm using an 8B model.  The model is
+        # too small to show emergent properties like automatically testing for DNS entries
+        # when the initial URL check fails.
+        # TODO: Need to test with bigger models to see where emergence happens reliably.
+        prompt = f"User request: {user_input}\n"
+        prompt += "\nINSTRUCTIONS:\n"
+        prompt += "1. First, determine if any tools need to be called to fulfill the user's request.\n"
+        prompt += "2. You may make up to TWO tool calls to investigate an issue thoroughly.\n"
+        prompt += "3. After investigating, provide a clear explanation to the user about what you found and what it means.\n"
+        prompt += "4. Do NOT make endless recursive calls - limit yourself to the tools needed to answer the user's question.\n"
+        prompt += "\nTo make a tool call, respond with a JSON object in the following EXACT format:\n"
+        prompt += "{\n"
+        prompt += '  "tool_call": {\n'
+        prompt += '    "agent_name": "SampleAgentB",\n'
+        prompt += '    "method_name": "perform_website_check",\n'
+        prompt += '    "parameters": {"url": "https://example.com"}\n'
+        prompt += "  }\n"
+        prompt += "}\n"
+        prompt += "IMPORTANT: Use EXACTLY 'agent_name', 'method_name', and 'parameters' as the keys.\n"
+        prompt += "IMPORTANT: Respond ONLY with the JSON object if requesting agent execution. "
+        prompt += "Do not include any other text, markdown, or formatting.\n"
+        prompt += "If responding directly to the user, provide a helpful response in plain text.\n"
+        prompt += "Only use the agent names and method names that are available.\n"
+        prompt += "Special Instructions:\n"
+        prompt += "- Use the ConfigManager agent for requests related to listing configurations, loading configurations, or listing loaded agents\n"
+        
+        # Add domain-specific context if available
+        additional_info = getattr(self.ucs_runtime, 'additional_prompt_info', {})
+        if additional_info:
+            domain_context = additional_info.get("domain_context", "")
+            if domain_context:
+                prompt = f"[DOMAIN CONTEXT: {domain_context}]\n\n{prompt}"
+        
+        try:
+            # Track tool calls to prevent infinite loops
+            tool_calls_made = []
+            max_tool_calls = 2  # Limit to two tool calls for focused investigation
+            
+            while len(tool_calls_made) < max_tool_calls:
+                # Get LLM response using contextual service (agent registry is now embedded)
+                llm_response_result = await self.llm_service.generate_response(prompt, return_token_counts=True)
+                
+                # Handle the response based on whether token counts were returned
+                if isinstance(llm_response_result, dict) and "token_counts" in llm_response_result:
+                    llm_response = llm_response_result["response"]
+                    # Add token counts to the total
+                    token_counts = llm_response_result["token_counts"]
+                    total_token_counts["input_tokens"] += token_counts["input_tokens"]
+                    total_token_counts["output_tokens"] += token_counts["output_tokens"]
+                    total_token_counts["total_tokens"] += token_counts["total_tokens"]
+                else:
+                    llm_response = llm_response_result
+
+                # Try to parse as JSON for tool call
+                try:
+                    response_json = self._parse_llm_json_response(llm_response)
+                    # Handle case where _parse_llm_json_response returns an error object
+                    if "error" in response_json:
+                        # Send the response as a direct response to user
+                        await send_stream_event("assistant_response", llm_response, None)
+                        return {
+                            "response": llm_response,
+                            "tool_calls": tool_calls,
+                            "token_counts": total_token_counts
+                        }
+                        
+                    if "tool_call" in response_json:
+                        # Check if this is a duplicate tool call
+                        tool_call = response_json["tool_call"]
+                        tool_call_key = (tool_call["agent_name"], tool_call["method_name"], 
+                                       tuple(sorted(tool_call.get("parameters", {}).items())))
+                        
+                        if tool_call_key in tool_calls_made:
+                            # Prevent infinite loops by breaking if we've made this exact call before
+                            break
+                            
+                        tool_calls_made.append(tool_call_key)
+                        
+                        # Execute the requested agent method
+                        agent_name = tool_call["agent_name"]
+                        method_name = tool_call["method_name"]
+                        parameters = tool_call.get("parameters", {})
+                        
+                        # Record the tool call and send it to the frontend
+                        tool_call_info = {
+                            "agent_name": agent_name,
+                            "method_name": method_name,
+                            "parameters": parameters
+                        }
+                        
+                        # Send tool call event to frontend
+                        await send_stream_event("tool_call", None, tool_call_info)
+                        
+                        # Execute agent method
+                        try:
+                            result = self.ucs_runtime.run_agent(agent_name, method_name, **parameters)
+                            
+                            # Record the tool response
+                            tool_call_info["result"] = result
+                            tool_call_info["success"] = True
+                            tool_calls.append(tool_call_info)
+                            
+                            # Send tool response event to frontend
+                            await send_stream_event("tool_response", None, tool_call_info)
+                            
+                            # Generate follow-up prompt with the result
+                            prompt = f"Previous tool call result:\n"
+                            prompt += f"Agent: {agent_name}\n"
+                            prompt += f"Method: {method_name}\n"
+                            prompt += f"Parameters: {parameters}\n"
+                            prompt += f"Result: {json.dumps(result)}\n\n"
+                            prompt += "INSTRUCTIONS:\n"
+                            prompt += "1. Analyze the result above.\n"
+                            prompt += "2. You may make ONE more tool call if needed to complete your investigation.\n"
+                            prompt += "3. For website errors, perform a DNS lookup using SampleAgentA to determine if the domain exists.\n"
+                            prompt += "4. After investigating, provide a clear explanation to the user about what you found and what it means.\n"
+                            prompt += "5. Do NOT make endless recursive calls - limit yourself to the tools needed to answer the user's question.\n"
+                            prompt += "To make a tool call, use the EXACT same JSON format as before:\n"
+                            prompt += "{\n"
+                            prompt += '  "tool_call": {\n'
+                            prompt += '    "agent_name": "SampleAgentA",\n'
+                            prompt += '    "method_name": "perform_dns_lookup",\n'
+                            prompt += '    "parameters": {"domain": "example.com"}\n'
+                            prompt += "  }\n"
+                            prompt += "}\n"
+                            prompt += "IMPORTANT: Use EXACTLY 'agent_name', 'method_name', and 'parameters' as the keys.\n"
+                            prompt += "Only use the agent names and method names that are available.\n"
+                            
+                            # If this was an error result, encourage follow-up investigation
+                            if isinstance(result, dict) and result.get("status") == "error":
+                                prompt += "IMPORTANT: The previous tool call resulted in an error. "
+                                prompt += "Perform one more investigation tool call if it would help clarify the issue.\n"
+                                prompt += "For website errors, a DNS lookup using SampleAgentA can determine if the domain exists.\n"
+                                prompt += "When analyzing the results, remember that errors indicate the website or domain is NOT accessible.\n"
+                                
+                        except Exception as e:
+                            # Handle agent execution errors
+                            tool_call_info["result"] = {"error": str(e)}
+                            tool_call_info["success"] = False
+                            tool_calls.append(tool_call_info)
+                            
+                            # Send tool response event to frontend
+                            await send_stream_event("tool_response", None, tool_call_info)
+                            
+                            prompt = f"Error executing tool call:\n"
+                            prompt += f"Agent: {agent_name}\n"
+                            prompt += f"Method: {method_name}\n"
+                            prompt += f"Parameters: {parameters}\n"
+                            prompt += f"Error: {str(e)}\n\n"
+                            prompt += "INSTRUCTIONS:\n"
+                            prompt += "1. Analyze the error above.\n"
+                            prompt += "2. You may make ONE more tool call if needed to complete your investigation.\n"
+                            prompt += "3. For website errors, perform a DNS lookup using SampleAgentA to determine if the domain exists.\n"
+                            prompt += "4. After investigating, provide a clear explanation to the user about what you found and what it means.\n"
+                            prompt += "5. Do NOT make endless recursive calls - limit yourself to the tools needed to answer the user's question.\n"
+                            prompt += "IMPORTANT: Errors indicate that the website or domain is NOT accessible. Make sure to communicate this clearly to the user.\n"
+                            prompt += "To make a tool call, use the EXACT same JSON format as before:\n"
+                            prompt += "{\n"
+                            prompt += '  "tool_call": {\n'
+                            prompt += '    "agent_name": "SampleAgentA",\n'
+                            prompt += '    "method_name": "perform_dns_lookup",\n'
+                            prompt += '    "parameters": {"domain": "example.com"}\n'
+                            prompt += "  }\n"
+                            prompt += "}\n"
+                            prompt += "IMPORTANT: Use EXACTLY 'agent_name', 'method_name', and 'parameters' as the keys.\n"
+                            prompt += "Only use the agent names and method names that are available.\n"
+                            
+                        # Continue the loop to get the next LLM response
+                        continue
+                        
+                except (json.JSONDecodeError, Exception):
+                    # Not a JSON response or parsing error, try to parse with our helper
+                    response_json = self._parse_llm_json_response(llm_response)
+                    # If parsing failed, return as direct response to user
+                    if "error" in response_json:
+                        await send_stream_event("assistant_response", llm_response, None)
+                        return {
+                            "response": llm_response,
+                            "tool_calls": tool_calls,
+                            "token_counts": total_token_counts
+                        }
+            
+            # If we've reached the maximum number of tool calls, we need to generate a final response
+            # Check if we have any errors that we can directly interpret
+            error_response = self._generate_error_response(tool_calls, user_input)
+            if not error_response.startswith("I encountered an error while checking the website"):
+                # We have a specific error response, use it
+                await send_stream_event("assistant_response", error_response, None)
+                return {
+                    "response": error_response,
+                    "tool_calls": tool_calls,
+                    "token_counts": total_token_counts
+                }
+            
+            # Generate a final prompt to get a user-friendly response
+            final_prompt = f"User request: {user_input}\n"
+            final_prompt += "INSTRUCTIONS:\n"
+            final_prompt += "Provide a clear, user-friendly response to the original user request based on all the tool call results above.\n"
+            final_prompt += "Explain what was found and what it means in plain language.\n"
+            
+            # Add domain-specific instructions if available
+            additional_info = getattr(self.ucs_runtime, 'additional_prompt_info', {})
+            if additional_info:
+                domain_context = additional_info.get("domain_context", "")
+                if domain_context:
+                    final_prompt += f"DOMAIN CONTEXT: {domain_context}\n"
+                
+                instructions = additional_info.get("instructions", [])
+                if instructions:
+                    final_prompt += "DOMAIN-SPECIFIC INSTRUCTIONS:\n"
+                    for i, instruction in enumerate(instructions, 1):
+                        final_prompt += f"{i}. {instruction}\n"
+                
+                error_handling = additional_info.get("error_handling", "")
+                if error_handling:
+                    final_prompt += f"ERROR HANDLING GUIDANCE: {error_handling}\n"
+            
+            final_prompt += "ADDITIONAL INSTRUCTIONS:\n"
+            final_prompt += "After providing your response, please suggest any additional agents that would be helpful to better troubleshoot or investigate this issue.\n"
+            final_prompt += "Format your response like this:\n"
+            final_prompt += "Your response here.\n\n"
+            final_prompt += "Suggested Agents:\n"
+            final_prompt += "- Agent Name: Description of what this agent would do\n"
+            final_prompt += "- Another Agent Name: Description of what this agent would do\n"
+            final_prompt += "If you don't have any suggestions for additional agents, just provide your response without the 'Suggested Agents' section.\n"
+            final_prompt += "Do NOT make any more tool calls.\n"
+            final_prompt += "Do NOT include JSON or technical formatting.\n"
+            final_prompt += "Just provide a helpful response to the user.\n"
+            
+            final_response_result = await self.llm_service.generate_response(final_prompt, return_token_counts=True)
+            
+            # Handle the response based on whether token counts were returned
+            if isinstance(final_response_result, dict) and "token_counts" in final_response_result:
+                final_response = final_response_result["response"]
+                # Add token counts to the total
+                token_counts = final_response_result["token_counts"]
+                total_token_counts["input_tokens"] += token_counts["input_tokens"]
+                total_token_counts["output_tokens"] += token_counts["output_tokens"]
+                total_token_counts["total_tokens"] += token_counts["total_tokens"]
+            else:
+                final_response = final_response_result
+            
+            # Extract suggested agents from the response
+            suggested_agents = self._extract_suggested_agents(final_response)
+            
+            # Try to parse the response as JSON to see if it contains suggested agents
+            try:
+                response_json = self._parse_llm_json_response(final_response)
+                if isinstance(response_json, dict) and "response" in response_json:
+                    # The LLM provided a structured response with suggested agents
+                    # Send suggested agents event
+                    if suggested_agents:
+                        await send_stream_event("suggested_agents", None, suggested_agents)
+                    
+                    # Send the final response
+                    await send_stream_event("assistant_response", response_json["response"], None)
+                    
+                    return {
+                        "response": response_json["response"],
+                        "tool_calls": tool_calls,
+                        "suggested_agents": response_json.get("suggested_agents", suggested_agents),
+                        "token_counts": total_token_counts
+                    }
+            except:
+                # If parsing fails, treat it as a regular response
+                pass
+            
+            # Send suggested agents event if any
+            if suggested_agents:
+                await send_stream_event("suggested_agents", None, suggested_agents)
+            
+            # Send the final response
+            await send_stream_event("assistant_response", final_response, None)
+            
+            # Return the response with any extracted suggested agents
+            return {
+                "response": final_response,
+                "tool_calls": tool_calls,
+                "suggested_agents": suggested_agents,
+                "token_counts": total_token_counts
+            }
+            
+        except Exception as e:
+            logger.error(f"Error processing user request: {e}")
+            await send_stream_event("assistant_response", "I encountered an error while processing your request. Please try again later.", None)
+            return {
+                "response": "I encountered an error while processing your request. Please try again later.",
+                "tool_calls": tool_calls,
+                "token_counts": total_token_counts
+            }
 
     def is_within_range(self, agent_name: str, param: str, value: Any) -> bool:
         """Check if a parameter value is within the acceptable range.
@@ -402,7 +723,7 @@ class LLMOrchestrator:
                             "tool_calls": tool_calls,
                             "token_counts": total_token_counts
                         }
-                        
+            
             # If we've reached the maximum number of tool calls, we need to generate a final response
             # Check if we have any errors that we can directly interpret
             error_response = self._generate_error_response(tool_calls, user_input)
@@ -451,10 +772,10 @@ class LLMOrchestrator:
             
             final_response_result = await self.llm_service.generate_response(final_prompt, return_token_counts=True)
             
-            # Handle the response based on whether token counts were returned
+            # Handle the response based on whether token_counts were returned
             if isinstance(final_response_result, dict) and "token_counts" in final_response_result:
                 final_response = final_response_result["response"]
-                # Add token counts to the total
+                # Add token_counts to the total
                 token_counts = final_response_result["token_counts"]
                 total_token_counts["input_tokens"] += token_counts["input_tokens"]
                 total_token_counts["output_tokens"] += token_counts["output_tokens"]
@@ -571,6 +892,7 @@ class LLMOrchestrator:
                     return "The domain does not exist. The website you're trying to check is not accessible because the domain name cannot be found."
                 elif result.get("error_type") == "DNS_ERROR":
                     return "The website is not accessible. The domain name could not be resolved, which means the website does not exist or is not properly configured."
+       
         
         # If we have both a website check and DNS lookup, and both failed, the website is definitely not accessible
         website_check_failed = False

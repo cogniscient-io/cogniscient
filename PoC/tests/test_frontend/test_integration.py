@@ -31,9 +31,9 @@ def test_frontend_integration():
     status_response = client.get('/api/status')
     assert status_response.status_code == 200
     
-    # Test chat functionality
-    chat_response = client.post('/api/chat',
+    # Test stream chat functionality
+    stream_chat_response = client.post('/api/stream_chat',
                                json={'message': 'What can you tell me about the system?'})
     # Note: This might fail if backend components aren't properly initialized
     # but the endpoint structure should be correct
-    assert chat_response.status_code in [200, 422, 500]
+    assert stream_chat_response.status_code in [200, 422, 500]

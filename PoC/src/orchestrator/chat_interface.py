@@ -35,6 +35,8 @@ class ChatInterface:
         if hasattr(orchestrator, 'ucs_runtime'):
             orchestrator.ucs_runtime.register_chat_interface(self)
 
+    
+
     async def process_user_input(self, user_input: str) -> dict:
         """Process user input and generate response using LLM-driven agent selection.
         
@@ -52,7 +54,7 @@ class ChatInterface:
             await self._compress_conversation_history()
         
         # Generate response using LLM orchestrator which handles agent selection
-        result = await self.orchestrator.process_user_request(user_input, self.conversation_history)
+        result = await self.orchestrator.process_user_input(user_input, self.conversation_history)
         
         # Check if token counts are available in the result
         if isinstance(result, dict) and "token_counts" in result:
@@ -60,7 +62,9 @@ class ChatInterface:
             response = result.get("response", "")
             
             # Format the response to include token counts
-            response_with_tokens = f"{response}\n\n[Token Usage: Input: {token_counts['input_tokens']}, Output: {token_counts['output_tokens']}, Total: {token_counts['total_tokens']}]"
+            response_with_tokens = f"{response}
+
+[Token Usage: Input: {token_counts['input_tokens']}, Output: {token_counts['output_tokens']}, Total: {token_counts['total_tokens']}]"
             
             # Add the response with token counts to conversation history
             self.conversation_history.append({"role": "assistant", "content": response_with_tokens})

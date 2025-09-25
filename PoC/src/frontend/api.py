@@ -222,40 +222,7 @@ async def set_system_parameter(parameter_update: SystemParameterUpdate):
             parameters={}
         )
 
-@app.post("/api/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
-    """Process chat messages."""
-    if chat_interface is None:
-        return ChatResponse(
-            response="System is still initializing. Please try again in a moment.",
-            tool_calls=[],
-            suggested_agents=[],
-            conversation_history=[]
-        )
-    
-    user_message = request.message
-    
-    # Process user input through chat interface
-    result = await chat_interface.process_user_input(user_message)
-    
-    # Handle both old and new response formats
-    if isinstance(result, str):
-        # Old format - just a string response
-        response_text = result
-        tool_calls = []
-        suggested_agents = []
-    else:
-        # New format - dictionary with response and tool calls
-        response_text = result.get("response", "")
-        tool_calls = result.get("tool_calls", [])
-        suggested_agents = result.get("suggested_agents", [])
-    
-    return ChatResponse(
-        response=response_text,
-        tool_calls=tool_calls,
-        suggested_agents=suggested_agents,
-        conversation_history=chat_interface.conversation_history
-    )
+
 
 @app.post("/api/stream_chat")
 async def stream_chat(request: ChatRequest):

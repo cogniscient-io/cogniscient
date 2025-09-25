@@ -21,15 +21,10 @@ def run_frontend():
     from frontend.api import app
     import os
     
-    # Serve static files
+    # Serve static files at /static route to ensure CSS is accessible at /static/css/style.css
     static_dir = os.path.join(os.path.dirname(__file__), "frontend", "static")
     if os.path.exists(static_dir):
-        app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
-    
-    # Add root endpoint to serve index.html
-    @app.get("/")
-    async def read_root():
-        return {"message": "LLM Orchestration Frontend Server"}
+        app.mount("/static", StaticFiles(directory=static_dir), name="static")
     
     # Use host and port from settings
     uvicorn.run("src.frontend.api:app", 

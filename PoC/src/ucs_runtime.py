@@ -8,7 +8,8 @@ from src.services.llm_service import LLMService
 from src.services.contextual_llm_service import ContextualLLMService
 import datetime
 from agent_utils.agent_config_manager import AgentConfigManager
-from agent_utils.agent_loader import AgentLoader
+from agent_utils.local_agent_manager import LocalAgentManager
+from agent_utils.external_agent_manager import ExternalAgentManager
 from agent_utils.agent_coordinator import AgentCoordinator
 from src.services.config_service import ConfigService
 from src.services.system_parameters_service import SystemParametersService
@@ -45,15 +46,16 @@ class UCSRuntime:
         self.system_parameters_service.set_runtime(self)
         
         # Initialize agent management utilities for cleaner separation of concerns
-        self.agent_loader = AgentLoader(config_dir=config_dir, agents_dir=agents_dir)
-        self.agent_coordinator = AgentCoordinator(self.agent_loader)
+        self.local_agent_manager = LocalAgentManager(config_dir=config_dir, agents_dir=agents_dir)
+        self.external_agent_manager = ExternalAgentManager()
+        self.agent_coordinator = AgentCoordinator(self.local_agent_manager, self.external_agent_manager)
         
-        # Store references for backward compatibility but delegate functionality to agent_loader
-        self.agents = self.agent_loader.agents
-        self.agent_configs = self.agent_loader.agent_configs
+        # Store references for backward compatibility but delegate functionality to local_agent_manager
+        self.agents = self.local_agent_manager.agents
+        self.agent_configs = self.local_agent_manager.agent_configs
         
         # Set the runtime reference for agents that need access to runtime functionality
-        self.agent_loader.set_runtime_ref(self)
+        self.local_agent_manager.set_runtime_ref(self)
 
     def load_agent_config(self, config_file: str) -> Dict[str, Any]:
         """Load an agent configuration from a JSON file.
@@ -91,10 +93,8 @@ class UCSRuntime:
                 module_path = os.path.join(self.agents_dir, "sample_agent_a.py")
             elif name == "SampleAgentB":
                 module_path = os.path.join(self.agents_dir, "sample_agent_b.py")
-            elif name == "ConfigManager":
-                module_path = os.path.join(self.agents_dir, "config_manager.py")
-            elif name == "SystemParametersManager":
-                module_path = os.path.join(self.agents_dir, "system_parameters_manager.py")
+            # ConfigManager and SystemParametersManager are now services, not loaded as agents
+            # These are handled via service calls in run_agent method
             else:
                 # Default path for other agents
                 module_path = os.path.join(self.agents_dir, f"{name.lower()}.py")
@@ -142,14 +142,14 @@ class UCSRuntime:
     def load_all_agents(self) -> None:
         """Load all agents based on configuration files."""
         # Use the configuration manager to load all agent configs and load them
-        agent_configs = self.agent_loader.config_manager.load_all_agent_configs()
+        agent_configs = self.local_agent_manager.config_manager.load_all_agent_configs()
         # Exclude the ConfigManager and SystemParametersManager since they're now services
         agent_names = [name for name in agent_configs.keys() 
                       if name not in ["ConfigManager", "SystemParametersManager"]]
-        self.agent_loader.load_specific_agents_by_name(agent_names)
+        self.local_agent_manager.load_specific_agents_by_name(agent_names)
         
         # Ensure agents have access to the runtime reference
-        self.agent_loader.set_runtime_ref(self)
+        self.local_agent_manager.set_runtime_ref(self)
         
         # Set the agent registry in the LLM service
         self.llm_service.set_agent_registry(self.agents)
@@ -180,10 +180,10 @@ class UCSRuntime:
         # Load agents specified in the configuration, excluding system services
         agent_specs = [agent_spec for agent_spec in config.get("agents", []) 
                       if agent_spec["name"] not in ["ConfigManager", "SystemParametersManager"]]
-        self.agent_loader.load_specific_agents(agent_specs)
+        self.local_agent_manager.load_specific_agents(agent_specs)
         
         # Ensure agents have access to the runtime reference
-        self.agent_loader.set_runtime_ref(self)
+        self.local_agent_manager.set_runtime_ref(self)
         
         # Set the agent registry in the LLM service
         self.llm_service.set_agent_registry(self.agents)
@@ -218,8 +218,8 @@ class UCSRuntime:
 
     def unload_all_agents(self) -> None:
         """Unload all currently loaded agents."""
-        # Delegate to the agent loader
-        self.agent_loader.unload_all_agents()
+        # Delegate to the local agent manager
+        self.local_agent_manager.unload_all_agents()
         
         # Clear additional tracking
         self.agent_last_call.clear()
@@ -271,8 +271,16 @@ class UCSRuntime:
         }
         
         try:
-            # Use the agent loader to run the agent method
-            result = self.agent_loader.run_agent(agent_name, method_name, *args, **kwargs)
+            # Use the appropriate agent manager to run the agent method
+            # First try the local agent manager
+            if agent_name in self.local_agent_manager.get_all_agents():
+                result = self.local_agent_manager.run_agent(agent_name, method_name, *args, **kwargs)
+            # Then try the external agent manager if available and the agent is not found locally
+            elif (self.external_agent_manager and 
+                  agent_name in self.external_agent_manager.get_all_agents()):
+                result = self.external_agent_manager.run_agent(agent_name, method_name, *args, **kwargs)
+            else:
+                raise ValueError(f"Agent {agent_name} not found in local or external managers")
             call_info["result"] = result
         except ValueError as e:
             # Record the error and re-raise
@@ -317,8 +325,8 @@ class UCSRuntime:
 
     def shutdown(self) -> None:
         """Shutdown all agents."""
-        # Delegate to the agent loader's unload functionality which handles shutdown
-        self.agent_loader.unload_all_agents()
+        # Delegate to the local agent manager's unload functionality which handles shutdown
+        self.local_agent_manager.unload_all_agents()
 
 
 async def main():

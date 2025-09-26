@@ -1,5 +1,5 @@
 """
-Agent Loader - Handles the loading and initialization of agents from configuration files.
+Local Agent Manager - Handles loading and management of agents from local files.
 """
 
 import asyncio
@@ -8,16 +8,16 @@ import json
 import os
 import re
 from typing import Any, Dict, List
+from .base_agent_manager import BaseLocalAgentManager
 from .loader import load_agent_module
 from src.agent_utils.agent_config_manager import AgentConfigManager
-from src.agent_utils.external_agent_registry import ExternalAgentRegistry
 
 
-class AgentLoader:
-    """Handles loading and managing agent instances based on configuration files."""
+class LocalAgentManager(BaseLocalAgentManager):
+    """Handles loading and managing agent instances from local files based on configuration files."""
     
     def __init__(self, config_dir: str = ".", agents_dir: str = "src/agents"):
-        """Initialize the agent loader.
+        """Initialize the local agent manager.
         
         Args:
             config_dir: Directory containing agent configuration files
@@ -26,7 +26,6 @@ class AgentLoader:
         self.config_dir = config_dir
         self.agents_dir = agents_dir
         self.config_manager = AgentConfigManager(config_dir=config_dir, agents_dir=agents_dir)
-        self.external_agent_registry = ExternalAgentRegistry()
         self.agents: Dict[str, Any] = {}
         self.agent_configs: Dict[str, Dict[str, Any]] = {}
     
@@ -55,14 +54,8 @@ class AgentLoader:
         if not os.path.exists(module_path):
             raise FileNotFoundError(f"Agent module not found at {module_path}")
         
-        spec = importlib.util.spec_from_file_location(name, module_path)
-        if spec is None:
-            raise ImportError(f"Could not load spec for {name}")
-        
-        module = importlib.util.module_from_spec(spec)
-        if spec.loader is not None:
-            spec.loader.exec_module(module)
-        return module
+        # Use the utility function from loader.py
+        return load_agent_module(name, module_path)
     
     def initialize_agent(self, config: Dict[str, Any], runtime_ref=None) -> Any:
         """Initialize an agent instance from its loaded module.
@@ -215,59 +208,6 @@ class AgentLoader:
         """
         return self.agents.copy()
     
-    def register_external_agent(self, agent_config: Dict[str, Any]) -> bool:
-        """Register an external agent.
-        
-        Args:
-            agent_config: Configuration for the external agent
-            
-        Returns:
-            bool: True if registration was successful, False otherwise
-        """
-        # Register with the external agent registry
-        registration_success = self.external_agent_registry.register_agent(agent_config)
-        
-        if registration_success:
-            # Add to our local agents dict as well to maintain a unified interface
-            agent_name = agent_config["name"]
-            external_agent = self.external_agent_registry.get_agent(agent_name)
-            self.agents[agent_name] = external_agent
-            self.agent_configs[agent_name] = agent_config
-            
-        return registration_success
-    
-    def deregister_external_agent(self, agent_name: str) -> bool:
-        """Deregister an external agent.
-        
-        Args:
-            agent_name: Name of the external agent to deregister
-            
-        Returns:
-            bool: True if deregistration was successful, False otherwise
-        """
-        # Remove from the external agent registry
-        deregistration_success = self.external_agent_registry.deregister_agent(agent_name)
-        
-        if deregistration_success:
-            # Remove from our local agents dict as well
-            if agent_name in self.agents:
-                del self.agents[agent_name]
-            if agent_name in self.agent_configs:
-                del self.agent_configs[agent_name]
-        
-        return deregistration_success
-    
-    def get_external_agent(self, agent_name: str):
-        """Get an external agent by name.
-        
-        Args:
-            agent_name: Name of the external agent to retrieve
-            
-        Returns:
-            The external agent or None if not found
-        """
-        return self.external_agent_registry.get_agent(agent_name)
-    
     def run_agent(self, agent_name: str, method_name: str, *args, **kwargs) -> Any:
         """Run a specific method on an agent.
         
@@ -281,12 +221,7 @@ class AgentLoader:
             The result of the method execution.
         """
         if agent_name not in self.agents:
-            # Check if it's an external agent that might have been registered
-            external_agent = self.external_agent_registry.get_agent(agent_name)
-            if external_agent:
-                self.agents[agent_name] = external_agent
-            else:
-                raise ValueError(f"Agent {agent_name} not loaded")
+            raise ValueError(f"Agent {agent_name} not loaded")
             
         agent = self.agents[agent_name]
         if not hasattr(agent, method_name):

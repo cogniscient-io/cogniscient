@@ -1,14 +1,15 @@
-"""Test suite for external agent registration functionality."""
+"""Unit tests for external agent registration functionality."""
 
-import asyncio
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 import json
-
-from src.agents.external_agent_adapter import ExternalAgentAdapter
-from src.agent_utils.external_agent_registry import ExternalAgentRegistry
-from src.agent_utils.local_agent_manager import LocalAgentManager
-from src.agent_utils.external_agent_manager import ExternalAgentManager
+import os
+import tempfile
+import pytest
+from unittest.mock import AsyncMock, patch
+from cogniscient.engine.agent_utils.external_agent_registry import ExternalAgentRegistry
+from cogniscient.engine.agent_utils.external_agent_adapter import ExternalAgentAdapter
+from cogniscient.engine.agent_utils.external_agent_manager import ExternalAgentManager
+from cogniscient.engine.services.system_parameters_service import SystemParametersService
+from cogniscient.engine.config.settings import settings
 
 
 @pytest.fixture
@@ -31,6 +32,54 @@ def sample_agent_config():
     }
 
 
+@pytest.fixture
+def runtime_data_dir_fixture():
+    """Fixture to temporarily change runtime_data_dir to a unique test directory for the test duration."""
+    # Save the original value
+    original_runtime_data_dir = settings.runtime_data_dir
+    
+    # Create a unique temporary directory for this test
+    import tempfile
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Change the runtime_data_dir to use the temporary directory
+        param_service = SystemParametersService()
+        param_service.set_system_parameter("runtime_data_dir", temp_dir)
+        
+        # Yield control to the test
+        yield temp_dir
+        
+        # Restore the original value after the test
+        param_service.set_system_parameter("runtime_data_dir", original_runtime_data_dir)
+
+
+@pytest.fixture
+def clean_test_runtime_data():
+    """Fixture to ensure the test runtime_data directory starts with a clean registry file."""
+    import json
+    registry_file = os.path.join("tests", "runtime_data", "external_agents_registry.json")
+    
+    # Ensure the directory exists
+    os.makedirs("tests/runtime_data", exist_ok=True)
+    
+    # Backup any existing file
+    backup_content = None
+    if os.path.exists(registry_file):
+        with open(registry_file, 'r') as f:
+            backup_content = f.read()
+    
+    # Create a clean registry file
+    with open(registry_file, 'w') as f:
+        json.dump({}, f)
+    
+    yield  # Run the test
+    
+    # Optionally restore from backup after test if needed for other test purposes
+    # For now, we'll just leave it cleaned to ensure isolation
+    if backup_content is not None:
+        with open(registry_file, 'w') as f:
+            f.write(backup_content)
+
+
 @pytest.mark.asyncio
 async def test_external_agent_adapter_initialization(sample_agent_config):
     """Test that ExternalAgentAdapter can be initialized with a valid config."""
@@ -51,23 +100,21 @@ async def test_external_agent_adapter_self_describe(sample_agent_config):
 
 
 @pytest.mark.asyncio
-async def test_external_agent_registry_initialization():
+async def test_external_agent_registry_initialization(clean_test_runtime_data):
     """Test that ExternalAgentRegistry can be initialized."""
-    # Use a temporary registry file for this test to avoid cross-test contamination
-    registry = ExternalAgentRegistry(registry_file="test_external_agents_registry.json")
+    # Use a test-specific runtime data directory for this test
+    import os
+    test_runtime_dir = os.path.join("tests", "runtime_data")
+    registry = ExternalAgentRegistry(runtime_data_dir=test_runtime_dir)
     
+    expected_registry_file = os.path.join(test_runtime_dir, "external_agents_registry.json")
     assert registry.agents == {}
     assert registry.agent_configs == {}
-    assert registry.registry_file == "test_external_agents_registry.json"
-
-    # Clean up the temp file after the test
-    import os
-    if os.path.exists("test_external_agents_registry.json"):
-        os.remove("test_external_agents_registry.json")
+    assert registry.registry_file == expected_registry_file
 
 
 @pytest.mark.asyncio
-async def test_external_agent_registry_register_agent(sample_agent_config):
+async def test_external_agent_registry_register_agent(sample_agent_config, runtime_data_dir_fixture):
     """Test registering an external agent."""
     registry = ExternalAgentRegistry()
     
@@ -80,7 +127,7 @@ async def test_external_agent_registry_register_agent(sample_agent_config):
 
 
 @pytest.mark.asyncio
-async def test_external_agent_registry_deregister_agent(sample_agent_config):
+async def test_external_agent_registry_deregister_agent(sample_agent_config, runtime_data_dir_fixture):
     """Test deregistering an external agent."""
     registry = ExternalAgentRegistry()
     
@@ -101,7 +148,7 @@ async def test_external_agent_registry_deregister_agent(sample_agent_config):
 
 
 @pytest.mark.asyncio
-async def test_external_agent_registry_get_agent(sample_agent_config):
+async def test_external_agent_registry_get_agent(sample_agent_config, runtime_data_dir_fixture):
     """Test retrieving an external agent."""
     registry = ExternalAgentRegistry()
     
@@ -117,7 +164,7 @@ async def test_external_agent_registry_get_agent(sample_agent_config):
 
 
 @pytest.mark.asyncio
-async def test_external_agent_registry_list_agents(sample_agent_config):
+async def test_external_agent_registry_list_agents(sample_agent_config, runtime_data_dir_fixture):
     """Test listing registered external agents."""
     registry = ExternalAgentRegistry()
     
@@ -136,7 +183,7 @@ async def test_external_agent_registry_list_agents(sample_agent_config):
 
 
 @pytest.mark.asyncio
-async def test_external_agent_registry_invalid_config():
+async def test_external_agent_registry_invalid_config(runtime_data_dir_fixture):
     """Test that invalid configurations are rejected."""
     registry = ExternalAgentRegistry()
     
@@ -151,9 +198,9 @@ async def test_external_agent_registry_invalid_config():
 
 
 @pytest.mark.asyncio
-async def test_agent_manager_external_agent_integration(sample_agent_config):
+async def test_agent_manager_external_agent_integration(sample_agent_config, clean_test_runtime_data):
     """Test that ExternalAgentManager can register external agents."""
-    external_manager = ExternalAgentManager()
+    external_manager = ExternalAgentManager(runtime_data_dir="tests/runtime_data")
     
     # Mock the validate_agent_endpoint to return success
     with patch.object(external_manager.external_agent_registry, 'validate_agent_endpoint', 
@@ -168,9 +215,9 @@ async def test_agent_manager_external_agent_integration(sample_agent_config):
 
 
 @pytest.mark.asyncio
-async def test_agent_manager_deregister_external_agent(sample_agent_config):
+async def test_agent_manager_deregister_external_agent(sample_agent_config, clean_test_runtime_data):
     """Test that ExternalAgentManager can deregister external agents."""
-    external_manager = ExternalAgentManager()
+    external_manager = ExternalAgentManager(runtime_data_dir="tests/runtime_data")
     
     # Mock the validate_agent_endpoint to return success
     with patch.object(external_manager.external_agent_registry, 'validate_agent_endpoint', 

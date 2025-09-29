@@ -1,21 +1,20 @@
-"""Consolidated tests for configuration management functionality."""
+"""Unit tests for configuration management functionality."""
 
-import asyncio
-import os
-import json
 import pytest
-from unittest.mock import patch, Mock
-from src.ucs_runtime import UCSRuntime
-from src.orchestrator.llm_orchestrator import LLMOrchestrator
-from src.orchestrator.chat_interface import ChatInterface
-from src.config.settings import settings
+from cogniscient.engine.ucs_runtime import UCSRuntime
+from cogniscient.engine.orchestrator.llm_orchestrator import LLMOrchestrator
+from cogniscient.engine.orchestrator.chat_interface import ChatInterface
 
 
 @pytest.mark.asyncio
 async def test_config_loading_functionality():
     """Test loading different configurations."""
-    # Initialize UCS runtime
-    ucs_runtime = UCSRuntime()
+    # Initialize UCS runtime with plugin config and agent directories
+    # NOTE: In production, these paths could be updated via system parameters service
+    import os
+    plugin_configs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "plugins", "sample", "config")
+    plugin_agents_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "plugins", "sample", "agents")
+    ucs_runtime = UCSRuntime(config_dir=plugin_configs_dir, agents_dir=plugin_agents_dir)
     
     # Load agents (initially empty)
     ucs_runtime.load_all_agents()
@@ -58,8 +57,12 @@ async def test_config_loading_functionality():
 @pytest.mark.asyncio
 async def test_config_manager_descriptions():
     """Test that config manager reads descriptions from config files."""
-    # Initialize UCS runtime
-    ucs_runtime = UCSRuntime()
+    # Initialize UCS runtime with plugin config and agent directories
+    # NOTE: In production, these paths could be updated via system parameters service
+    import os
+    plugin_configs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "plugins", "sample", "config")
+    plugin_agents_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "plugins", "sample", "agents")
+    ucs_runtime = UCSRuntime(config_dir=plugin_configs_dir, agents_dir=plugin_agents_dir)
     ucs_runtime.load_configuration("combined")
     
     # Test listing configurations - still accessible through the same interface
@@ -78,13 +81,13 @@ async def test_config_manager_descriptions():
 
 @pytest.mark.asyncio
 async def test_llm_driven_config_management():
-    """Test that LLM can handle configuration management as tool calls."""
-    # Initialize UCS runtime and chat interface
-    ucs_runtime = UCSRuntime()
+    """Test LLM-driven configuration management."""
+    # Initialize system
+    ucs_runtime = UCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
     ucs_runtime.load_configuration("combined")
     
     orchestrator = LLMOrchestrator(ucs_runtime)
-    chat_interface = ChatInterface(orchestrator)
+    chat_interface = ChatInterface(orchestrator, max_history_length=20, compression_threshold=15)
     
     # Test listing configurations (should use ConfigManager agent)
     result = await chat_interface.process_user_input("What configurations are available?")
@@ -102,6 +105,130 @@ async def test_llm_driven_config_management():
     assert "response" in result
 
 
+def test_agents_dir_system_parameter():
+    """Test that agents_dir can be configured via system parameters service."""
+    from cogniscient.engine.services.system_parameters_service import SystemParametersService
+    
+    # Initialize UCS runtime with the original default path
+    ucs_runtime = UCSRuntime(config_dir=".", agents_dir="cogniscient/agentSDK")
+    
+    # Verify initial agents_dir
+    assert ucs_runtime.agents_dir == "cogniscient/agentSDK"
+    assert ucs_runtime.local_agent_manager.agents_dir == "cogniscient/agentSDK"
+    assert ucs_runtime.local_agent_manager.config_manager.agents_dir == "cogniscient/agentSDK"
+    
+    # Check that the agents_dir parameter is available in system parameters
+    params_result = ucs_runtime.system_parameters_service.get_system_parameters()
+    assert params_result["status"] == "success"
+    assert "agents_dir" in params_result["parameters"]
+    assert params_result["parameters"]["agents_dir"] == "cogniscient/agentSDK"
+    
+    # Change agents_dir via system parameters service
+    change_result = ucs_runtime.system_parameters_service.set_system_parameter("agents_dir", "custom/agents/path")
+    assert change_result["status"] == "success"
+    
+    # Verify that the change was applied to the runtime
+    assert ucs_runtime.agents_dir == "custom/agents/path"
+    assert ucs_runtime.local_agent_manager.agents_dir == "custom/agents/path"
+    assert ucs_runtime.local_agent_manager.config_manager.agents_dir == "custom/agents/path"
+    
+    # Get updated system parameters to verify the change
+    updated_params_result = ucs_runtime.system_parameters_service.get_system_parameters()
+    assert updated_params_result["status"] == "success"
+    assert updated_params_result["parameters"]["agents_dir"] == "custom/agents/path"
+    
+    # Test that the get_agents_dir method in AgentConfigManager returns the updated value
+    config_manager_agents_dir = ucs_runtime.local_agent_manager.config_manager.get_agents_dir()
+    assert config_manager_agents_dir == "custom/agents/path"
+    
+    # Test that the LocalAgentManager method also works
+    lam_agents_dir = ucs_runtime.local_agent_manager._get_current_agents_dir()
+    assert lam_agents_dir == "custom/agents/path"
+
+
+def test_config_dir_system_parameter():
+    """Test that config_dir can be configured via system parameters service."""
+    from cogniscient.engine.services.system_parameters_service import SystemParametersService
+    
+    # Initialize UCS runtime with default settings
+    ucs_runtime = UCSRuntime()
+    
+    # Set the agents_dir to tests directory for this specific test 
+    ucs_runtime.system_parameters_service.set_system_parameter('agents_dir', 'tests')
+    
+    # Verify initial config_dir
+    assert ucs_runtime.config_dir == "."
+    assert ucs_runtime.config_service.config_dir == "."
+    
+    # Check that the config_dir parameter is available in system parameters
+    params_result = ucs_runtime.system_parameters_service.get_system_parameters()
+    assert params_result["status"] == "success"
+    assert "config_dir" in params_result["parameters"]
+    assert params_result["parameters"]["config_dir"] == "."
+    
+    # Change config_dir via system parameters service
+    change_result = ucs_runtime.system_parameters_service.set_system_parameter("config_dir", "/tmp/test_config_dir")
+    assert change_result["status"] == "success"
+    
+    # Verify that the change was applied to the runtime
+    assert ucs_runtime.config_dir == "/tmp/test_config_dir"
+    assert ucs_runtime.config_service.config_dir == "/tmp/test_config_dir"
+    
+    # Get updated system parameters to verify the change
+    updated_params_result = ucs_runtime.system_parameters_service.get_system_parameters()
+    assert updated_params_result["status"] == "success"
+    assert updated_params_result["parameters"]["config_dir"] == "/tmp/test_config_dir"
+
+
+def test_llm_config_system_parameter():
+    """Test that LLM configuration parameters can be updated via system parameters service."""
+    from cogniscient.engine.services.system_parameters_service import SystemParametersService
+    from cogniscient.engine.config.settings import settings
+    
+    # Create a copy of the original values to restore later
+    original_llm_model = settings.llm_model
+    original_llm_base_url = settings.llm_base_url
+    
+    try:
+        # Initialize UCS runtime with default settings
+        ucs_runtime = UCSRuntime()
+        
+        # Set the agents_dir to tests directory for this specific test 
+        ucs_runtime.system_parameters_service.set_system_parameter('agents_dir', 'tests')
+        
+        # Check that initial LLM settings are available in system parameters
+        params_result = ucs_runtime.system_parameters_service.get_system_parameters()
+        assert params_result["status"] == "success"
+        assert "llm_model" in params_result["parameters"]
+        assert "llm_base_url" in params_result["parameters"]
+        
+        # Change LLM model via system parameters service
+        model_result = ucs_runtime.system_parameters_service.set_system_parameter(
+            "llm_model", "ollama_chat/llama3:70b"
+        )
+        assert model_result["status"] == "success"
+        
+        # Change LLM base URL via system parameters service
+        url_result = ucs_runtime.system_parameters_service.set_system_parameter(
+            "llm_base_url", "http://newhost:11434"
+        )
+        assert url_result["status"] == "success"
+        
+        # Verify that the settings were updated
+        assert settings.llm_model == "ollama_chat/llama3:70b"
+        assert settings.llm_base_url == "http://newhost:11434"
+        
+        # Get updated system parameters to verify the changes
+        updated_params_result = ucs_runtime.system_parameters_service.get_system_parameters()
+        assert updated_params_result["status"] == "success"
+        assert updated_params_result["parameters"]["llm_model"] == "ollama_chat/llama3:70b"
+        assert updated_params_result["parameters"]["llm_base_url"] == "http://newhost:11434"
+    finally:
+        # Restore original settings
+        settings.llm_model = original_llm_model
+        settings.llm_base_url = original_llm_base_url
+
+
 def test_environment_variable_overrides():
     """Test that environment variables override default settings."""
     import importlib
@@ -109,19 +236,22 @@ def test_environment_variable_overrides():
     import os
     original_context_size = os.environ.get('MAX_CONTEXT_SIZE', None)
     original_history_length = os.environ.get('MAX_HISTORY_LENGTH', None)
+    original_compression_threshold = os.environ.get('COMPRESSION_THRESHOLD', None)
     
     try:
         # Set environment variables
         os.environ['MAX_CONTEXT_SIZE'] = '4000'
-        os.environ['MAX_HISTORY_LENGTH'] = '10'
+        os.environ['MAX_HISTORY_LENGTH'] = '20'  # Use 20 instead of 10 to avoid conflict with default compression_threshold of 15
+        os.environ['COMPRESSION_THRESHOLD'] = '10'  # Set compression threshold to be less than max_history_length
         
         # Reload the settings module to pick up new values
-        importlib.reload(__import__('src.config.settings', fromlist=['settings']))
-        from src.config.settings import settings
+        importlib.reload(__import__('cogniscient.engine.config.settings', fromlist=['settings']))
+        from cogniscient.engine.config.settings import settings
         
         # Verify the new values
         assert settings.max_context_size == 4000
-        assert settings.max_history_length == 10
+        assert settings.max_history_length == 20
+        assert settings.compression_threshold == 10
     finally:
         # Restore original values
         if original_context_size is not None:
@@ -133,10 +263,15 @@ def test_environment_variable_overrides():
             os.environ['MAX_HISTORY_LENGTH'] = original_history_length
         else:
             os.environ.pop('MAX_HISTORY_LENGTH', None)
+            
+        if original_compression_threshold is not None:
+            os.environ['COMPRESSION_THRESHOLD'] = original_compression_threshold
+        else:
+            os.environ.pop('COMPRESSION_THRESHOLD', None)
         
         # Reload settings to restore defaults
-        importlib.reload(__import__('src.config.settings', fromlist=['settings']))
-        from src.config.settings import settings
+        importlib.reload(__import__('cogniscient.engine.config.settings', fromlist=['settings']))
+        from cogniscient.engine.config.settings import settings
 
 
 if __name__ == "__main__":

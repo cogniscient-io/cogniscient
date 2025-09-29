@@ -1,0 +1,13 @@
+{
+  "name": "website_only",
+  "description": "Configuration for website checking only",
+  "agents": [
+    {
+      "name": "SampleAgentB",
+      "config_file": "config_SampleAgentB.json"
+    }
+  ],
+  "additional_prompt_info": {
+    "domain_context": "Website Monitoring and Diagnostics"
+  }
+}

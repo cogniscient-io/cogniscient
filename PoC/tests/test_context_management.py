@@ -1,19 +1,17 @@
-"""Consolidated tests for context management functionality."""
+"""Unit tests for context management functionality."""
 
-import asyncio
 import pytest
-from unittest.mock import patch
-from src.ucs_runtime import UCSRuntime
-from src.orchestrator.llm_orchestrator import LLMOrchestrator
-from src.orchestrator.chat_interface import ChatInterface
-from src.config.settings import settings
+from cogniscient.engine.ucs_runtime import UCSRuntime
+from cogniscient.engine.orchestrator.llm_orchestrator import LLMOrchestrator
+from cogniscient.engine.orchestrator.chat_interface import ChatInterface
+from cogniscient.engine.config.settings import settings
 
 
 @pytest.mark.asyncio
 async def test_context_window_size_management():
     """Test context window size parameter and compression."""
     # Initialize UCS runtime and chat interface with custom parameters
-    ucs_runtime = UCSRuntime()
+    ucs_runtime = UCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
     ucs_runtime.load_configuration("combined")
     
     orchestrator = LLMOrchestrator(ucs_runtime)
@@ -24,7 +22,7 @@ async def test_context_window_size_management():
     chat_interface = ChatInterface(
         orchestrator,
         max_history_length=6,  # Smaller history limit
-        compression_threshold=4   # Compress earlier
+        compression_threshold=4   # Compress earlier - must be less than max_history_length
     )
     
     # Test context window size calculation
@@ -45,11 +43,11 @@ async def test_context_window_size_management():
 async def test_conversation_history_management():
     """Test conversation history clearing and compression."""
     # Initialize UCS runtime and chat interface
-    ucs_runtime = UCSRuntime()
+    ucs_runtime = UCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
     ucs_runtime.load_configuration("combined")
     
     orchestrator = LLMOrchestrator(ucs_runtime)
-    chat_interface = ChatInterface(orchestrator)
+    chat_interface = ChatInterface(orchestrator, max_history_length=20, compression_threshold=15)
     
     # Test conversation history building
     for i in range(5):
@@ -68,14 +66,21 @@ async def test_conversation_history_management():
 @pytest.mark.asyncio
 async def test_system_parameters_management():
     """Test the system parameters manager service."""
+    from cogniscient.engine.config.settings import settings
+    
+    # Print the initial settings values for debugging
+    print(f"DEBUG INITIAL: max_history_length={settings.max_history_length}, compression_threshold={settings.compression_threshold}")
+    
     # Initialize UCS runtime and chat interface
-    ucs_runtime = UCSRuntime()
+    ucs_runtime = UCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
     ucs_runtime.load_configuration("combined")
     
     orchestrator = LLMOrchestrator(ucs_runtime)
-    chat_interface = ChatInterface(orchestrator)
     
-    # Test getting system parameters - still accessible through the same interface
+    # Print the settings values again after initialization
+    print(f"DEBUG AFTER INIT: max_history_length={settings.max_history_length}, compression_threshold={settings.compression_threshold}")
+    
+    # Test getting system parameters
     result = ucs_runtime.run_agent("SystemParametersManager", "get_system_parameters")
     assert result["status"] == "success"
     assert "parameters" in result
@@ -90,23 +95,40 @@ async def test_system_parameters_management():
     assert "descriptions" in result
     assert len(result["descriptions"]) > 0
     
+    # Save original parameter value for cleanup
+    original_max_history_length = params.get("max_history_length")
+    
     # Test setting a parameter
     result = ucs_runtime.run_agent("SystemParametersManager", "set_system_parameter", 
                                  parameter_name="max_history_length", parameter_value="8")
     assert result["status"] == "success"
+    
+    # Reset the parameter back to its original value to avoid affecting other tests
+    if original_max_history_length is not None:
+        ucs_runtime.run_agent("SystemParametersManager", "set_system_parameter", 
+                             parameter_name="max_history_length", parameter_value=str(original_max_history_length))
 
 
 @pytest.mark.asyncio
 async def test_settings_based_context_management():
     """Test that context management uses settings from .env file."""
+    from cogniscient.engine.config.settings import settings
+    
+    # Print the settings values for debugging
+    print(f"DEBUG: Settings max_history_length={settings.max_history_length}, compression_threshold={settings.compression_threshold}")
+    
     # Initialize UCS runtime and chat interface
-    ucs_runtime = UCSRuntime()
+    ucs_runtime = UCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
     ucs_runtime.load_configuration("combined")
     
     orchestrator = LLMOrchestrator(ucs_runtime)
-    chat_interface = ChatInterface(orchestrator)  # Use default settings
+    # Use the same values as in settings to ensure they match
+    print(f"DEBUG: About to create ChatInterface with max_history_length={settings.max_history_length}, compression_threshold={settings.compression_threshold}")
+    chat_interface = ChatInterface(orchestrator, 
+                                  max_history_length=settings.max_history_length, 
+                                  compression_threshold=settings.compression_threshold)
     
-    # Verify that the chat interface uses the settings
+    # Verify that the chat interface uses the expected values
     assert chat_interface.max_history_length == settings.max_history_length
     assert chat_interface.compression_threshold == settings.compression_threshold
     

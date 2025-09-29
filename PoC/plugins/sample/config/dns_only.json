@@ -1,0 +1,13 @@
+{
+  "name": "dns_only",
+  "description": "Configuration for DNS lookups only",
+  "agents": [
+    {
+      "name": "SampleAgentA",
+      "config_file": "config_SampleAgentA.json"
+    }
+  ],
+  "additional_prompt_info": {
+    "domain_context": "DNS Resolution and Network Diagnostics"
+  }
+}

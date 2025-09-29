@@ -2,7 +2,7 @@
 
 import os
 import tempfile
-from agent_utils.loader import load_agent_module
+from cogniscient.engine.agent_utils.loader import load_agent_module
 
 
 def test_load_agent_module():

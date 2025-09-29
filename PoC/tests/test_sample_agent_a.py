@@ -1,6 +1,6 @@
 """Unit tests for Sample Agent A."""
 
-from agents.sample_agent_a import SampleAgentA
+from plugins.sample.agents.sample_agent_a import SampleAgentA
 
 
 def test_sample_agent_a_self_describe():

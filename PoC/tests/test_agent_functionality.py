@@ -3,16 +3,16 @@
 import asyncio
 import pytest
 from unittest.mock import patch
-from src.ucs_runtime import UCSRuntime
-from src.orchestrator.llm_orchestrator import LLMOrchestrator
-from src.orchestrator.chat_interface import ChatInterface
+from cogniscient.engine.ucs_runtime import UCSRuntime
+from cogniscient.engine.orchestrator.llm_orchestrator import LLMOrchestrator
+from cogniscient.engine.orchestrator.chat_interface import ChatInterface
 
 
 @pytest.mark.asyncio
 async def test_agent_functionality_with_different_configs():
     """Test agent functionality with different configurations."""
     # Test DNS only configuration
-    ucs_runtime = UCSRuntime()
+    ucs_runtime = UCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
     ucs_runtime.load_configuration("dns_only")
     assert "SampleAgentA" in ucs_runtime.agents
     assert "SampleAgentB" not in ucs_runtime.agents
@@ -41,7 +41,7 @@ async def test_agent_functionality_with_different_configs():
 async def test_additional_prompt_info_functionality():
     """Test that additional prompt info is loaded and used correctly."""
     # Initialize UCS runtime and chat interface
-    ucs_runtime = UCSRuntime()
+    ucs_runtime = UCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
     orchestrator = LLMOrchestrator(ucs_runtime)
     chat_interface = ChatInterface(orchestrator)
     
@@ -63,7 +63,7 @@ async def test_additional_prompt_info_functionality():
 async def test_dns_only_config_functionality():
     """Test DNS only configuration functionality."""
     # Initialize and load DNS only configuration
-    ucs_runtime = UCSRuntime()
+    ucs_runtime = UCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
     ucs_runtime.load_configuration("dns_only")
     
     orchestrator = LLMOrchestrator(ucs_runtime)
@@ -86,7 +86,7 @@ async def test_dns_only_config_functionality():
 async def test_combined_config_functionality():
     """Test combined configuration functionality."""
     # Initialize and load combined configuration
-    ucs_runtime = UCSRuntime()
+    ucs_runtime = UCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
     ucs_runtime.load_configuration("combined")
     
     orchestrator = LLMOrchestrator(ucs_runtime)

@@ -1,0 +1,17 @@
+{
+  "name": "combined",
+  "description": "Configuration for both DNS lookups and website checking",
+  "agents": [
+    {
+      "name": "SampleAgentA",
+      "config_file": "config_SampleAgentA.json"
+    },
+    {
+      "name": "SampleAgentB",
+      "config_file": "config_SampleAgentB.json"
+    }
+  ],
+  "additional_prompt_info": {
+    "domain_context": "Comprehensive Network and Website Diagnostics"
+  }
+}

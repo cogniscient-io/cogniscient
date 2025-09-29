@@ -1,9 +1,9 @@
-"""Tests for the LLM Orchestration Engine."""
+"""Unit tests for LLM orchestrator functionality."""
 
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
-from src.orchestrator.llm_orchestrator import LLMOrchestrator
-from src.ucs_runtime import UCSRuntime
+from cogniscient.engine.orchestrator.llm_orchestrator import LLMOrchestrator
+from cogniscient.engine.ucs_runtime import UCSRuntime
 
 
 def test_llm_orchestrator_initialization():
@@ -53,9 +53,9 @@ async def test_approval_workflow_escalation():
     """Should escalate changes outside acceptable ranges for approval."""
     ucs_runtime = UCSRuntime()
     orchestrator = LLMOrchestrator(ucs_runtime)
-    
-    # Set up parameter ranges
-    orchestrator.parameter_ranges = {
+
+    # Set up parameter ranges in the parameter adaptation module
+    orchestrator.parameter_adaptation.parameter_ranges = {
         "SampleAgentA": {
             "dns_settings.timeout": {"min": 1, "max": 30, "default": 5}
         }
@@ -87,9 +87,9 @@ async def test_is_within_range():
     """Should correctly check if parameter values are within range."""
     ucs_runtime = UCSRuntime()
     orchestrator = LLMOrchestrator(ucs_runtime)
-    
-    # Set up parameter ranges
-    orchestrator.parameter_ranges = {
+
+    # Set up parameter ranges in the parameter adaptation module
+    orchestrator.parameter_adaptation.parameter_ranges = {
         "SampleAgentA": {
             "dns_settings.timeout": {"min": 1, "max": 30, "default": 5}
         }

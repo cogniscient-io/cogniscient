@@ -1,0 +1,23 @@
+{
+  "name": "SampleAgentA",
+  "version": "1.0",
+  "enabled": true,
+  "parameter_ranges": {
+    "min_values": {},
+    "max_values": {},
+    "default_values": {}
+  },
+  "approval_thresholds": {
+    "change_threshold": 0.1,
+    "critical_parameters": []
+  },
+  "orchestration_metadata": {
+    "domain_knowledge": "DNS lookups",
+    "safety_constraints": [],
+    "learning_preferences": {}
+  },
+  "settings": {
+    "timeout": 30,
+    "retries": 3
+  }
+}

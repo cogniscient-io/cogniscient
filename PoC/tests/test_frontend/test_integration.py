@@ -1,23 +1,20 @@
-"""Integration tests for the frontend."""
-
-import pytest
+from frontend.api import app
 from fastapi.testclient import TestClient
-from src.frontend.api import app
 import os
 
 client = TestClient(app)
 
 def test_html_file_exists():
     """Should have the main HTML file."""
-    assert os.path.exists('src/frontend/static/index.html')
+    assert os.path.exists('frontend/static/index.html')
 
 def test_css_file_exists():
     """Should have the CSS file."""
-    assert os.path.exists('src/frontend/static/css/style.css')
+    assert os.path.exists('frontend/static/css/style.css')
 
 def test_js_file_exists():
     """Should have the JavaScript file."""
-    assert os.path.exists('src/frontend/static/js/main.js')
+    assert os.path.exists('frontend/static/js/main.js')
 
 def test_frontend_serves_html():
     """Should serve the main HTML page."""

@@ -5,12 +5,12 @@ from unittest.mock import patch
 from unittest.mock import AsyncMock
 from cogniscient.engine.orchestrator.chat_interface import ChatInterface
 from cogniscient.engine.orchestrator.llm_orchestrator import LLMOrchestrator
-from cogniscient.engine.ucs_runtime import UCSRuntime
+from cogniscient.engine.gcs_runtime import GCSRuntime
 
 
 def test_chat_interface_initialization():
     """Should initialize chat interface successfully."""
-    orchestrator = LLMOrchestrator(UCSRuntime())
+    orchestrator = LLMOrchestrator(GCSRuntime())
     chat_interface = ChatInterface(orchestrator, max_history_length=20, compression_threshold=15)
     assert chat_interface is not None
     assert chat_interface.orchestrator == orchestrator
@@ -20,7 +20,7 @@ def test_chat_interface_initialization():
 async def test_user_input_processing():
     """Should process user input and generate response."""
     from unittest.mock import AsyncMock
-    ucs_runtime = UCSRuntime()
+    ucs_runtime = GCSRuntime()
     orchestrator = LLMOrchestrator(ucs_runtime)
     chat_interface = ChatInterface(orchestrator, max_history_length=20, compression_threshold=15)
     
@@ -48,7 +48,7 @@ async def test_user_input_processing():
 @pytest.mark.asyncio
 async def test_approval_request_handling():
     """Should handle approval requests from the orchestrator."""
-    orchestrator = LLMOrchestrator(UCSRuntime())
+    orchestrator = LLMOrchestrator(GCSRuntime())
     chat_interface = ChatInterface(orchestrator, max_history_length=20, compression_threshold=15)
     
     # Test approval request

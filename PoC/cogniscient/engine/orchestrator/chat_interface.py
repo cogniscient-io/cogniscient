@@ -31,9 +31,9 @@ class ChatInterface:
         if self.compression_threshold >= self.max_history_length:
             raise ValueError("Compression threshold must be less than max history length")
         
-        # Register this chat interface with the UCS runtime
-        if hasattr(orchestrator, 'ucs_runtime'):
-            orchestrator.ucs_runtime.register_chat_interface(self)
+        # Register this chat interface with the GCS runtime
+        if hasattr(orchestrator, 'gcs_runtime'):
+            orchestrator.gcs_runtime.register_chat_interface(self)
 
     
 

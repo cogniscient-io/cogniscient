@@ -7,6 +7,7 @@ the frontend server or to access different system components programmatically.
 import sys
 import os
 
+
 def main():
     """Main entry point for the application."""
     if len(sys.argv) > 1:
@@ -20,7 +21,7 @@ def main():
             print("  frontend - Start the frontend server")
     else:
         print("Use 'python main.py frontend' to start the frontend server.")
-        print("For programmatic access to the system, use UCSRuntime directly from cogniscient.engine.ucs_runtime")
+        print("For programmatic access to the system, use GCSRuntime directly from cogniscient.engine.gcs_runtime")
 
 
 if __name__ == "__main__":

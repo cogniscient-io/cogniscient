@@ -1,6 +1,6 @@
-# LLM-Enhanced Orchestration Demo
+# Cogniscient - Generic Control System Engine
 
-This project demonstrates an LLM-enhanced orchestration system that can adaptively retry failed tasks and adjust parameters based on LLM evaluations. It also includes a chat interface that allows users to check website status through natural language commands.
+Cogniscient is a generic control system engine for managing AI agents and services with LLM integration. This project demonstrates an LLM-enhanced orchestration system that can adaptively retry failed tasks and adjust parameters based on LLM evaluations. It also includes a chat interface that allows users to check website status through natural language commands.
 
 ## Features
 
@@ -14,14 +14,62 @@ This project demonstrates an LLM-enhanced orchestration system that can adaptive
 
 ## Prerequisites
 
-- Python 3.8 or higher
+- Python 3.10 or higher
 - Ollama running on `http://<ip_addr>:11434` (or update the settings in `.env` and `src/config/settings.py`)
 - Qwen3:8b model installed in Ollama (or update the model name in settings)
 - Any model should work, really, but I'm testing locally using this smaller model.
 
 ## Installation
 
-1. Install the required Python packages:
+### As a Package
+
+You can install Cogniscient as a Python package:
+
+```bash
+pip install cogniscient
+```
+
+After installation, you can use it in your Python code:
+
+```python
+from cogniscient import GCSRuntime
+
+# Initialize the runtime
+gcs = GCSRuntime()
+gcs.load_all_agents()
+
+# Use the system
+result = gcs.run_agent("SampleAgentA", "perform_dns_lookup")
+```
+
+You can also use the CLI:
+
+```bash
+# Show available commands
+cogniscient --help
+
+# Run the system
+cogniscient run
+
+# List configurations
+cogniscient list-configs
+
+# Load a specific configuration
+cogniscient load-config --config-name my-config
+```
+
+### For Development
+
+1. Clone the repository and install in development mode:
+   ```bash
+   git clone <repository-url>
+   cd PoC
+   pip install -e .
+   # Or with development dependencies
+   pip install -e ".[dev]"
+   ```
+
+2. Install the required Python packages:
    ```bash
    pip install -r requirements.txt
    ```
@@ -30,7 +78,7 @@ This project demonstrates an LLM-enhanced orchestration system that can adaptive
    pip install litellm pydantic-settings pytest pytest-asyncio uvicorn fastapi dnspython
    ```
 
-2. Make sure Ollama is running with the Qwen3:8b model:
+3. Make sure Ollama is running with the Qwen3:8b model:
    ```bash
    ollama run qwen3:8b
    ```
@@ -151,6 +199,24 @@ Example commands:
 - `verify url https://github.com`
 
 The system uses SampleAgentB to perform the actual website checks and the LLM orchestrator to provide intelligent analysis of results.
+
+## Packaging
+
+The project is configured as a Python package that can be built and distributed:
+
+```bash
+# Build the package
+pip install build
+python -m build
+
+# The package includes:
+# - The core GCSRuntime class
+# - Agent management utilities
+# - Configuration services
+# - CLI interface
+```
+
+For more details on the release process, see [RELEASE.md](RELEASE.md).
 
 ## Troubleshooting
 

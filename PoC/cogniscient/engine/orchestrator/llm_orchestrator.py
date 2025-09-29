@@ -2,7 +2,7 @@
 
 import logging
 from typing import AsyncGenerator, Callable, Dict, Any, List
-from cogniscient.engine.ucs_runtime import UCSRuntime
+from cogniscient.engine.gcs_runtime import GCSRuntime
 from cogniscient.engine.orchestrator.llm_evaluation import LLMEvaluation
 from cogniscient.engine.orchestrator.user_request_processor import UserRequestProcessor
 from cogniscient.engine.orchestrator.parameter_adaptation import ParameterAdaptation
@@ -14,20 +14,20 @@ logger = logging.getLogger(__name__)
 class LLMOrchestrator:
     """LLM Orchestration Engine for managing agents and their adaptations."""
 
-    def __init__(self, ucs_runtime: UCSRuntime):
-        """Initialize the LLM orchestrator with UCS runtime.
+    def __init__(self, gcs_runtime: GCSRuntime):
+        """Initialize the LLM orchestrator with GCS runtime.
         
         Args:
-            ucs_runtime (UCSRuntime): The UCS runtime instance to manage agents.
+            gcs_runtime (GCSRuntime): The GCS runtime instance to manage agents.
         """
-        self.ucs_runtime = ucs_runtime
-        # Use the LLM service from UCS runtime directly
-        self.llm_service = ucs_runtime.llm_service
+        self.gcs_runtime = gcs_runtime
+        # Use the LLM service from GCS runtime directly
+        self.llm_service = gcs_runtime.llm_service
         
         # Initialize the separate modules
         self.evaluator = LLMEvaluation(self.llm_service)
-        self.user_request_processor = UserRequestProcessor(ucs_runtime, self.llm_service)
-        self.parameter_adaptation = ParameterAdaptation(ucs_runtime)
+        self.user_request_processor = UserRequestProcessor(gcs_runtime, self.llm_service)
+        self.parameter_adaptation = ParameterAdaptation(gcs_runtime)
 
     async def evaluate_agent_output(self, agent_name: str, output: Dict[str, Any]) -> Dict[str, Any]:
         """Evaluate agent output using LLM and determine next actions.
@@ -108,7 +108,7 @@ class LLMOrchestrator:
         """
         try:
             # Run the agent method
-            result = self.ucs_runtime.run_agent(agent_name, method_name, *args, **kwargs)
+            result = self.gcs_runtime.run_agent(agent_name, method_name, *args, **kwargs)
             
             # Evaluate the result with LLM
             evaluation = await self.evaluate_agent_output(agent_name, result)

@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import Mock, patch
 from cogniscient.engine.orchestrator.chat_interface import ChatInterface
 from cogniscient.engine.orchestrator.llm_orchestrator import LLMOrchestrator
-from cogniscient.engine.ucs_runtime import UCSRuntime
+from cogniscient.engine.gcs_runtime import GCSRuntime
 
 
 @pytest.mark.asyncio
@@ -39,7 +39,7 @@ async def test_website_check_success_response():
 async def test_website_checking_command_recognition():
     """Test that website checking commands are properly recognized."""
     # Setup
-    ucs_runtime = Mock()  # Using Mock instead of actual UCSRuntime for testing
+    ucs_runtime = Mock()  # Using Mock instead of actual GCSRuntime for testing
     orchestrator = LLMOrchestrator(ucs_runtime)
     chat_interface = ChatInterface(orchestrator, max_history_length=20, compression_threshold=15)
     

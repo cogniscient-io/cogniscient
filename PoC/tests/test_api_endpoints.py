@@ -1,7 +1,7 @@
 """Unit tests for API endpoints."""
 
 import pytest
-from cogniscient.engine.ucs_runtime import UCSRuntime
+from cogniscient.engine.gcs_runtime import GCSRuntime
 from cogniscient.engine.orchestrator.llm_orchestrator import LLMOrchestrator
 from cogniscient.engine.orchestrator.chat_interface import ChatInterface
 from fastapi.testclient import TestClient
@@ -31,7 +31,7 @@ def test_api_endpoints_exist():
 async def test_system_parameters_api_functionality():
     """Test system parameters API functionality."""
     # Initialize system
-    ucs_runtime = UCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
+    ucs_runtime = GCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
     ucs_runtime.load_configuration("combined")
     
     # Test getting system parameters

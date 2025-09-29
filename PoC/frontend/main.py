@@ -38,4 +38,4 @@ if __name__ == "__main__":
         run_frontend()
     else:
         print("Use 'python -m frontend.main frontend' or 'cd frontend && python main.py frontend' to start the frontend server.")
-        print("For programmatic access to the system, use UCSRuntime directly from cogniscient.engine.ucs_runtime")
+        print("For programmatic access to the system, use GCSRuntime directly from cogniscient.engine.gcs_runtime")

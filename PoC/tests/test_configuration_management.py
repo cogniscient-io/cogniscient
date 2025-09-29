@@ -1,7 +1,7 @@
 """Unit tests for configuration management functionality."""
 
 import pytest
-from cogniscient.engine.ucs_runtime import UCSRuntime
+from cogniscient.engine.gcs_runtime import GCSRuntime
 from cogniscient.engine.orchestrator.llm_orchestrator import LLMOrchestrator
 from cogniscient.engine.orchestrator.chat_interface import ChatInterface
 
@@ -14,7 +14,7 @@ async def test_config_loading_functionality():
     import os
     plugin_configs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "plugins", "sample", "config")
     plugin_agents_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "plugins", "sample", "agents")
-    ucs_runtime = UCSRuntime(config_dir=plugin_configs_dir, agents_dir=plugin_agents_dir)
+    ucs_runtime = GCSRuntime(config_dir=plugin_configs_dir, agents_dir=plugin_agents_dir)
     
     # Load agents (initially empty)
     ucs_runtime.load_all_agents()
@@ -62,7 +62,7 @@ async def test_config_manager_descriptions():
     import os
     plugin_configs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "plugins", "sample", "config")
     plugin_agents_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "plugins", "sample", "agents")
-    ucs_runtime = UCSRuntime(config_dir=plugin_configs_dir, agents_dir=plugin_agents_dir)
+    ucs_runtime = GCSRuntime(config_dir=plugin_configs_dir, agents_dir=plugin_agents_dir)
     ucs_runtime.load_configuration("combined")
     
     # Test listing configurations - still accessible through the same interface
@@ -83,7 +83,7 @@ async def test_config_manager_descriptions():
 async def test_llm_driven_config_management():
     """Test LLM-driven configuration management."""
     # Initialize system
-    ucs_runtime = UCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
+    ucs_runtime = GCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
     ucs_runtime.load_configuration("combined")
     
     orchestrator = LLMOrchestrator(ucs_runtime)
@@ -110,7 +110,7 @@ def test_agents_dir_system_parameter():
     from cogniscient.engine.services.system_parameters_service import SystemParametersService
     
     # Initialize UCS runtime with the original default path
-    ucs_runtime = UCSRuntime(config_dir=".", agents_dir="cogniscient/agentSDK")
+    ucs_runtime = GCSRuntime(config_dir=".", agents_dir="cogniscient/agentSDK")
     
     # Verify initial agents_dir
     assert ucs_runtime.agents_dir == "cogniscient/agentSDK"
@@ -151,7 +151,7 @@ def test_config_dir_system_parameter():
     from cogniscient.engine.services.system_parameters_service import SystemParametersService
     
     # Initialize UCS runtime with default settings
-    ucs_runtime = UCSRuntime()
+    ucs_runtime = GCSRuntime()
     
     # Set the agents_dir to tests directory for this specific test 
     ucs_runtime.system_parameters_service.set_system_parameter('agents_dir', 'tests')
@@ -191,7 +191,7 @@ def test_llm_config_system_parameter():
     
     try:
         # Initialize UCS runtime with default settings
-        ucs_runtime = UCSRuntime()
+        ucs_runtime = GCSRuntime()
         
         # Set the agents_dir to tests directory for this specific test 
         ucs_runtime.system_parameters_service.set_system_parameter('agents_dir', 'tests')

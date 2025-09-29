@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Dict, Any, List, Optional
 from cogniscient.engine.services.llm_service import LLMService
-from cogniscient.engine.ucs_runtime import UCSRuntime
+from cogniscient.engine.gcs_runtime import GCSRuntime
 from cogniscient.engine.config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -13,14 +13,14 @@ logger = logging.getLogger(__name__)
 class BaseUserRequestHandler:
     """Base class for processing user requests with shared functionality."""
 
-    def __init__(self, ucs_runtime: UCSRuntime, llm_service: LLMService):
+    def __init__(self, gcs_runtime: GCSRuntime, llm_service: LLMService):
         """Initialize the base request handler.
         
         Args:
-            ucs_runtime (UCSRuntime): The UCS runtime instance to manage agents.
+            gcs_runtime (GCSRuntime): The GCS runtime instance to manage agents.
             llm_service (LLMService): The LLM service instance.
         """
-        self.ucs_runtime = ucs_runtime
+        self.gcs_runtime = gcs_runtime
         self.llm_service = llm_service
 
     def _calculate_context_size(self, conversation_history: List[Dict[str, str]]) -> int:
@@ -251,7 +251,7 @@ class BaseUserRequestHandler:
         prompt += "- Use the ConfigManager agent for requests related to listing configurations, loading configurations, or listing loaded agents\n"
         
         # Add domain-specific context if available
-        additional_info = getattr(self.ucs_runtime, 'additional_prompt_info', {})
+        additional_info = getattr(self.gcs_runtime, 'additional_prompt_info', {})
         if additional_info:
             domain_context = additional_info.get("domain_context", "")
             if domain_context:
@@ -334,7 +334,7 @@ class BaseUserRequestHandler:
                         
                         # Execute agent method
                         try:
-                            result = self.ucs_runtime.run_agent(agent_name, method_name, **parameters)
+                            result = self.gcs_runtime.run_agent(agent_name, method_name, **parameters)
                             
                             # Record the tool response
                             tool_call_info["result"] = result
@@ -460,7 +460,7 @@ class BaseUserRequestHandler:
             final_prompt += "Explain what was found and what it means in plain language.\n"
             
             # Add domain-specific instructions if available
-            additional_info = getattr(self.ucs_runtime, 'additional_prompt_info', {})
+            additional_info = getattr(self.gcs_runtime, 'additional_prompt_info', {})
             if additional_info:
                 domain_context = additional_info.get("domain_context", "")
                 if domain_context:

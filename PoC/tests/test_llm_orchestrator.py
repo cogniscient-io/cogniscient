@@ -3,22 +3,22 @@
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
 from cogniscient.engine.orchestrator.llm_orchestrator import LLMOrchestrator
-from cogniscient.engine.ucs_runtime import UCSRuntime
+from cogniscient.engine.gcs_runtime import GCSRuntime
 
 
 def test_llm_orchestrator_initialization():
     """Should initialize LLM orchestrator successfully."""
-    ucs_runtime = UCSRuntime()
-    orchestrator = LLMOrchestrator(ucs_runtime)
+    gcs_runtime = GCSRuntime()
+    orchestrator = LLMOrchestrator(gcs_runtime)
     assert orchestrator is not None
-    assert orchestrator.ucs_runtime == ucs_runtime
+    assert orchestrator.gcs_runtime == gcs_runtime
 
 
 @pytest.mark.asyncio
 async def test_parameter_adaptation_within_range():
     """Should adapt parameters within acceptable ranges."""
-    ucs_runtime = UCSRuntime()
-    orchestrator = LLMOrchestrator(ucs_runtime)
+    gcs_runtime = GCSRuntime()
+    orchestrator = LLMOrchestrator(gcs_runtime)
     
     # Set up parameter ranges
     orchestrator.parameter_ranges = {
@@ -28,7 +28,7 @@ async def test_parameter_adaptation_within_range():
     }
     
     # Set up test configuration
-    ucs_runtime.agent_configs = {
+    gcs_runtime.agent_configs = {
         "SampleAgentA": {
             "name": "SampleAgentA",
             "version": "1.0",
@@ -45,14 +45,14 @@ async def test_parameter_adaptation_within_range():
     changes = {"dns_settings.timeout": 10}
     result = await orchestrator.adapt_parameters("SampleAgentA", changes)
     assert result
-    assert ucs_runtime.agent_configs["SampleAgentA"]["dns_settings"]["timeout"] == 10
+    assert gcs_runtime.agent_configs["SampleAgentA"]["dns_settings"]["timeout"] == 10
 
 
 @pytest.mark.asyncio
 async def test_approval_workflow_escalation():
     """Should escalate changes outside acceptable ranges for approval."""
-    ucs_runtime = UCSRuntime()
-    orchestrator = LLMOrchestrator(ucs_runtime)
+    gcs_runtime = GCSRuntime()
+    orchestrator = LLMOrchestrator(gcs_runtime)
 
     # Set up parameter ranges in the parameter adaptation module
     orchestrator.parameter_adaptation.parameter_ranges = {
@@ -62,7 +62,7 @@ async def test_approval_workflow_escalation():
     }
     
     # Set up test configuration
-    ucs_runtime.agent_configs = {
+    gcs_runtime.agent_configs = {
         "SampleAgentA": {
             "name": "SampleAgentA",
             "version": "1.0",
@@ -85,8 +85,8 @@ async def test_approval_workflow_escalation():
 @pytest.mark.asyncio
 async def test_is_within_range():
     """Should correctly check if parameter values are within range."""
-    ucs_runtime = UCSRuntime()
-    orchestrator = LLMOrchestrator(ucs_runtime)
+    gcs_runtime = GCSRuntime()
+    orchestrator = LLMOrchestrator(gcs_runtime)
 
     # Set up parameter ranges in the parameter adaptation module
     orchestrator.parameter_adaptation.parameter_ranges = {
@@ -108,19 +108,19 @@ async def test_is_within_range():
 @pytest.mark.asyncio
 async def test_orchestrate_agent():
     """Should orchestrate agent execution with LLM evaluation."""
-    # Mock UCS runtime
-    ucs_runtime = Mock()
-    ucs_runtime.run_agent.return_value = {"status": "success", "data": "test"}
-    ucs_runtime.agent_configs = {}
+    # Mock GCS runtime
+    gcs_runtime = Mock()
+    gcs_runtime.run_agent.return_value = {"status": "success", "data": "test"}
+    gcs_runtime.agent_configs = {}
     
-    orchestrator = LLMOrchestrator(ucs_runtime)
+    orchestrator = LLMOrchestrator(gcs_runtime)
     
     # Mock LLM service
     with patch.object(orchestrator.llm_service, 'generate_response', new=AsyncMock(return_value='{"decision": "continue"}')) as mock_generate:
         result = await orchestrator.orchestrate_agent("SampleAgentA", "perform_test")
         
         # Verify the agent was called
-        ucs_runtime.run_agent.assert_called_once_with("SampleAgentA", "perform_test")
+        gcs_runtime.run_agent.assert_called_once_with("SampleAgentA", "perform_test")
         
         # Verify LLM service was called
         mock_generate.assert_called_once()

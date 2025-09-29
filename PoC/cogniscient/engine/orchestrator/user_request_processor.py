@@ -2,7 +2,7 @@
 
 import logging
 from typing import AsyncGenerator, Callable, Dict, Any, List
-from cogniscient.engine.ucs_runtime import UCSRuntime
+from cogniscient.engine.gcs_runtime import GCSRuntime
 from cogniscient.engine.services.llm_service import LLMService
 from cogniscient.engine.orchestrator.streaming_user_request_processor import StreamingUserRequestProcessor
 from cogniscient.engine.orchestrator.non_streaming_user_request_processor import NonStreamingUserRequestProcessor
@@ -13,19 +13,19 @@ logger = logging.getLogger(__name__)
 class UserRequestProcessor:
     """Handles processing of user requests with LLM to determine appropriate agents."""
 
-    def __init__(self, ucs_runtime: UCSRuntime, llm_service: LLMService):
+    def __init__(self, gcs_runtime: GCSRuntime, llm_service: LLMService):
         """Initialize the user request processor.
         
         Args:
-            ucs_runtime (UCSRuntime): The UCS runtime instance to manage agents.
+            gcs_runtime (GCSRuntime): The GCS runtime instance to manage agents.
             llm_service (LLMService): The LLM service instance.
         """
-        self.ucs_runtime = ucs_runtime
+        self.gcs_runtime = gcs_runtime
         self.llm_service = llm_service
         
         # Initialize the specialized processors
-        self.streaming_processor = StreamingUserRequestProcessor(ucs_runtime, llm_service)
-        self.non_streaming_processor = NonStreamingUserRequestProcessor(ucs_runtime, llm_service)
+        self.streaming_processor = StreamingUserRequestProcessor(gcs_runtime, llm_service)
+        self.non_streaming_processor = NonStreamingUserRequestProcessor(gcs_runtime, llm_service)
 
     async def process_user_request_streaming(self, user_input: str, conversation_history: List[Dict[str, str]], 
                                            send_stream_event: Callable[[str, str, Dict[str, Any]], Any]) -> AsyncGenerator[Dict[str, Any], None]:

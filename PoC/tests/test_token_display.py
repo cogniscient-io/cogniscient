@@ -5,7 +5,7 @@ from cogniscient.engine.services.llm_service import LLMService
 from cogniscient.engine.services.contextual_llm_service import ContextualLLMService
 from cogniscient.engine.orchestrator.llm_orchestrator import LLMOrchestrator
 from cogniscient.engine.orchestrator.chat_interface import ChatInterface
-from cogniscient.engine.ucs_runtime import UCSRuntime
+from cogniscient.engine.gcs_runtime import GCSRuntime
 import pytest
 import asyncio
 
@@ -84,7 +84,7 @@ async def test_chat_interface_formats_token_counts():
     from unittest.mock import AsyncMock
     
     # Initialize full system stack
-    ucs_runtime = UCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
+    ucs_runtime = GCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
     ucs_runtime.load_all_agents()
     
     # Create a mock orchestrator that returns a result with token counts
@@ -133,7 +133,7 @@ async def test_chat_interface_handles_result_without_token_counts():
     from unittest.mock import AsyncMock
     
     # Initialize full system stack
-    ucs_runtime = UCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
+    ucs_runtime = GCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
     ucs_runtime.load_all_agents()
     
     # Create a mock orchestrator that returns a result without token counts

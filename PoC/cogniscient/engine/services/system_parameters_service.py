@@ -23,15 +23,15 @@ class SystemParametersService:
         
         self._initialized = True
         # Store optional reference to runtime for updating runtime objects
-        self.ucs_runtime = None
+        self.gcs_runtime = None
 
     def set_runtime(self, runtime):
-        """Set the UCS runtime reference.
+        """Set the GCS runtime reference.
         
         Args:
-            runtime: The UCS runtime instance.
+            runtime: The GCS runtime instance.
         """
-        self.ucs_runtime = runtime
+        self.gcs_runtime = runtime
 
     def get_system_parameters(self) -> Dict[str, Any]:
         """Get current system parameter values.
@@ -51,12 +51,12 @@ class SystemParametersService:
             }
             
             # Add agents_dir parameter if runtime reference is available
-            if self.ucs_runtime and hasattr(self.ucs_runtime, 'agents_dir'):
-                parameters["agents_dir"] = self.ucs_runtime.agents_dir
+            if self.gcs_runtime and hasattr(self.gcs_runtime, 'agents_dir'):
+                parameters["agents_dir"] = self.gcs_runtime.agents_dir
                 
             # Add config_dir parameter if runtime reference is available
-            if self.ucs_runtime and hasattr(self.ucs_runtime, 'config_dir'):
-                parameters["config_dir"] = self.ucs_runtime.config_dir
+            if self.gcs_runtime and hasattr(self.gcs_runtime, 'config_dir'):
+                parameters["config_dir"] = self.gcs_runtime.config_dir
                 
             # Include LLM settings in parameters
             parameters["llm_model"] = settings.llm_model
@@ -66,15 +66,15 @@ class SystemParametersService:
             parameters["runtime_data_dir"] = settings.runtime_data_dir
             
             # Get parameters from orchestrator if available
-            if self.ucs_runtime and hasattr(self.ucs_runtime, 'orchestrator'):
-                orchestrator = self.ucs_runtime.orchestrator
+            if self.gcs_runtime and hasattr(self.gcs_runtime, 'orchestrator'):
+                orchestrator = self.gcs_runtime.orchestrator
                 if hasattr(orchestrator, 'max_context_size'):
                     # Include orchestrator value to verify it matches settings
                     parameters["orchestrator_max_context_size"] = orchestrator.max_context_size
             
             # Get parameters from chat interfaces if available
-            if self.ucs_runtime and hasattr(self.ucs_runtime, 'chat_interfaces'):
-                chat_interfaces = self.ucs_runtime.chat_interfaces
+            if self.gcs_runtime and hasattr(self.gcs_runtime, 'chat_interfaces'):
+                chat_interfaces = self.gcs_runtime.chat_interfaces
                 if chat_interfaces:
                     chat_interface = chat_interfaces[0]  # Get first chat interface
                     # Include chat interface values to verify they match settings
@@ -114,8 +114,8 @@ class SystemParametersService:
                 # Update both the global settings and runtime objects
                 settings.max_context_size = converted_value
                 
-                if self.ucs_runtime and hasattr(self.ucs_runtime, 'orchestrator'):
-                    self.ucs_runtime.orchestrator.max_context_size = converted_value
+                if self.gcs_runtime and hasattr(self.gcs_runtime, 'orchestrator'):
+                    self.gcs_runtime.orchestrator.max_context_size = converted_value
                 return {
                     "status": "success",
                     "message": f"Max context size set to {converted_value}"
@@ -124,8 +124,8 @@ class SystemParametersService:
                 # Update both the global settings and chat interfaces
                 settings.max_history_length = converted_value
                 
-                if self.ucs_runtime and hasattr(self.ucs_runtime, 'chat_interfaces'):
-                    for chat_interface in self.ucs_runtime.chat_interfaces:
+                if self.gcs_runtime and hasattr(self.gcs_runtime, 'chat_interfaces'):
+                    for chat_interface in self.gcs_runtime.chat_interfaces:
                         chat_interface.max_history_length = converted_value
                         # Ensure compression threshold is valid
                         if chat_interface.compression_threshold >= converted_value:
@@ -138,8 +138,8 @@ class SystemParametersService:
                 # Update both the global settings and chat interfaces
                 settings.compression_threshold = converted_value
                 
-                if self.ucs_runtime and hasattr(self.ucs_runtime, 'chat_interfaces'):
-                    for chat_interface in self.ucs_runtime.chat_interfaces:
+                if self.gcs_runtime and hasattr(self.gcs_runtime, 'chat_interfaces'):
+                    for chat_interface in self.gcs_runtime.chat_interfaces:
                         chat_interface.compression_threshold = converted_value
                         # Ensure threshold is valid relative to max history length
                         if converted_value >= chat_interface.max_history_length:
@@ -171,24 +171,24 @@ class SystemParametersService:
                 }
             elif parameter_name == "agents_dir":
                 # Update the runtime's agents_dir
-                if self.ucs_runtime:
-                    self.ucs_runtime.agents_dir = parameter_value
+                if self.gcs_runtime:
+                    self.gcs_runtime.agents_dir = parameter_value
                     # Also need to update the local agent manager's agents_dir
-                    if hasattr(self.ucs_runtime, 'local_agent_manager'):
-                        self.ucs_runtime.local_agent_manager.agents_dir = parameter_value
+                    if hasattr(self.gcs_runtime, 'local_agent_manager'):
+                        self.gcs_runtime.local_agent_manager.agents_dir = parameter_value
                         # Update the config manager's agents_dir as well
-                        self.ucs_runtime.local_agent_manager.config_manager.agents_dir = parameter_value
+                        self.gcs_runtime.local_agent_manager.config_manager.agents_dir = parameter_value
                 return {
                     "status": "success",
                     "message": f"Agents directory set to {parameter_value}"
                 }
             elif parameter_name == "config_dir":
                 # Update the runtime's config_dir
-                if self.ucs_runtime:
-                    self.ucs_runtime.config_dir = parameter_value
+                if self.gcs_runtime:
+                    self.gcs_runtime.config_dir = parameter_value
                     # Also need to update the config service's config_dir
-                    if hasattr(self.ucs_runtime, 'config_service'):
-                        self.ucs_runtime.config_service.update_config_dir(parameter_value)
+                    if hasattr(self.gcs_runtime, 'config_service'):
+                        self.gcs_runtime.config_service.update_config_dir(parameter_value)
                 return {
                     "status": "success",
                     "message": f"Config directory set to {parameter_value}"

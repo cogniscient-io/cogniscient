@@ -2,7 +2,7 @@
 
 import logging
 from typing import Dict, Any
-from cogniscient.engine.ucs_runtime import UCSRuntime
+from cogniscient.engine.gcs_runtime import GCSRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -10,13 +10,13 @@ logger = logging.getLogger(__name__)
 class ParameterAdaptation:
     """Handles adaptation of agent parameters within predefined ranges."""
 
-    def __init__(self, ucs_runtime: UCSRuntime):
+    def __init__(self, gcs_runtime: GCSRuntime):
         """Initialize the parameter adaptation module.
         
         Args:
-            ucs_runtime (UCSRuntime): The UCS runtime instance to manage agents.
+            gcs_runtime (GCSRuntime): The GCS runtime instance to manage agents.
         """
-        self.ucs_runtime = ucs_runtime
+        self.gcs_runtime = gcs_runtime
         self.parameter_ranges: Dict[str, Dict[str, Dict[str, Any]]] = {}  # Define acceptable parameter ranges
         self.approval_thresholds: Dict[str, Dict[str, Any]] = {}  # Define thresholds for human approval
 
@@ -59,7 +59,7 @@ class ParameterAdaptation:
         Returns:
             bool: True if changes were applied, False if escalation is needed.
         """
-        current_config = self.ucs_runtime.agent_configs.get(agent_name, {})
+        current_config = self.gcs_runtime.agent_configs.get(agent_name, {})
         new_config = current_config.copy()
         
         # Check if any changes are outside acceptable ranges
@@ -80,7 +80,7 @@ class ParameterAdaptation:
             target[param_parts[-1]] = value
         
         # Update agent configuration
-        self.ucs_runtime.agent_configs[agent_name] = new_config
+        self.gcs_runtime.agent_configs[agent_name] = new_config
         logger.info(f"Adapted parameters for {agent_name}: {suggested_changes}")
         return True
 

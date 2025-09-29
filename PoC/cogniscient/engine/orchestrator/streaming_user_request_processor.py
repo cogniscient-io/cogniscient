@@ -2,7 +2,7 @@
 
 import logging
 from typing import AsyncGenerator, Callable, Dict, Any, List
-from cogniscient.engine.ucs_runtime import UCSRuntime
+from cogniscient.engine.gcs_runtime import GCSRuntime
 from cogniscient.engine.services.llm_service import LLMService
 from cogniscient.engine.orchestrator.base_user_request_handler import BaseUserRequestHandler
 
@@ -12,14 +12,14 @@ logger = logging.getLogger(__name__)
 class StreamingUserRequestProcessor(BaseUserRequestHandler):
     """Handles processing of user requests with streaming support."""
 
-    def __init__(self, ucs_runtime: UCSRuntime, llm_service: LLMService):
+    def __init__(self, gcs_runtime: GCSRuntime, llm_service: LLMService):
         """Initialize the streaming user request processor.
         
         Args:
-            ucs_runtime (UCSRuntime): The UCS runtime instance to manage agents.
+            gcs_runtime (GCSRuntime): The GCS runtime instance to manage agents.
             llm_service (LLMService): The LLM service instance.
         """
-        super().__init__(ucs_runtime, llm_service)
+        super().__init__(gcs_runtime, llm_service)
 
     async def process_user_request_streaming(self, user_input: str, conversation_history: List[Dict[str, str]], 
                                            send_stream_event: Callable[[str, str, Dict[str, Any]], Any]) -> AsyncGenerator[Dict[str, Any], None]:

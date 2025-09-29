@@ -19,7 +19,7 @@ sys.path.insert(0, project_root)
 # Import backend components with absolute imports from the cogniscient package
 from cogniscient.engine.orchestrator.chat_interface import ChatInterface
 from cogniscient.engine.orchestrator.llm_orchestrator import LLMOrchestrator
-from cogniscient.engine.ucs_runtime import UCSRuntime
+from cogniscient.engine.gcs_runtime import GCSRuntime
 from cogniscient.engine.config.settings import settings
 
 # Pydantic models for request/response validation
@@ -98,7 +98,7 @@ if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 # Global variables for backend components
-ucs_runtime = None
+gcs_runtime = None
 orchestrator = None
 chat_interface = None
 
@@ -119,28 +119,28 @@ def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)
 @app.on_event("shutdown")
 async def shutdown_event():
     """Clean up backend components on shutdown."""
-    global ucs_runtime
+    global gcs_runtime
     
-    if ucs_runtime:
+    if gcs_runtime:
         # Stop health monitoring for external agents
-        await ucs_runtime.external_agent_manager.external_agent_registry.stop_health_checks()
+        await gcs_runtime.external_agent_manager.external_agent_registry.stop_health_checks()
         
         # Shutdown all agents
-        ucs_runtime.shutdown()
+        gcs_runtime.shutdown()
 
 @app.on_event("startup")
 async def startup_event():
     """Initialize backend components on startup."""
-    global ucs_runtime, orchestrator, chat_interface
+    global gcs_runtime, orchestrator, chat_interface
     
     # Initialize backend components
-    ucs_runtime = UCSRuntime()
-    ucs_runtime.load_all_agents()
-    orchestrator = LLMOrchestrator(ucs_runtime)
+    gcs_runtime = GCSRuntime()
+    gcs_runtime.load_all_agents()
+    orchestrator = LLMOrchestrator(gcs_runtime)
     chat_interface = ChatInterface(orchestrator)
     
     # Start health monitoring for external agents
-    await ucs_runtime.external_agent_manager.external_agent_registry.start_health_checks()
+    await gcs_runtime.external_agent_manager.external_agent_registry.start_health_checks()
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
@@ -154,7 +154,7 @@ async def read_root():
 @app.get("/api/status", response_model=StatusResponse)
 async def get_status():
     """Get system status information."""
-    if ucs_runtime is None:
+    if gcs_runtime is None:
         return StatusResponse(
             agents=[],
             agent_configs={},
@@ -164,7 +164,7 @@ async def get_status():
     
     # Get system parameters from the system parameters service
     try:
-        params_result = ucs_runtime.system_parameters_service.get_system_parameters()
+        params_result = gcs_runtime.system_parameters_service.get_system_parameters()
         if params_result.get("status") == "success":
             system_parameters = params_result.get("parameters", {})
     except Exception:
@@ -172,9 +172,9 @@ async def get_status():
     
     # Return information about loaded agents and system state
     return StatusResponse(
-        agents=list(ucs_runtime.agents.keys()),
-        agent_configs=ucs_runtime.agent_configs,
-        agent_last_calls=ucs_runtime.agent_last_call,
+        agents=list(gcs_runtime.agents.keys()),
+        agent_configs=gcs_runtime.agent_configs,
+        agent_last_calls=gcs_runtime.agent_last_call,
         system_status="running",
         system_parameters=system_parameters
     )
@@ -182,7 +182,7 @@ async def get_status():
 @app.get("/api/system_parameters", response_model=SystemParameterResponse)
 async def get_system_parameters():
     """Get current system parameters."""
-    if ucs_runtime is None:
+    if gcs_runtime is None:
         return SystemParameterResponse(
             status="error",
             message="System is not initialized",
@@ -190,7 +190,7 @@ async def get_system_parameters():
         )
     
     try:
-        result = ucs_runtime.system_parameters_service.get_system_parameters()
+        result = gcs_runtime.system_parameters_service.get_system_parameters()
         return SystemParameterResponse(**result)
     except Exception as e:
         return SystemParameterResponse(
@@ -202,7 +202,7 @@ async def get_system_parameters():
 @app.post("/api/system_parameters", response_model=SystemParameterResponse)
 async def set_system_parameter(parameter_update: SystemParameterUpdate):
     """Set a system parameter."""
-    if ucs_runtime is None:
+    if gcs_runtime is None:
         return SystemParameterResponse(
             status="error",
             message="System is not initialized",
@@ -210,7 +210,7 @@ async def set_system_parameter(parameter_update: SystemParameterUpdate):
         )
     
     try:
-        result = ucs_runtime.system_parameters_service.set_system_parameter(
+        result = gcs_runtime.system_parameters_service.set_system_parameter(
             parameter_name=parameter_update.parameter_name,
             parameter_value=parameter_update.parameter_value)
         return SystemParameterResponse(**result)
@@ -300,7 +300,7 @@ async def stream_chat(request: ChatRequest):
 @app.post("/api/agents/external/register", response_model=ExternalAgentResponse)
 async def register_external_agent(agent_request: ExternalAgentRequest, api_key: str = Depends(verify_api_key)):
     """Register a new external agent via REST API."""
-    if ucs_runtime is None:
+    if gcs_runtime is None:
         return ExternalAgentResponse(
             status="error",
             message="System is not initialized"
@@ -327,7 +327,7 @@ async def register_external_agent(agent_request: ExternalAgentRequest, api_key: 
             agent_config["settings"] = agent_request.settings
         
         # Attempt to validate the agent endpoint before registration
-        validation_result = await ucs_runtime.external_agent_manager.external_agent_registry.validate_agent_endpoint(agent_config)
+        validation_result = await gcs_runtime.external_agent_manager.external_agent_registry.validate_agent_endpoint(agent_config)
         if validation_result["status"] != "success":
             return ExternalAgentResponse(
                 status="error",
@@ -335,7 +335,7 @@ async def register_external_agent(agent_request: ExternalAgentRequest, api_key: 
             )
         
         # Register the external agent
-        registration_success = ucs_runtime.external_agent_manager.register_agent(agent_config)
+        registration_success = gcs_runtime.external_agent_manager.register_agent(agent_config)
         
         if registration_success:
             return ExternalAgentResponse(
@@ -357,7 +357,7 @@ async def register_external_agent(agent_request: ExternalAgentRequest, api_key: 
 @app.delete("/api/agents/external/{agent_name}", response_model=ExternalAgentResponse)
 async def deregister_external_agent(agent_name: str, api_key: str = Depends(verify_api_key)):
     """Deregister an external agent via REST API."""
-    if ucs_runtime is None:
+    if gcs_runtime is None:
         return ExternalAgentResponse(
             status="error",
             message="System is not initialized"
@@ -365,7 +365,7 @@ async def deregister_external_agent(agent_name: str, api_key: str = Depends(veri
     
     try:
         # Deregister the external agent
-        deregistration_success = ucs_runtime.external_agent_manager.deregister_agent(agent_name)
+        deregistration_success = gcs_runtime.external_agent_manager.deregister_agent(agent_name)
         
         if deregistration_success:
             return ExternalAgentResponse(
@@ -386,7 +386,7 @@ async def deregister_external_agent(agent_name: str, api_key: str = Depends(veri
 @app.get("/api/agents/external", response_model=ExternalAgentListResponse)
 async def list_external_agents():
     """List all registered external agents."""
-    if ucs_runtime is None:
+    if gcs_runtime is None:
         return ExternalAgentListResponse(
             status="error",
             agents=[]
@@ -394,7 +394,7 @@ async def list_external_agents():
     
     try:
         # Get registered external agents from the registry
-        external_agent_names = ucs_runtime.external_agent_manager.external_agent_registry.list_agents()
+        external_agent_names = gcs_runtime.external_agent_manager.external_agent_registry.list_agents()
         return ExternalAgentListResponse(
             status="success",
             agents=external_agent_names
@@ -409,7 +409,7 @@ async def list_external_agents():
 @app.get("/api/agents/external/{agent_name}", response_model=ExternalAgentResponse)
 async def get_external_agent(agent_name: str):
     """Get details about a specific external agent."""
-    if ucs_runtime is None:
+    if gcs_runtime is None:
         return ExternalAgentResponse(
             status="error",
             message="System is not initialized"
@@ -417,7 +417,7 @@ async def get_external_agent(agent_name: str):
     
     try:
         # Get the agent configuration
-        agent_config = ucs_runtime.external_agent_manager.external_agent_registry.get_agent_config(agent_name)
+        agent_config = gcs_runtime.external_agent_manager.external_agent_registry.get_agent_config(agent_name)
         
         if agent_config:
             return ExternalAgentResponse(
@@ -439,7 +439,7 @@ async def get_external_agent(agent_name: str):
 @app.get("/api/agents/external/{agent_name}/health", response_model=HealthCheckResponse)
 async def get_external_agent_health(agent_name: str):
     """Check health status of an external agent."""
-    if ucs_runtime is None:
+    if gcs_runtime is None:
         return HealthCheckResponse(
             status="error",
             health_status="unknown",
@@ -448,7 +448,7 @@ async def get_external_agent_health(agent_name: str):
     
     try:
         # Get health status from the registry
-        health_info = await ucs_runtime.external_agent_manager.external_agent_registry.get_agent_health(agent_name)
+        health_info = await gcs_runtime.external_agent_manager.external_agent_registry.get_agent_health(agent_name)
         
         if health_info:
             return HealthCheckResponse(

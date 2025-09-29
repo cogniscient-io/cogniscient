@@ -1,4 +1,6 @@
-"""Universal Control System (UCS) Runtime for PoC."""
+"""Generic Control System (GCS) Runtime for PoC.
+For backward compatibility, this is still named ucs_runtime.py and exports UCSRuntime.
+"""
 
 import importlib.util
 import json
@@ -14,11 +16,12 @@ from cogniscient.engine.agent_utils.agent_coordinator import AgentCoordinator
 from cogniscient.engine.services.config_service import ConfigService
 from cogniscient.engine.services.system_parameters_service import SystemParametersService
 
-class UCSRuntime:
-    """Core UCS runtime for loading and managing agents."""
+
+class GCSRuntime:
+    """Core GCS runtime for loading and managing agents."""
 
     def __init__(self, config_dir: str = ".", agents_dir: str = "cogniscient/agentSDK"):
-        """Initialize the UCS runtime.
+        """Initialize the GCS runtime.
         
         Args:
             config_dir (str): Directory to load agent configurations from.
@@ -36,29 +39,29 @@ class UCSRuntime:
         self.runtime_ref = self
         # Keep track of chat interfaces that need to be notified of configuration changes
         self.chat_interfaces: List[Any] = []
-        
+
         # Initialize core system services that should always be available
         self.config_service = ConfigService()
         self.config_service.update_config_dir(config_dir)
         self.system_parameters_service = SystemParametersService()
-        
+
         # Set runtime references in the services
         self.config_service.set_runtime(self)
         self.system_parameters_service.set_runtime(self)
-        
+
         # Initialize agent management utilities for cleaner separation of concerns
         self.local_agent_manager = LocalAgentManager(
-            config_dir=config_dir, 
-            agents_dir=agents_dir, 
+            config_dir=config_dir,
+            agents_dir=agents_dir,
             system_parameters_service=self.system_parameters_service
         )
         self.external_agent_manager = ExternalAgentManager()
         self.agent_coordinator = AgentCoordinator(self.local_agent_manager, self.external_agent_manager)
-        
+
         # Store references for backward compatibility but delegate functionality to local_agent_manager
         self.agents = self.local_agent_manager.agents
         self.agent_configs = self.local_agent_manager.agent_configs
-        
+
         # Set the runtime reference for agents that need access to runtime functionality
         self.local_agent_manager.set_runtime_ref(self)
 
@@ -334,17 +337,21 @@ class UCSRuntime:
         self.local_agent_manager.unload_all_agents()
 
 
+# For backward compatibility
+UCSRuntime = GCSRuntime
+
+
 async def main():
-    ucs = UCSRuntime()
-    ucs.load_all_agents()
+    gcs = GCSRuntime()
+    gcs.load_all_agents()
     
     # Simple demonstration of running agents
     try:
-        result_a = ucs.run_agent("SampleAgentA", "perform_dns_lookup")
+        result_a = gcs.run_agent("SampleAgentA", "perform_dns_lookup")
         if "error" in result_a and result_a["error"]:
             try:
                 llmContent = f"Agent SampleAgentA encountered an error: {result_a['error']}"
-                llm_response = await ucs.llm_service.generate_response(llmContent, domain="IT Networking")
+                llm_response = await gcs.llm_service.generate_response(llmContent, domain="IT Networking")
                 print(f"SampleAgentA error: {result_a['error']}")
                 print(f"LLM suggestion: {llm_response}")
             except Exception as llm_e:
@@ -352,10 +359,10 @@ async def main():
         else:
             print(f"SampleAgentA result: {result_a}")
         
-        result_b = ucs.run_agent("SampleAgentB", "perform_website_check")
+        result_b = gcs.run_agent("SampleAgentB", "perform_website_check")
         print(f"SampleAgentB result: {result_b}")
     finally:
-        ucs.shutdown()
+        gcs.shutdown()
 
 
 if __name__ == "__main__":

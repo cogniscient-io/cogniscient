@@ -328,7 +328,7 @@ class UnifiedAgentManager(BaseUnifiedAgentManager):
             Dictionary mapping agent names to agent instances
         """
         all_components = self.get_all_components()
-        return {name: comp.instance for name, comp in all_components.items()}
+        return {name: comp.instance for name, comp in all_components.items() if comp.instance is not None}
 
     def run_agent(self, agent_name: str, method_name: str, *args, **kwargs) -> Any:
         """Run a specific method on an agent.

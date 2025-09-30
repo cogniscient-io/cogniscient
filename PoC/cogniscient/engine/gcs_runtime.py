@@ -313,12 +313,14 @@ class GCSRuntime:
         # Delegate to the local agent manager
         self.local_agent_manager.unload_all_agents()
         
-        # Also unload components managed by the unified agent manager
+        # Also unload and remove components managed by the unified agent manager
         component_names = list(self.unified_agent_manager.components.keys())
         for name in component_names:
             # Skip system services that should remain loaded
             if name not in ["ConfigManager", "SystemParametersManager"]:
                 self.unified_agent_manager.unload_component(name)
+                # Remove the component from the registry entirely
+                del self.unified_agent_manager.components[name]
         
         # Clear additional tracking
         self.agent_last_call.clear()

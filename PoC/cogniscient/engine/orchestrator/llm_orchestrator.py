@@ -1,18 +1,18 @@
-"""LLM Orchestration Engine for Adaptive Control System."""
+"""LLM Orchestration Engine for Adaptive Control System with MCP Integration."""
 
 import logging
-from typing import AsyncGenerator, Callable, Dict, Any, List
+from typing import Callable, Dict, Any, List
 from cogniscient.engine.gcs_runtime import GCSRuntime
 from cogniscient.engine.orchestrator.llm_evaluation import LLMEvaluation
 from cogniscient.engine.orchestrator.user_request_processor import UserRequestProcessor
 from cogniscient.engine.orchestrator.parameter_adaptation import ParameterAdaptation
-from cogniscient.engine.config.settings import settings
+from cogniscient.engine.services.mcp_service import MCPServer
 
 logger = logging.getLogger(__name__)
 
 
 class LLMOrchestrator:
-    """LLM Orchestration Engine for managing agents and their adaptations."""
+    """LLM Orchestration Engine for managing agents and their adaptations with MCP integration."""
 
     def __init__(self, gcs_runtime: GCSRuntime):
         """Initialize the LLM orchestrator with GCS runtime.
@@ -23,11 +23,40 @@ class LLMOrchestrator:
         self.gcs_runtime = gcs_runtime
         # Use the LLM service from GCS runtime directly
         self.llm_service = gcs_runtime.llm_service
+        # Initialize MCP server for enhanced tool integration
+        self.mcp_server = MCPServer(gcs_runtime)
         
-        # Initialize the separate modules
+        # Load parameter ranges and approval thresholds from agent configurations
+        self.parameter_ranges = self._load_parameter_ranges()
+        self.approval_thresholds = self._load_approval_thresholds()
+        
+        # Initialize the separate modules with the loaded ranges
         self.evaluator = LLMEvaluation(self.llm_service)
         self.user_request_processor = UserRequestProcessor(gcs_runtime, self.llm_service)
-        self.parameter_adaptation = ParameterAdaptation(gcs_runtime)
+        self.parameter_adaptation = ParameterAdaptation(
+            gcs_runtime, 
+            parameter_ranges=self.parameter_ranges,
+            approval_thresholds=self.approval_thresholds
+        )
+        
+        # Set reference to this orchestrator in the GCS runtime for parameter adaptation
+        self.gcs_runtime.llm_orchestrator = self
+    
+    def _load_parameter_ranges(self) -> Dict[str, Any]:
+        """Load parameter ranges from agent configurations."""
+        ranges = {}
+        for agent_name, config in self.gcs_runtime.agent_configs.items():
+            if "parameter_ranges" in config:
+                ranges[agent_name] = config["parameter_ranges"]
+        return ranges
+    
+    def _load_approval_thresholds(self) -> Dict[str, Any]:
+        """Load approval thresholds from agent configurations."""
+        thresholds = {}
+        for agent_name, config in self.gcs_runtime.agent_configs.items():
+            if "approval_thresholds" in config:
+                thresholds[agent_name] = config["approval_thresholds"]
+        return thresholds
 
     async def evaluate_agent_output(self, agent_name: str, output: Dict[str, Any]) -> Dict[str, Any]:
         """Evaluate agent output using LLM and determine next actions.
@@ -42,7 +71,7 @@ class LLMOrchestrator:
         return await self.evaluator.evaluate_agent_output(agent_name, output)
 
     async def process_user_request_streaming(self, user_input: str, conversation_history: List[Dict[str, str]], 
-                                           send_stream_event: Callable[[str, str, Dict[str, Any]], Any]) -> AsyncGenerator[Dict[str, Any], None]:
+                                           send_stream_event: Callable[[str, str, Dict[str, Any]], Any]) -> Dict[str, Any]:
         """Process user request using LLM to determine appropriate agents with streaming support.
         
         Args:
@@ -50,8 +79,8 @@ class LLMOrchestrator:
             conversation_history (List[Dict[str, str]]): The conversation history.
             send_stream_event (Callable): Function to send streaming events
             
-        Yields:
-            dict: Streaming events containing response parts, tool calls, etc.
+        Returns:
+            dict: A dictionary containing the final response and tool call information.
         """
         return await self.user_request_processor.process_user_request_streaming(
             user_input, conversation_history, send_stream_event

@@ -197,11 +197,21 @@
                     }
                 }
                 
-                // Ensure the final response is completely displayed
+                // Ensure the final response is completely displayed but preserve token counts if they exist
                 if (assistantMessage) {
                     const finalResponseDiv = document.querySelector('.assistant-message:not(.temp-assistant-response), .temp-assistant-response');
                     if (finalResponseDiv) {
+                        // Save token counts element if it exists
+                        const tokenCountsDiv = finalResponseDiv.querySelector('.token-counts');
+                        
+                        // Update the response content
                         finalResponseDiv.innerHTML = marked.parse(assistantMessage);
+                        
+                        // If token counts existed, add them back
+                        if (tokenCountsDiv) {
+                            finalResponseDiv.appendChild(tokenCountsDiv);
+                        }
+                        
                         chatHistory.scrollTop = chatHistory.scrollHeight;
                     }
                 } else {

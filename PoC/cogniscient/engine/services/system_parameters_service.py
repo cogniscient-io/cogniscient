@@ -1,7 +1,7 @@
 """System Parameters Service for dynamic system parameter adjustment."""
 
 from cogniscient.engine.config.settings import settings
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 
 class SystemParametersService:

@@ -2,7 +2,7 @@
 Configuration settings for the Adaptive Chatbot application.
 """
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 
 class Settings(BaseSettings):
@@ -31,12 +31,16 @@ class Settings(BaseSettings):
     # Add config directory setting
     config_dir: str = "."
     
+    # Add agents directory setting
+    agents_dir: str = "cogniscient/agentSDK"
+    
     # Runtime data directory for system generated files
     runtime_data_dir: str = "runtime_data"
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False
+    )
 
 # Create a global settings instance
 settings = Settings()

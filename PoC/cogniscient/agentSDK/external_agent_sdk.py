@@ -6,7 +6,7 @@ external agents for the UCS system.
 """
 
 import inspect
-from typing import Any, Dict, Callable
+from typing import Callable
 from cogniscient.agentSDK.base_external_agent import BaseExternalAgent
 
 

@@ -3,7 +3,7 @@ High-level LLM service that adds domain context and agent registry information.
 """
 
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from cogniscient.engine.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
@@ -88,6 +88,11 @@ class ContextualLLMService:
                 agent_capabilities = self._format_agent_capabilities(registry_to_use)
                 if agent_capabilities:
                     system_content += agent_capabilities
+                    
+            # Include system service capabilities (always available)
+            system_service_capabilities = self._format_system_service_capabilities()
+            if system_service_capabilities:
+                system_content += system_service_capabilities
                 
             if system_content:
                 messages.append({"role": "system", "content": system_content})
@@ -175,10 +180,114 @@ class ContextualLLMService:
         capabilities_str += "[/AGENT_REGISTRY]\n"
         return capabilities_str
 
-    def set_agent_registry(self, agent_registry: Dict[str, Any]) -> None:
-        """Set the agent registry for this service.
+    def set_agent_registry(self, agent_registry: Dict[str, Any], system_services: Optional[Dict[str, Any]] = None) -> None:
+        """Set the agent registry for this service, with optional system services.
         
         Args:
             agent_registry (Dict[str, Any]): Agent registry information.
+            system_services (Dict[str, Any], optional): System services information.
         """
         self.agent_registry = agent_registry
+        # System services capabilities are defined within the method that formats them,
+        # so we don't need to store them separately
+
+    def _format_system_service_capabilities(self) -> str:
+        """Format system service capabilities for inclusion in system prompt.
+        
+        Returns:
+            str: Formatted system service capabilities string.
+        """
+        # Define system service capabilities as a static structure for now
+        system_services = {
+            "ConfigManager": {
+                "name": "ConfigService",
+                "version": "1.0.0",
+                "methods": {
+                    "list_configurations": {
+                        "description": "List all available system configurations",
+                        "parameters": {}
+                    },
+                    "load_configuration": {
+                        "description": "Load a specific system configuration by name",
+                        "parameters": {
+                            "config_name": {
+                                "type": "string", 
+                                "description": "Name of the configuration to load", 
+                                "required": True
+                            }
+                        }
+                    },
+                    "get_configuration": {
+                        "description": "Get a specific system configuration from cache or file",
+                        "parameters": {
+                            "config_name": {
+                                "type": "string", 
+                                "description": "Name of the configuration to get", 
+                                "required": True
+                            }
+                        }
+                    },
+                    "get_all_cached_configs": {
+                        "description": "Get all currently cached configurations",
+                        "parameters": {}
+                    },
+                    "clear_config_cache": {
+                        "description": "Clear the configuration cache",
+                        "parameters": {}
+                    }
+                },
+                "description": "Service for managing system configurations"
+            },
+            "SystemParametersManager": {
+                "name": "SystemParametersService", 
+                "version": "1.0.0",
+                "methods": {
+                    "get_system_parameters": {
+                        "description": "Get current system parameter values",
+                        "parameters": {}
+                    },
+                    "set_system_parameter": {
+                        "description": "Set a system parameter value",
+                        "parameters": {
+                            "parameter_name": {
+                                "type": "string", 
+                                "description": "Name of the parameter to set", 
+                                "required": True
+                            },
+                            "parameter_value": {
+                                "type": "string", 
+                                "description": "New value for the parameter", 
+                                "required": True
+                            }
+                        }
+                    },
+                    "get_parameter_descriptions": {
+                        "description": "Get descriptions of all system parameters",
+                        "parameters": {}
+                    }
+                },
+                "description": "Service for managing system parameters dynamically"
+            }
+        }
+        
+        capabilities_str = "\\n[SYSTEM_SERVICES]\\n"
+        for name, service_info in system_services.items():
+            capabilities_str += f"- {name}: {service_info.get('description', f'System service {name}')}\\n"
+            
+            methods = service_info.get("methods", {})
+            if methods:
+                capabilities_str += "  Available methods:\\n"
+                for method_name, method_info in methods.items():
+                    method_desc = method_info.get("description", "")
+                    capabilities_str += f"  - {method_name}: {method_desc}\\n"
+                    parameters = method_info.get("parameters", {})
+                    if parameters:
+                        capabilities_str += "    Parameters:\\n"
+                        for param_name, param_info in parameters.items():
+                            param_type = param_info.get("type", "any")
+                            param_desc = param_info.get("description", "")
+                            required = " (required)" if param_info.get("required", False) else ""
+                            capabilities_str += f"    - {param_name}: {param_type} - {param_desc}{required}\\n"
+                    
+        capabilities_str += "[/SYSTEM_SERVICES]\\n"
+        return capabilities_str

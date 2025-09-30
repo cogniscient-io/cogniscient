@@ -5,7 +5,6 @@ the frontend server or to access different system components programmatically.
 """
 
 import sys
-import os
 
 
 def main():

@@ -2,6 +2,8 @@
   "name": "SampleAgentB",
   "version": "1.0",
   "enabled": true,
+  "mcp_compliant": true,
+  "mcp_exposed_methods": ["perform_website_check"],
   "parameter_ranges": {
     "min_values": {},
     "max_values": {},
@@ -10,6 +12,9 @@
   "approval_thresholds": {
     "change_threshold": 0.1,
     "critical_parameters": []
+  },
+  "mcp_schema": {
+    "description": "Website monitoring agent for the adaptive control system"
   },
   "orchestration_metadata": {
     "domain_knowledge": "Website monitoring",

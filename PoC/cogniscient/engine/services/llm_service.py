@@ -2,7 +2,6 @@
 Generic LLM service using LiteLLM for transport.
 """
 
-import json
 import logging
 from typing import Dict, Any, Optional, List
 import litellm

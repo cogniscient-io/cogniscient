@@ -9,6 +9,7 @@ def test_valid_agent_config():
         "name": "TestAgent",
         "version": "1.0",
         "enabled": True,
+        "mcp_compliant": True,
         "settings": {
             "timeout": 30
         }

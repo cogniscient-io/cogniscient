@@ -4,7 +4,6 @@ import pytest
 from unittest.mock import Mock, patch
 from cogniscient.engine.orchestrator.chat_interface import ChatInterface
 from cogniscient.engine.orchestrator.llm_orchestrator import LLMOrchestrator
-from cogniscient.engine.gcs_runtime import GCSRuntime
 
 
 @pytest.mark.asyncio
@@ -12,6 +11,11 @@ async def test_llm_agent_selection():
     """Should use LLM to select appropriate agents."""
     # Setup
     ucs_runtime = Mock()
+    # Adding the required attributes to avoid AttributeError
+    ucs_runtime.llm_service = Mock()
+    ucs_runtime.agents = {}
+    ucs_runtime.agent_configs = {}
+    
     orchestrator = LLMOrchestrator(ucs_runtime)
     chat_interface = ChatInterface(orchestrator, max_history_length=20, compression_threshold=15)
     
@@ -40,6 +44,11 @@ async def test_website_checking_command_recognition():
     """Test that website checking commands are properly recognized."""
     # Setup
     ucs_runtime = Mock()  # Using Mock instead of actual GCSRuntime for testing
+    # Adding the required attributes to avoid AttributeError
+    ucs_runtime.llm_service = Mock()
+    ucs_runtime.agents = {}
+    ucs_runtime.agent_configs = {}
+    
     orchestrator = LLMOrchestrator(ucs_runtime)
     chat_interface = ChatInterface(orchestrator, max_history_length=20, compression_threshold=15)
     

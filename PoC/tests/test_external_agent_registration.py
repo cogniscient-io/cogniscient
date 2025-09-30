@@ -39,7 +39,6 @@ def runtime_data_dir_fixture():
     original_runtime_data_dir = settings.runtime_data_dir
     
     # Create a unique temporary directory for this test
-    import tempfile
     with tempfile.TemporaryDirectory() as temp_dir:
         # Change the runtime_data_dir to use the temporary directory
         param_service = SystemParametersService()

@@ -11,6 +11,15 @@
     "enabled": {
       "type": "boolean"
     },
+    "mcp_compliant": {
+      "type": "boolean"
+    },
+    "mcp_exposed_methods": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "parameter_ranges": {
       "type": "object",
       "properties": {
@@ -36,6 +45,17 @@
           "items": {
             "type": "string"
           }
+        }
+      }
+    },
+    "mcp_schema": {
+      "type": "object",
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "input_schema": {
+          "type": "object"
         }
       }
     },
@@ -74,6 +94,7 @@
   "required": [
     "name",
     "version",
-    "enabled"
+    "enabled",
+    "mcp_compliant"
   ]
 }

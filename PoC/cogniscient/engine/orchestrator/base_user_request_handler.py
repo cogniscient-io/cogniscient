@@ -347,7 +347,7 @@ class BaseUserRequestHandler:
                                     await send_stream_event("tool_response", None, tool_call_info)
                             
                             # Generate follow-up prompt with the result
-                            prompt = f"Previous tool call result:\n"
+                            prompt = "Previous tool call result:\n"
                             prompt += f"Agent: {agent_name}\n"
                             prompt += f"Method: {method_name}\n"
                             prompt += f"Parameters: {parameters}\n"
@@ -387,7 +387,7 @@ class BaseUserRequestHandler:
                                 if send_stream_event:
                                     await send_stream_event("tool_response", None, tool_call_info)
                             
-                            prompt = f"Error executing tool call:\n"
+                            prompt = "Error executing tool call:\n"
                             prompt += f"Agent: {agent_name}\n"
                             prompt += f"Method: {method_name}\n"
                             prompt += f"Parameters: {parameters}\n"
@@ -421,6 +421,26 @@ class BaseUserRequestHandler:
                         if streaming:
                             if send_stream_event:
                                 await send_stream_event("assistant_response", llm_response, None)
+                                # Send token counts for streaming
+                                await send_stream_event("token_counts", None, total_token_counts)
+                            return {
+                                "response": llm_response,
+                                "tool_calls": tool_calls,
+                                "token_counts": total_token_counts
+                            }
+                        else:
+                            return {
+                                "response": llm_response,
+                                "tool_calls": tool_calls,
+                                "token_counts": total_token_counts
+                            }
+                    else:
+                        # Not an error, but also not a tool call - handle as direct response
+                        if streaming:
+                            if send_stream_event:
+                                await send_stream_event("assistant_response", llm_response, None)
+                                # Send token counts for streaming
+                                await send_stream_event("token_counts", None, total_token_counts)
                             return {
                                 "response": llm_response,
                                 "tool_calls": tool_calls,
@@ -525,20 +545,20 @@ class BaseUserRequestHandler:
                             await send_stream_event("token_counts", None, total_token_counts)
                         logger.debug("Sent final token counts event")
                         
-                        return {
-                            "response": response_json["response"],
-                            "tool_calls": tool_calls,
-                            "suggested_agents": response_json.get("suggested_agents", suggested_agents),
-                            "token_counts": total_token_counts
-                        }
+                        return self._compose_result(
+                            response=response_json["response"],
+                            tool_calls=tool_calls,
+                            suggested_agents=response_json.get("suggested_agents", suggested_agents),
+                            token_counts=total_token_counts
+                        )
                     else:
                         # Non-streaming path
-                        return {
-                            "response": response_json["response"],
-                            "tool_calls": tool_calls,
-                            "suggested_agents": response_json.get("suggested_agents", suggested_agents),
-                            "token_counts": total_token_counts
-                        }
+                        return self._compose_result(
+                            response=response_json["response"],
+                            tool_calls=tool_calls,
+                            suggested_agents=response_json.get("suggested_agents", suggested_agents),
+                            token_counts=total_token_counts
+                        )
             except:
                 # If parsing fails, treat it as a regular response
                 pass
@@ -560,18 +580,20 @@ class BaseUserRequestHandler:
                 logger.debug("Sent final token counts event (second path)")
             
             # Return the response with any extracted suggested agents
-            return {
-                "response": final_response,
-                "tool_calls": tool_calls,
-                "suggested_agents": suggested_agents,
-                "token_counts": total_token_counts
-            }
+            return self._compose_result(
+                response=final_response,
+                tool_calls=tool_calls,
+                suggested_agents=suggested_agents,
+                token_counts=total_token_counts
+            )
             
         except Exception as e:
             logger.error(f"Error processing user request: {e}")
             if streaming:
                 if send_stream_event:
                     await send_stream_event("assistant_response", "I encountered an error while processing your request. Please try again later.", None)
+                    # Send token counts even in error case
+                    await send_stream_event("token_counts", None, total_token_counts)
                 return {
                     "response": "I encountered an error while processing your request. Please try again later.",
                     "tool_calls": tool_calls,

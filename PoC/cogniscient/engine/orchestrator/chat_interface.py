@@ -1,9 +1,8 @@
-"""Chat Interface for LLM-Enhanced Adaptive Control System."""
+"""Chat Interface for LLM-Enhanced Adaptive Control System with MCP Compliance."""
 
-import asyncio
 import json
 import logging
-from typing import AsyncGenerator, Callable, Dict, Any, List
+from typing import Callable, Dict, Any, List
 from cogniscient.engine.services.llm_service import LLMService
 from cogniscient.engine.config.settings import settings
 
@@ -11,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class ChatInterface:
-    """Chat interface for human-in-the-loop interaction with the LLM orchestrator."""
+    """MCP-compliant chat interface for human-in-the-loop interaction with the LLM orchestrator."""
 
     def __init__(self, orchestrator, max_history_length: int = None, compression_threshold: int = None):
         """Initialize chat interface with orchestrator.
@@ -34,6 +33,8 @@ class ChatInterface:
         # Register this chat interface with the GCS runtime
         if hasattr(orchestrator, 'gcs_runtime'):
             orchestrator.gcs_runtime.register_chat_interface(self)
+            # Also set this chat interface in the orchestrator for approval workflow
+            self.orchestrator.chat_interface = self
 
     
 
@@ -129,7 +130,6 @@ class ChatInterface:
         
         # Check if token counts are available in the result
         if isinstance(result, dict) and "token_counts" in result:
-            token_counts = result["token_counts"]
             response = result.get("response", "")
             
             # Add the response to conversation history without token counts (token counts are sent separately in streaming)
@@ -225,7 +225,7 @@ class ChatInterface:
             raise ValueError("Compression threshold must be less than max history length")
     
     async def handle_approval_request(self, request: Dict[str, Any]) -> bool:
-        """Handle approval requests from the orchestrator.
+        """Handle approval requests from the orchestrator with MCP compliance.
         
         Args:
             request (Dict[str, Any]): The approval request details.
@@ -233,9 +233,45 @@ class ChatInterface:
         Returns:
             bool: True if approved, False otherwise.
         """
-        # In a real implementation, this would present the approval request to the user
-        # and wait for their response. For now, we'll log the request and return False.
-        logger.warning(f"Approval request received: {request}")
-        # For this implementation, we'll return False to indicate denial
-        # A real implementation would have a mechanism to get user input
-        return False
+        agent_name = request.get("agent_name", "Unknown")
+        changes = request.get("changes", {})
+        
+        # Create an approval prompt for the user
+        approval_prompt = (
+            f"Approval required for changes to {agent_name}:\n"
+            f"{json.dumps(changes, indent=2)}\n\n"
+            f"Do you approve these changes? Please respond with 'yes' to approve or 'no' to deny."
+        )
+        
+        # Add the approval request to the conversation history
+        self.conversation_history.append({
+            "role": "system", 
+            "content": f"APPROVAL REQUEST: {approval_prompt}"
+        })
+        
+        try:
+            # Generate a response using the LLM service with the approval prompt
+            response = await self.llm_service.generate_response([
+                {"role": "system", "content": "You are a system administrator reviewing approval requests for system changes. Respond with either 'yes' or 'no' based on the provided information."},
+                {"role": "user", "content": approval_prompt}
+            ])
+            
+            # Parse the user's response to determine approval
+            approval_decision = response.lower().strip()
+            approved = approval_decision.startswith('y')  # 'yes', 'y', etc.
+            
+            # Log the decision
+            decision_text = "APPROVED" if approved else "DENIED"
+            logger.info(f"Approval request for {agent_name} was {decision_text}: {changes}")
+            
+            # Add the decision to conversation history
+            self.conversation_history.append({
+                "role": "assistant", 
+                "content": f"Decision: {decision_text}"
+            })
+            
+            return approved
+        except Exception as e:
+            logger.error(f"Error handling approval request: {e}")
+            # In case of error, deny the request by default for safety
+            return False

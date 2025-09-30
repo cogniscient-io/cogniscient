@@ -107,7 +107,6 @@ async def test_llm_driven_config_management():
 
 def test_agents_dir_system_parameter():
     """Test that agents_dir can be configured via system parameters service."""
-    from cogniscient.engine.services.system_parameters_service import SystemParametersService
     
     # Initialize UCS runtime with the original default path
     ucs_runtime = GCSRuntime(config_dir=".", agents_dir="cogniscient/agentSDK")
@@ -148,7 +147,6 @@ def test_agents_dir_system_parameter():
 
 def test_config_dir_system_parameter():
     """Test that config_dir can be configured via system parameters service."""
-    from cogniscient.engine.services.system_parameters_service import SystemParametersService
     
     # Initialize UCS runtime with default settings
     ucs_runtime = GCSRuntime()
@@ -182,7 +180,6 @@ def test_config_dir_system_parameter():
 
 def test_llm_config_system_parameter():
     """Test that LLM configuration parameters can be updated via system parameters service."""
-    from cogniscient.engine.services.system_parameters_service import SystemParametersService
     from cogniscient.engine.config.settings import settings
     
     # Create a copy of the original values to restore later

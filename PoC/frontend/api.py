@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from contextlib import asynccontextmanager
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 import asyncio
@@ -80,8 +81,51 @@ class HealthCheckResponse(BaseModel):
     last_check: Optional[float] = None
     error_message: Optional[str] = None
 
-# Initialize FastAPI app
-app = FastAPI(title="LLM Orchestration Frontend API", version="0.1.0")
+# Global variables for backend components
+gcs_runtime = None
+orchestrator = None
+chat_interface = None
+
+# Serve static files
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    # We'll mount static files in the lifespan manager after app initialization
+    pass
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handle application lifespan events."""
+    global gcs_runtime, orchestrator, chat_interface
+    
+    # Startup: Initialize backend components
+    # Import settings to get config and agents directories
+    from cogniscient.engine.config.settings import settings
+    
+    # Initialize backend components
+    gcs_runtime = GCSRuntime(config_dir=settings.config_dir, agents_dir=settings.agents_dir)
+    gcs_runtime.load_all_agents()
+    orchestrator = LLMOrchestrator(gcs_runtime)
+    chat_interface = ChatInterface(orchestrator)
+    
+    # Start health monitoring for external agents
+    await gcs_runtime.external_agent_manager.external_agent_registry.start_health_checks()
+    
+    # Mount static files after initialization
+    if os.path.exists(static_dir):
+        app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    
+    yield
+    
+    # Shutdown: Clean up backend components
+    if gcs_runtime:
+        # Stop health monitoring for external agents
+        await gcs_runtime.external_agent_manager.external_agent_registry.stop_health_checks()
+        
+        # Shutdown all agents
+        gcs_runtime.shutdown()
+
+# Initialize FastAPI app with lifespan manager
+app = FastAPI(title="LLM Orchestration Frontend API", version="0.1.0", lifespan=lifespan)
 
 # Add CORS middleware
 app.add_middleware(
@@ -91,16 +135,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Serve static files
-static_dir = os.path.join(os.path.dirname(__file__), "static")
-if os.path.exists(static_dir):
-    app.mount("/static", StaticFiles(directory=static_dir), name="static")
-
-# Global variables for backend components
-gcs_runtime = None
-orchestrator = None
-chat_interface = None
 
 # Security setup
 security = HTTPBearer()
@@ -114,33 +148,6 @@ def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)
     if credentials.credentials != expected_api_key:
         raise HTTPException(status_code=401, detail="Invalid API Key")
     return credentials.credentials
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Clean up backend components on shutdown."""
-    global gcs_runtime
-    
-    if gcs_runtime:
-        # Stop health monitoring for external agents
-        await gcs_runtime.external_agent_manager.external_agent_registry.stop_health_checks()
-        
-        # Shutdown all agents
-        gcs_runtime.shutdown()
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize backend components on startup."""
-    global gcs_runtime, orchestrator, chat_interface
-    
-    # Initialize backend components
-    gcs_runtime = GCSRuntime()
-    gcs_runtime.load_all_agents()
-    orchestrator = LLMOrchestrator(gcs_runtime)
-    chat_interface = ChatInterface(orchestrator)
-    
-    # Start health monitoring for external agents
-    await gcs_runtime.external_agent_manager.external_agent_registry.start_health_checks()
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
@@ -230,7 +237,7 @@ async def stream_chat(request: ChatRequest):
         def error_generator():
             event = {"type": "assistant_response", "content": "System is still initializing. Please try again in a moment."}
             yield f"data: {json.dumps(event)}\n\n"
-            yield f"data: [DONE]\n\n"
+            yield "data: [DONE]\n\n"
         return StreamingResponse(error_generator(), media_type="text/event-stream")
     
     # Create an asyncio queue to handle communication between the processing task and the response generator
@@ -289,7 +296,7 @@ async def stream_chat(request: ChatRequest):
             yield f"data: {json.dumps(event)}\n\n"
         
         # Signal end of stream
-        yield f"data: [DONE]\n\n"
+        yield "data: [DONE]\n\n"
         
         # Wait for the processing task to complete
         await task

@@ -1,6 +1,5 @@
 """Tests for the frontend API endpoints."""
 
-import pytest
 from fastapi.testclient import TestClient
 from frontend.api import app
 

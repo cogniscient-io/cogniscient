@@ -1,7 +1,7 @@
 """Module for user request processing functionality in LLM Orchestration Engine."""
 
 import logging
-from typing import AsyncGenerator, Callable, Dict, Any, List
+from typing import Callable, Dict, Any, List
 from cogniscient.engine.gcs_runtime import GCSRuntime
 from cogniscient.engine.services.llm_service import LLMService
 from cogniscient.engine.orchestrator.streaming_user_request_processor import StreamingUserRequestProcessor
@@ -28,7 +28,7 @@ class UserRequestProcessor:
         self.non_streaming_processor = NonStreamingUserRequestProcessor(gcs_runtime, llm_service)
 
     async def process_user_request_streaming(self, user_input: str, conversation_history: List[Dict[str, str]], 
-                                           send_stream_event: Callable[[str, str, Dict[str, Any]], Any]) -> AsyncGenerator[Dict[str, Any], None]:
+                                           send_stream_event: Callable[[str, str, Dict[str, Any]], Any]) -> Dict[str, Any]:
         """Process user request using LLM to determine appropriate agents with streaming support.
         
         Args:
@@ -36,13 +36,12 @@ class UserRequestProcessor:
             conversation_history (List[Dict[str, str]]): The conversation history.
             send_stream_event (Callable): Function to send streaming events
             
-        Yields:
-            dict: Streaming events containing response parts, tool calls, etc.
+        Returns:
+            dict: A dictionary containing the final response and tool call information.
         """
-        async for result in self.streaming_processor.process_user_request_streaming(
+        return await self.streaming_processor.process_user_request_streaming(
             user_input, conversation_history, send_stream_event
-        ):
-            yield result
+        )
 
     async def process_user_request(self, user_input: str, conversation_history: List[Dict[str, str]]) -> dict:
         """Process user request using LLM to determine appropriate agents.

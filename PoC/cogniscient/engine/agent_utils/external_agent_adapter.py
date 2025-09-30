@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict
 import httpx
 from cogniscient.agentSDK.base_local_agent import Agent
 

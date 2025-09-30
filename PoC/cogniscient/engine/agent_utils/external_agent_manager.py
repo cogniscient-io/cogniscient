@@ -2,7 +2,7 @@
 External Agent Manager - Handles registration and management of external agents.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict
 from .base_agent_manager import BaseExternalAgentManager
 from .external_agent_registry import ExternalAgentRegistry
 

@@ -3,11 +3,9 @@
 from unittest.mock import MagicMock, patch
 from cogniscient.engine.services.llm_service import LLMService
 from cogniscient.engine.services.contextual_llm_service import ContextualLLMService
-from cogniscient.engine.orchestrator.llm_orchestrator import LLMOrchestrator
 from cogniscient.engine.orchestrator.chat_interface import ChatInterface
 from cogniscient.engine.gcs_runtime import GCSRuntime
 import pytest
-import asyncio
 
 
 @pytest.mark.asyncio

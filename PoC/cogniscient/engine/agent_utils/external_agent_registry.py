@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 import httpx
 from cogniscient.engine.agent_utils.external_agent_adapter import ExternalAgentAdapter
-from cogniscient.engine.agent_utils.base_agent_manager import BaseAgentManager
 
 
 class ExternalAgentRegistry:

@@ -66,7 +66,6 @@ async def test_conversation_history_management():
 @pytest.mark.asyncio
 async def test_system_parameters_management():
     """Test the system parameters manager service."""
-    from cogniscient.engine.config.settings import settings
     
     # Print the initial settings values for debugging
     print(f"DEBUG INITIAL: max_history_length={settings.max_history_length}, compression_threshold={settings.compression_threshold}")
@@ -112,7 +111,6 @@ async def test_system_parameters_management():
 @pytest.mark.asyncio
 async def test_settings_based_context_management():
     """Test that context management uses settings from .env file."""
-    from cogniscient.engine.config.settings import settings
     
     # Print the settings values for debugging
     print(f"DEBUG: Settings max_history_length={settings.max_history_length}, compression_threshold={settings.compression_threshold}")

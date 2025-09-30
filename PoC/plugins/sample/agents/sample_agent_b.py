@@ -109,7 +109,7 @@ class SampleAgentB(Agent):
             # More specific error classification for HTTP errors
             if e.code == 404:
                 error_type = "NOT_FOUND_ERROR"
-                message = f"Document not found (404): The requested URI does not exist on the server"
+                message = "Document not found (404): The requested URI does not exist on the server"
             elif e.code >= 500:
                 error_type = "SERVER_ERROR"
                 message = f"Server error ({e.code}): {e.reason}"

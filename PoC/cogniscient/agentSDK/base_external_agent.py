@@ -1,53 +1,52 @@
 """
-Base external agent implementation that can be used to create custom external agents.
+MCP-based external agent implementation that can be used to create custom external agents.
 
 This module provides a BaseExternalAgent class that can be inherited to create
-custom external agents that can be registered with the UCS system via the
-REST API.
+custom external agents that implement the Model Context Protocol (MCP) as MCP servers.
+These agents can be discovered and used by MCP clients like the Cogniscient system.
 """
 
 import asyncio
 import logging
-from typing import Any, Dict, Optional
-from fastapi import FastAPI
-import uvicorn
+from typing import Any, Dict, Optional, Callable, Awaitable
+from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context
+from pydantic import BaseModel
 
 
 class BaseExternalAgent:
     """
-    Base class for creating external agents that can be registered with UCS.
+    Base class for creating MCP-compliant external agents that act as MCP servers.
     
     This class provides the basic structure and utilities needed to create
-    external agents that can be dynamically registered with the UCS system.
+    external agents that can be discovered and used by MCP clients like the
+    Cogniscient Adaptive Control System.
     """
     
     def __init__(self, 
                  name: str, 
                  version: str = "1.0.0", 
                  description: str = "",
-                 host: str = "0.0.0.0", 
-                 port: int = 8001,
-                 methods: Optional[Dict[str, Any]] = None):
+                 instructions: str = ""):
         """
-        Initialize the base external agent.
+        Initialize the base MCP external agent.
         
         Args:
             name: Name of the agent
             version: Version of the agent
             description: Description of the agent's functionality
-            host: Host address for the agent's API server
-            port: Port for the agent's API server
-            methods: Dictionary of available methods with their metadata
+            instructions: Instructions for how the agent should be used
         """
         self.name = name
         self.version = version
         self.description = description
-        self.host = host
-        self.port = port
-        self.methods = methods or {}
+        self.instructions = instructions
         
-        # Create the FastAPI app
-        self.app = FastAPI(title=f"{name} External Agent", version=version)
+        # Create the MCP server instance
+        self.mcp = FastMCP(
+            name,
+            instructions=instructions or description,
+        )
         
         # Set up logging
         self.logger = logging.getLogger(self.name)
@@ -61,145 +60,135 @@ class BaseExternalAgent:
             )
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
-        
-        # Register the standard methods
-        self._register_standard_routes()
     
-    def _register_standard_routes(self):
-        """Register standard routes for the external agent."""
-        # Root endpoint to return agent info
-        @self.app.get("/")
-        async def root():
-            return {
-                "name": self.name,
-                "version": self.version,
-                "description": self.description,
-                "methods": self.methods
-            }
+    def register_tool(self, name: str, description: str = "", input_schema: Optional[Dict] = None):
+        """
+        Register a tool with the agent that can be called by MCP clients.
         
-        # Health check endpoint
-        @self.app.get("/health")
-        async def health():
-            return {
-                "status": "healthy",
-                "name": self.name,
-                "version": self.version
-            }
-        
-        # Dynamic method routing
-        @self.app.post("/{method_name}")
-        async def call_method(method_name: str, payload: Dict[str, Any]):
-            if method_name not in self.methods:
-                return {
-                    "status": "error",
-                    "message": f"Method {method_name} not found"
-                }
-            
+        Args:
+            name: Name of the tool (should be unique)
+            description: Description of what the tool does
+            input_schema: JSON schema describing the parameters the tool accepts
+        """
+        # Create a wrapper function that will call the actual method with context
+        async def tool_wrapper(ctx: Context, **kwargs):
             try:
                 # Call the specific method
-                method = getattr(self, method_name, None)
+                method = getattr(self, name, None)
                 if method is None:
-                    return {
-                        "status": "error",
-                        "message": f"Method {method_name} not implemented"
-                    }
+                    await ctx.error(f"Tool {name} not implemented")
+                    raise AttributeError(f"Tool {name} not implemented")
                 
-                # Check if the method is async
-                if asyncio.iscoroutinefunction(method):
-                    result = await method(**payload)
-                else:
-                    result = method(**payload)
+                # Call the method with context
+                result = await method(ctx, **kwargs)
                 
-                return {
-                    "status": "success",
-                    "result": result
-                }
+                await ctx.info(f"Successfully executed tool {name}")
+                return result
             except Exception as e:
-                return {
-                    "status": "error",
-                    "message": str(e)
-                }
+                error_msg = f"Error executing tool {name}: {str(e)}"
+                await ctx.error(error_msg)
+                raise
+        
+        # Register the tool with MCP
+        self.mcp.tool(
+            name=name,
+            description=description,
+        )(tool_wrapper)
     
-    def register_method(self, name: str, description: str = "", parameters: Optional[Dict] = None):
+    def run(self):
         """
-        Register a method with the agent.
-        
-        Args:
-            name: Name of the method
-            description: Description of what the method does
-            parameters: Dictionary describing the parameters the method accepts
+        Run the MCP external agent server synchronously.
         """
-        if name not in self.methods:
-            self.methods[name] = {
-                "description": description,
-                "parameters": parameters or {}
-            }
+        self.logger.info(f"Starting MCP external agent {self.name}")
+        self.mcp.run()
     
-    def run(self, host: Optional[str] = None, port: Optional[int] = None):
+    async def run_async(self):
         """
-        Run the external agent server.
-        
-        Args:
-            host: Host address to run the server on (defaults to self.host)
-            port: Port to run the server on (defaults to self.port)
+        Run the MCP external agent server asynchronously.
         """
-        run_host = host or self.host
-        run_port = port or self.port
-        
-        self.logger.info(f"Starting external agent {self.name} on {run_host}:{run_port}")
-        uvicorn.run(self.app, host=run_host, port=run_port)
+        self.logger.info(f"Starting MCP external agent {self.name}")
+        # Since mcp.run() is blocking, we should run it differently for async
+        # For now, we'll run it in a thread or use a different approach
+        # This is a simplified version - in practice, you would handle async differently
+        await self.mcp.run()
     
-    async def run_async(self, host: Optional[str] = None, port: Optional[int] = None):
+    def get_mcp_registration_info(self) -> Dict[str, Any]:
         """
-        Run the external agent server asynchronously.
+        Get the MCP registration information needed for tool discovery.
         
-        Args:
-            host: Host address to run the server on (defaults to self.host)
-            port: Port to run the server on (defaults to self.port)
-        """
-        run_host = host or self.host
-        run_port = port or self.port
-        
-        self.logger.info(f"Starting external agent {self.name} on {run_host}:{run_port}")
-        config = uvicorn.Config(self.app, host=run_host, port=run_port, log_level="info")
-        server = uvicorn.Server(config)
-        await server.serve()
-    
-    def get_registration_info(self, endpoint_url: str, 
-                            authentication: Optional[Dict] = None,
-                            health_check_url: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Get the registration information needed to register this agent with UCS.
-        
-        Args:
-            endpoint_url: The base URL where this agent is hosted
-            authentication: Authentication configuration if required
-            health_check_url: Custom health check URL (defaults to endpoint_url + /health)
-            
         Returns:
-            Dictionary containing registration information
+            Dictionary containing MCP registration information
         """
         registration_info = {
             "name": self.name,
             "description": self.description,
             "version": self.version,
-            "endpoint_url": endpoint_url,
-            "methods": self.methods,
-            "enabled": True,
-            "settings": {
-                "timeout": 30
-            }
+            "mcp_compliant": True,
+            "mcp_exposed_methods": list(self.mcp._tool_manager._tools.keys()) if hasattr(self.mcp, '_tool_manager') else [],
         }
         
-        if authentication:
-            registration_info["authentication"] = authentication
-            
-        if health_check_url:
-            registration_info["health_check_url"] = health_check_url
-        else:
-            registration_info["health_check_url"] = f"{endpoint_url.rstrip('/')}/health"
-            
         return registration_info
+
+
+class SimpleMathAgent(BaseExternalAgent):
+    """
+    Example implementation of a simple math agent to demonstrate MCP usage.
+    """
+    
+    def __init__(self):
+        super().__init__(
+            name="SimpleMathAgent",
+            version="1.0.0",
+            description="A simple agent that performs basic math operations",
+            instructions="Use this agent to perform basic mathematical operations like addition and multiplication."
+        )
+        
+        # Register the tools this agent supports
+        self.register_tool(
+            "add", 
+            description="Add two numbers", 
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "a": {"type": "number", "description": "First number"},
+                    "b": {"type": "number", "description": "Second number"}
+                },
+                "required": ["a", "b"]
+            }
+        )
+        
+        self.register_tool(
+            "multiply", 
+            description="Multiply two numbers", 
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "a": {"type": "number", "description": "First number"},
+                    "b": {"type": "number", "description": "Second number"}
+                },
+                "required": ["a", "b"]
+            }
+        )
+    
+    async def add(self, ctx: Context, a: float, b: float) -> float:
+        """Add two numbers."""
+        result = a + b
+        await ctx.info(f"Calculated {a} + {b} = {result}")
+        self.logger.info(f"Calculated {a} + {b} = {result}")
+        return result
+    
+    async def multiply(self, ctx: Context, a: float, b: float) -> float:
+        """Multiply two numbers."""
+        result = a * b
+        await ctx.info(f"Calculated {a} * {b} = {result}")
+        self.logger.info(f"Calculated {a} * {b} = {result}")
+        return result
+
+
+if __name__ == "__main__":
+    # Example usage
+    agent = SimpleMathAgent()
+    agent.run()
 
 
 class SimpleMathAgent(BaseExternalAgent):

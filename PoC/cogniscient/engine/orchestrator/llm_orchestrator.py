@@ -6,7 +6,7 @@ from cogniscient.engine.gcs_runtime import GCSRuntime
 from cogniscient.engine.orchestrator.llm_evaluation import LLMEvaluation
 from cogniscient.engine.orchestrator.user_request_processor import UserRequestProcessor
 from cogniscient.engine.orchestrator.parameter_adaptation import ParameterAdaptation
-from cogniscient.engine.services.mcp_service import MCPServer
+from cogniscient.engine.services.mcp_service import MCPService
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +23,8 @@ class LLMOrchestrator:
         self.gcs_runtime = gcs_runtime
         # Use the LLM service from GCS runtime directly
         self.llm_service = gcs_runtime.llm_service
-        # Initialize MCP server for enhanced tool integration
-        self.mcp_server = MCPServer(gcs_runtime)
+        # Initialize MCP service for enhanced tool integration (both client and server)
+        self.mcp_service = MCPService(gcs_runtime)
         
         # Load parameter ranges and approval thresholds from agent configurations
         self.parameter_ranges = self._load_parameter_ranges()

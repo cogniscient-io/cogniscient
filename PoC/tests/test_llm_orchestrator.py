@@ -12,11 +12,11 @@ def test_llm_orchestrator_initialization():
     gcs_runtime.agent_configs = {}
     # Mock the required attributes to avoid AttributeError
     gcs_runtime.llm_service = MagicMock()
-    gcs_runtime.agents = {}  # This is needed for MCPServer initialization
+    gcs_runtime.agents = {}  # This is needed for MCPService initialization
     orchestrator = LLMOrchestrator(gcs_runtime)
     assert orchestrator is not None
     assert orchestrator.gcs_runtime == gcs_runtime
-    assert hasattr(orchestrator, 'mcp_server')
+    assert hasattr(orchestrator, 'mcp_service')
 
 
 @pytest.mark.asyncio

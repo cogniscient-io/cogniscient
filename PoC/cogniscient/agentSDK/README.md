@@ -1,6 +1,6 @@
 # Agent SDK
 
-This directory contains the infrastructure for creating and managing local agents in the Cognitive System framework.
+This directory contains the infrastructure for creating and managing local and external agents in the Cogniscient Adaptive Control System framework, with MCP (Model Context Protocol) integration.
 
 ## Table of Contents
 1. [Overview](#overview)
@@ -15,10 +15,10 @@ This directory contains the infrastructure for creating and managing local agent
 
 The Agent SDK provides a framework for developing two types of agents:
 
-1. **Local agents** that run within the UCS system
-2. **External agents** that run as separate HTTP services
+1. **Local agents** that run within the Cogniscient system
+2. **External agents** that run as MCP-compliant services using the Model Context Protocol
 
-Local agents inherit from the base `Agent` class and implement specific methods to perform tasks, while external agents are separate services that can be dynamically registered with the system.
+Local agents inherit from the base `Agent` class and implement specific methods to perform tasks, while external agents are MCP servers that can be discovered and used by the Cogniscient MCP client. The system uses MCP for standardized tool integration and orchestration.
 
 The Agent base class is defined in `base.py` and requires implementations of the `self_describe()` method.
 
@@ -80,39 +80,47 @@ class MyNewLocalAgent(Agent):
 
 ## Creating a New External Agent
 
-External agents run as separate HTTP services and can be dynamically registered with the UCS system. To create a new external agent:
+External agents run as MCP-compliant services that can be discovered by the Cogniscient system as an MCP client. To create a new external agent:
 
 1. Create a new Python file for your external agent
 2. Define a class that inherits from `BaseExternalAgent`
-3. Implement your custom methods
-4. Register the methods using the `register_method` function
+3. Implement your custom async methods that accept `Context` as the first parameter
+4. Register the tools using the `register_tool` function
 
 Example:
 
 ```python
+from mcp.server.fastmcp import Context
 from cogniscient.agentSDK.base_external_agent import BaseExternalAgent
 
 class MyNewExternalAgent(BaseExternalAgent):
-    """A sample external agent that runs as a separate service."""
+    """A sample MCP-compliant external agent that runs as a separate service."""
     
     def __init__(self):
         super().__init__(
             name="MyNewExternalAgent",
             version="1.0.0",
-            description="A sample external agent for demonstration"
+            description="A sample external agent for demonstration",
+            instructions="This agent can perform tasks when called by the Cogniscient system."
         )
         
-        # Register the methods this agent supports
-        self.register_method(
+        # Register the tools this agent exposes
+        self.register_tool(
             "perform_task", 
             description="Perform a specific task", 
-            parameters={
-                "param1": {"type": "string", "description": "A sample parameter", "required": True}
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "param1": {"type": "string", "description": "A sample parameter"}
+                },
+                "required": ["param1"]
             }
         )
     
-    def perform_task(self, param1: str) -> str:
+    async def perform_task(self, ctx: Context, param1: str) -> str:
         """Perform the main task of the external agent."""
+        # Use ctx for logging and context awareness
+        await ctx.info(f"Performing task with param1: {param1}")
         # Implementation here
         return f"External task performed with param1: {param1}"
 
@@ -148,9 +156,10 @@ The base `Agent` class is an abstract class that provides the common interface f
 ### External Agents
 External agents use the `BaseExternalAgent` base class and provide:
 
-- A FastAPI web server interface
-- Dynamic method registration through HTTP endpoints
-- Automatic endpoint generation for registered methods
+- An MCP-compliant server interface using the FastMCP framework
+- Tool registration following MCP specifications
+- Context-aware logging and progress reporting
+- Automatic tool discovery through MCP protocol
 
 ## Dynamic Configuration
 
@@ -184,11 +193,12 @@ See sample local agents in the `plugins/sample/agents/` directory and external a
 
 ### For External Agents:
 7. **Inheritance**: Always inherit from the `BaseExternalAgent` class  
-8. **Method Registration**: Use `register_method()` to properly register your methods with metadata
-9. **HTTP Endpoints**: Your methods will be automatically exposed as HTTP endpoints
+8. **Tool Registration**: Use `register_tool()` to properly register your tools with JSON schemas
+9. **MCP Compliance**: Make sure your methods are async and accept `Context` parameter for logging
+10. **Context Logging**: Use the `ctx` parameter for logging with proper severity levels
 
 ### General:
-10. **Documentation**: Document your agent's methods and parameters clearly
-11. **Testing**: Create unit tests for your agents
-12. **Security**: Validate all inputs to prevent injection attacks
-13. **Logging**: Use proper logging to track agent execution
+11. **Documentation**: Document your agent's methods and parameters clearly
+12. **Testing**: Create unit tests for your agents
+13. **Security**: Validate all inputs to prevent injection attacks
+14. **MCP Standards**: Follow MCP specifications for maximum interoperability

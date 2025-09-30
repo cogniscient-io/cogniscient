@@ -7,6 +7,23 @@ for local file-based agents and external agents.
 
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List
+from enum import Enum
+
+class ComponentType(Enum):
+    """Enum to distinguish between different types of components"""
+    LOCAL_AGENT = "local_agent"
+    EXTERNAL_AGENT = "external_agent"
+    INTERNAL_SERVICE = "internal_service"
+
+class UnifiedComponent:
+    """Represents a unified component that can be an agent or a service"""
+    def __init__(self, name: str, component_type: ComponentType, config: dict, load_behavior: str = "dynamic"):
+        self.name = name
+        self.component_type = component_type
+        self.config = config
+        self.load_behavior = load_behavior  # "dynamic" or "static"
+        self.instance = None
+        self.is_loaded = False
 
 class BaseAgentManager(ABC):
     """Abstract base class for all agent managers."""
@@ -45,6 +62,44 @@ class BaseAgentManager(ABC):
         Returns:
             The result of the method execution.
         """
+        pass
+
+class BaseUnifiedAgentManager(BaseAgentManager):
+    """Abstract base class for the unified agent/service manager"""
+    
+    @abstractmethod
+    def register_component(self, component: UnifiedComponent) -> bool:
+        """Register a component (agent or service) in the system"""
+        pass
+        
+    @abstractmethod
+    def deregister_component(self, name: str) -> bool:
+        """Deregister a component from the system"""
+        pass
+        
+    @abstractmethod
+    def load_component(self, name: str) -> bool:
+        """Load a component based on its configuration"""
+        pass
+        
+    @abstractmethod
+    def unload_component(self, name: str) -> bool:
+        """Unload a component from memory"""
+        pass
+        
+    @abstractmethod
+    def get_component(self, name: str) -> Any:
+        """Get a specific component by name"""
+        pass
+        
+    @abstractmethod
+    def get_all_components(self) -> Dict[str, Any]:
+        """Get all loaded components"""
+        pass
+        
+    @abstractmethod
+    def run_component_method(self, name: str, method_name: str, *args, **kwargs) -> Any:
+        """Run a specific method on a component"""
         pass
 
 class BaseLocalAgentManager(BaseAgentManager):

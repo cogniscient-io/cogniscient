@@ -11,6 +11,7 @@ from cogniscient.engine.services.contextual_llm_service import ContextualLLMServ
 import datetime
 from cogniscient.engine.agent_utils.local_agent_manager import LocalAgentManager
 from cogniscient.engine.agent_utils.external_agent_manager import ExternalAgentManager
+from cogniscient.engine.agent_utils.unified_agent_manager import UnifiedAgentManager, ComponentType, UnifiedComponent
 from cogniscient.engine.agent_utils.agent_coordinator import AgentCoordinator
 from cogniscient.engine.services.config_service import ConfigService
 from cogniscient.engine.services.system_parameters_service import SystemParametersService
@@ -48,7 +49,31 @@ class GCSRuntime:
         self.config_service.set_runtime(self)
         self.system_parameters_service.set_runtime(self)
 
-        # Initialize agent management utilities for cleaner separation of concerns
+        # Initialize the unified agent manager that handles both agents and services
+        self.unified_agent_manager = UnifiedAgentManager(
+            config_dir=config_dir,
+            agents_dir=agents_dir,
+            system_parameters_service=self.system_parameters_service
+        )
+        
+        # Register the internal services with the unified manager
+        config_service_component = UnifiedComponent(
+            name="ConfigManager",
+            component_type=ComponentType.INTERNAL_SERVICE,
+            config={"service_type": "config"},
+            load_behavior="static"
+        )
+        system_params_service_component = UnifiedComponent(
+            name="SystemParametersManager",
+            component_type=ComponentType.INTERNAL_SERVICE,
+            config={"service_type": "system_parameters"},
+            load_behavior="static"
+        )
+        
+        self.unified_agent_manager.register_component(config_service_component)
+        self.unified_agent_manager.register_component(system_params_service_component)
+
+        # Initialize legacy agent management utilities for backward compatibility
         self.local_agent_manager = LocalAgentManager(
             config_dir=config_dir,
             agents_dir=agents_dir,
@@ -57,12 +82,21 @@ class GCSRuntime:
         self.external_agent_manager = ExternalAgentManager()
         self.agent_coordinator = AgentCoordinator(self.local_agent_manager, self.external_agent_manager)
 
-        # Store references for backward compatibility but delegate functionality to local_agent_manager
-        self.agents = self.local_agent_manager.agents
+        # Store references for backward compatibility but delegate functionality to unified_agent_manager
         self.agent_configs = self.local_agent_manager.agent_configs
 
         # Set the runtime reference for agents that need access to runtime functionality
         self.local_agent_manager.set_runtime_ref(self)
+        self.unified_agent_manager.set_runtime_ref(self)
+
+    @property
+    def agents(self):
+        """Property to access agents through the unified manager for backward compatibility."""
+        all_agents = self.unified_agent_manager.get_all_agents()
+        # Filter out system services to maintain backward compatibility
+        filtered_agents = {name: agent for name, agent in all_agents.items() 
+                          if name not in ["ConfigManager", "SystemParametersManager"]}
+        return filtered_agents
 
     def load_agent_config(self, config_file: str) -> Dict[str, Any]:
         """Load an agent configuration from a JSON file.
@@ -153,10 +187,25 @@ class GCSRuntime:
         # Exclude the ConfigManager and SystemParametersManager since they're now services
         agent_names = [name for name in agent_configs.keys() 
                       if name not in ["ConfigManager", "SystemParametersManager"]]
-        self.local_agent_manager.load_specific_agents_by_name(agent_names)
+        
+        # Use the unified agent manager to load agents
+        for agent_name in agent_names:
+            if agent_name in agent_configs:
+                agent_config = agent_configs[agent_name]
+                if agent_config.get("enabled", True):
+                    # Create a local agent component and register it
+                    from cogniscient.engine.agent_utils.base_agent_manager import ComponentType, UnifiedComponent
+                    local_agent_component = UnifiedComponent(
+                        name=agent_name,
+                        component_type=ComponentType.LOCAL_AGENT,
+                        config=agent_config,
+                        load_behavior="dynamic"
+                    )
+                    self.unified_agent_manager.register_component(local_agent_component)
         
         # Ensure agents have access to the runtime reference
         self.local_agent_manager.set_runtime_ref(self)
+        self.unified_agent_manager.set_runtime_ref(self)
         
         # Set the agent registry in the LLM service
         self.llm_service.set_agent_registry(self.agents)
@@ -187,10 +236,46 @@ class GCSRuntime:
         # Load agents specified in the configuration, excluding system services
         agent_specs = [agent_spec for agent_spec in config.get("agents", []) 
                       if agent_spec["name"] not in ["ConfigManager", "SystemParametersManager"]]
-        self.local_agent_manager.load_specific_agents(agent_specs)
+        
+        # Use the unified agent manager to load the specified agents
+        for agent_spec in agent_specs:
+            agent_name = agent_spec["name"]
+            config_file = agent_spec.get("config_file", f"config_{agent_name}.json")
+            
+            # Check if config_file is a relative path or just a filename
+            if not os.path.isabs(config_file):
+                config_path = os.path.join(self.config_dir, config_file)
+            else:
+                config_path = config_file
+            
+            # Load the configuration from the specified file
+            if os.path.exists(config_path):
+                with open(config_path, "r") as f:
+                    agent_config = json.load(f)
+            else:
+                print(f"Configuration file not found: {config_path}")
+                continue
+            
+            # Get the merged configuration (defaults from code + values from config file)
+            merged_config = self.local_agent_manager.config_manager.get_merged_config(agent_name)
+            # If merged config was created, use it, otherwise use the loaded config
+            if merged_config is None:
+                merged_config = agent_config
+            
+            if merged_config and merged_config.get("enabled", True):
+                # Create a local agent component and register it with the unified manager
+                from cogniscient.engine.agent_utils.base_agent_manager import ComponentType, UnifiedComponent
+                local_agent_component = UnifiedComponent(
+                    name=agent_name,
+                    component_type=ComponentType.LOCAL_AGENT,
+                    config=merged_config,
+                    load_behavior="dynamic"
+                )
+                self.unified_agent_manager.register_component(local_agent_component)
         
         # Ensure agents have access to the runtime reference
         self.local_agent_manager.set_runtime_ref(self)
+        self.unified_agent_manager.set_runtime_ref(self)
         
         # Set the agent registry in the LLM service
         self.llm_service.set_agent_registry(self.agents)
@@ -227,6 +312,13 @@ class GCSRuntime:
         """Unload all currently loaded agents."""
         # Delegate to the local agent manager
         self.local_agent_manager.unload_all_agents()
+        
+        # Also unload components managed by the unified agent manager
+        component_names = list(self.unified_agent_manager.components.keys())
+        for name in component_names:
+            # Skip system services that should remain loaded
+            if name not in ["ConfigManager", "SystemParametersManager"]:
+                self.unified_agent_manager.unload_component(name)
         
         # Clear additional tracking
         self.agent_last_call.clear()
@@ -278,16 +370,8 @@ class GCSRuntime:
         }
         
         try:
-            # Use the appropriate agent manager to run the agent method
-            # First try the local agent manager
-            if agent_name in self.local_agent_manager.get_all_agents():
-                result = self.local_agent_manager.run_agent(agent_name, method_name, *args, **kwargs)
-            # Then try the external agent manager if available and the agent is not found locally
-            elif (self.external_agent_manager and 
-                  agent_name in self.external_agent_manager.get_all_agents()):
-                result = self.external_agent_manager.run_agent(agent_name, method_name, *args, **kwargs)
-            else:
-                raise ValueError(f"Agent {agent_name} not found in local or external managers")
+            # Use the unified agent manager to run the agent method
+            result = self.unified_agent_manager.run_component_method(agent_name, method_name, *args, **kwargs)
             call_info["result"] = result
         except ValueError as e:
             # Record the error and re-raise
@@ -332,7 +416,13 @@ class GCSRuntime:
 
     def shutdown(self) -> None:
         """Shutdown all agents."""
-        # Delegate to the local agent manager's unload functionality which handles shutdown
+        # Unload all components managed by the unified agent manager
+        for name in list(self.unified_agent_manager.components.keys()):
+            # Skip system services during shutdown since they're singleton instances
+            if name not in ["ConfigManager", "SystemParametersManager"]:
+                self.unified_agent_manager.unload_component(name)
+        
+        # Also delegate to the local agent manager's unload functionality
         self.local_agent_manager.unload_all_agents()
 
 

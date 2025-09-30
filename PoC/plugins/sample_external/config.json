@@ -1,0 +1,7 @@
+{
+  "agent_name": "WebsiteHostManager",
+  "version": "1.0.0",
+  "description": "Monitors system resources and manages website hosting software",
+  "hosted_software_process_name": "nginx",
+  "restart_threshold": 60
+}

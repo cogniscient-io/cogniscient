@@ -22,8 +22,20 @@ class AgentConfigManager:
             agents_dir: Directory where agent modules are located
             system_parameters_service: Optional reference to system parameters service
         """
-        self.config_dir = config_dir
-        self.agents_dir = agents_dir
+        # Validate config_dir and set to default if invalid
+        if config_dir and not os.path.exists(config_dir):
+            print(f"Warning: Config directory '{config_dir}' does not exist. Using default: '.'")
+            self.config_dir = "."
+        else:
+            self.config_dir = config_dir or "."
+        
+        # Validate agents_dir and set to default if invalid
+        if agents_dir and not os.path.exists(agents_dir):
+            print(f"Warning: Agents directory '{agents_dir}' does not exist. Using default: 'cogniscient/agentSDK'")
+            self.agents_dir = "cogniscient/agentSDK"
+        else:
+            self.agents_dir = agents_dir or "cogniscient/agentSDK"
+        
         self.system_parameters_service = system_parameters_service
         self.configs: Dict[str, Dict[str, Any]] = {}
         self.schema = load_schema()

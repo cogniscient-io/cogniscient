@@ -1,5 +1,11 @@
 """FastAPI backend for the LLM Orchestration Frontend."""
 
+# Standard library imports
+import asyncio
+import json
+import os
+
+# Third-party imports
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -8,16 +14,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
-import asyncio
-import json
-import sys
-import os
 
-# Add the project root directory to the Python path
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, project_root)
-
-# Import backend components with absolute imports from the cogniscient package
+# Import backend components from the installed cogniscient package
 from cogniscient.engine.orchestrator.chat_interface import ChatInterface
 from cogniscient.engine.orchestrator.llm_orchestrator import LLMOrchestrator
 from cogniscient.engine.gcs_runtime import GCSRuntime

@@ -6,12 +6,10 @@ custom external agents that implement the Model Context Protocol (MCP) as MCP se
 These agents can be discovered and used by MCP clients like the Cogniscient system.
 """
 
-import asyncio
 import logging
-from typing import Any, Dict, Optional, Callable, Awaitable
+from typing import Any, Dict, Optional
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp import Context
-from pydantic import BaseModel
 
 
 class BaseExternalAgent:

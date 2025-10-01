@@ -2,6 +2,7 @@
 Configuration settings for the Adaptive Chatbot application.
 """
 
+import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 
@@ -41,6 +42,18 @@ class Settings(BaseSettings):
         env_file=".env",
         case_sensitive=False
     )
+    
+    def model_post_init(self, __context):
+        """Post initialization validation to ensure directories exist if specified."""
+        # Validate config_dir after loading from env
+        if self.config_dir and self.config_dir != "." and not os.path.exists(self.config_dir):
+            print(f"Warning: Config directory '{self.config_dir}' from .env does not exist. Using default: '.'")
+            self.config_dir = "."
+        
+        # Validate agents_dir after loading from env
+        if self.agents_dir and self.agents_dir != "cogniscient/agentSDK" and not os.path.exists(self.agents_dir):
+            print(f"Warning: Agents directory '{self.agents_dir}' from .env does not exist. Using default: 'cogniscient/agentSDK'")
+            self.agents_dir = "cogniscient/agentSDK"
 
 # Create a global settings instance
 settings = Settings()

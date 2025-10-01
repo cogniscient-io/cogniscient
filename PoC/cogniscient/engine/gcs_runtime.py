@@ -27,8 +27,19 @@ class GCSRuntime:
             config_dir (str): Directory to load agent configurations from.
             agents_dir (str): Directory where agent modules are located.
         """
-        self.config_dir = config_dir
-        self.agents_dir = agents_dir
+        # Validate config_dir and set to default if invalid
+        if config_dir and not os.path.exists(config_dir):
+            print(f"Warning: Config directory '{config_dir}' does not exist. Using default: '.'")
+            self.config_dir = "."
+        else:
+            self.config_dir = config_dir or "."
+        
+        # Validate agents_dir and set to default if invalid
+        if agents_dir and not os.path.exists(agents_dir):
+            print(f"Warning: Agents directory '{agents_dir}' does not exist. Using default: 'cogniscient/agentSDK'")
+            self.agents_dir = "cogniscient/agentSDK"
+        else:
+            self.agents_dir = agents_dir or "cogniscient/agentSDK"
         self.additional_prompt_info: Dict[str, Any] = {}
         # Track last call information for each agent
         self.agent_last_call: Dict[str, Dict[str, Any]] = {}

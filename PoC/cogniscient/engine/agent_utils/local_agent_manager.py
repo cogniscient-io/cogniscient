@@ -23,13 +23,25 @@ class LocalAgentManager(BaseLocalAgentManager):
             agents_dir: Directory where agent modules are located
             system_parameters_service: Optional reference to system parameters service
         """
-        self.config_dir = config_dir
-        self.agents_dir = agents_dir
+        # Validate config_dir and set to default if invalid
+        if config_dir and not os.path.exists(config_dir):
+            print(f"Warning: Config directory '{config_dir}' does not exist. Using default: '.'")
+            self.config_dir = "."
+        else:
+            self.config_dir = config_dir or "."
+
+        # Validate agents_dir and set to default if invalid
+        if agents_dir and not os.path.exists(agents_dir):
+            print(f"Warning: Agents directory '{agents_dir}' does not exist. Using default: 'cogniscient/agentSDK'")
+            self.agents_dir = "cogniscient/agentSDK"
+        else:
+            self.agents_dir = agents_dir or "cogniscient/agentSDK"
+        
         self.system_parameters_service = system_parameters_service
         # Pass the system_parameters_service to the config manager
         self.config_manager = AgentConfigManager(
-            config_dir=config_dir, 
-            agents_dir=agents_dir, 
+            config_dir=self.config_dir, 
+            agents_dir=self.agents_dir, 
             system_parameters_service=system_parameters_service
         )
         self.agents: Dict[str, Any] = {}
@@ -259,7 +271,7 @@ class LocalAgentManager(BaseLocalAgentManager):
         if asyncio.iscoroutinefunction(method):
             # If we're inside an event loop, schedule the async call, otherwise run it
             try:
-                loop = asyncio.get_running_loop()
+                _ = asyncio.get_running_loop()
                 # If we're inside an event loop, we can't use asyncio.run directly
                 # Instead, we need to await the method or run it in a new task
                 # For this case, we'll just run the coroutine (the caller should await)

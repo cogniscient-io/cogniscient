@@ -3,10 +3,9 @@ Unified Agent Manager - Handles loading and management of both local agents and 
 """
 
 import asyncio
-import json
 import os
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict
 from .base_agent_manager import BaseUnifiedAgentManager, UnifiedComponent, ComponentType
 from cogniscient.engine.agent_utils.loader import load_agent_module
 from cogniscient.engine.agent_utils.agent_config_manager import AgentConfigManager
@@ -25,13 +24,25 @@ class UnifiedAgentManager(BaseUnifiedAgentManager):
             agents_dir: Directory where agent modules are located
             system_parameters_service: Optional reference to system parameters service
         """
-        self.config_dir = config_dir
-        self.agents_dir = agents_dir
+        # Validate config_dir and set to default if invalid
+        if config_dir and not os.path.exists(config_dir):
+            print(f"Warning: Config directory '{config_dir}' does not exist. Using default: '.'")
+            self.config_dir = "."
+        else:
+            self.config_dir = config_dir or "."
+
+        # Validate agents_dir and set to default if invalid
+        if agents_dir and not os.path.exists(agents_dir):
+            print(f"Warning: Agents directory '{agents_dir}' does not exist. Using default: 'cogniscient/agentSDK'")
+            self.agents_dir = "cogniscient/agentSDK"
+        else:
+            self.agents_dir = agents_dir or "cogniscient/agentSDK"
+        
         self.system_parameters_service = system_parameters_service
         # Pass the system_parameters_service to the config manager
         self.config_manager = AgentConfigManager(
-            config_dir=config_dir,
-            agents_dir=agents_dir,
+            config_dir=self.config_dir,
+            agents_dir=self.agents_dir,
             system_parameters_service=system_parameters_service
         )
         self.components: Dict[str, UnifiedComponent] = {}
@@ -173,15 +184,6 @@ class UnifiedAgentManager(BaseUnifiedAgentManager):
                 self.load_component(name)
         return {name: comp for name, comp in self.components.items()}
 
-    def get_all_agents(self) -> Dict[str, Any]:
-        """Get all loaded agents.
-        
-        Returns:
-            Dictionary mapping agent names to agent instances
-        """
-        all_components = self.get_all_components()
-        return {name: comp.instance for name, comp in all_components.items() if comp.instance is not None}
-
     def run_component_method(self, name: str, method_name: str, *args, **kwargs) -> Any:
         """Run a specific method on a component.
         
@@ -215,7 +217,7 @@ class UnifiedAgentManager(BaseUnifiedAgentManager):
         if asyncio.iscoroutinefunction(method):
             # If we're inside an event loop, we need to handle the async call appropriately
             try:
-                loop = asyncio.get_running_loop()
+                _ = asyncio.get_running_loop()
                 # If we're inside an event loop, return the coroutine for the caller to await
                 return method(*args, **kwargs)
             except RuntimeError:

@@ -4,6 +4,8 @@ Example agents demonstrating how to use the BaseExternalAgent class.
 This module provides examples of implementing custom external agents.
 """
 
+import time
+import asyncio
 from cogniscient.agentSDK.base_external_agent import BaseExternalAgent
 
 

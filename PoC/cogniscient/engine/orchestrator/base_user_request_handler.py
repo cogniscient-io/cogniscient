@@ -351,11 +351,25 @@ class BaseUserRequestHandler:
                             prompt += f"Agent: {agent_name}\n"
                             prompt += f"Method: {method_name}\n"
                             prompt += f"Parameters: {parameters}\n"
-                            prompt += f"Result: {json.dumps(result)}\n\n"
+                            # Format configuration results more clearly to avoid placeholder issues
+                            if agent_name == "ConfigManager" and method_name == "list_configurations":
+                                if isinstance(result, dict) and result.get("status") == "success":
+                                    configs = result.get("configurations", [])
+                                    config_names = [config.get("name", "") for config in configs if isinstance(config, dict)]
+                                    prompt += f"Result: Successfully retrieved {len(config_names)} configurations: {', '.join(config_names)}\n\n"
+                                else:
+                                    prompt += f"Result: {json.dumps(result)}\n\n"
+                            else:
+                                prompt += f"Result: {json.dumps(result)}\n\n"
+                            
                             prompt += "INSTRUCTIONS:\n"
                             prompt += "1. Analyze the result above.\n"
                             prompt += "2. You may make ONE more tool call if needed to complete your investigation.\n"
-                            prompt += "3. For website errors, perform a DNS lookup using SampleAgentA to determine if the domain exists.\n"
+                            # Only suggest DNS lookup for website-related issues, not for configuration listing
+                            if agent_name != "ConfigManager":
+                                prompt += "3. For website errors, perform a DNS lookup using SampleAgentA to determine if the domain exists.\n"
+                            else:
+                                prompt += "3. This is a configuration listing result. Do not perform DNS lookups for configuration data.\n"
                             prompt += "4. After investigating, provide a clear explanation to the user about what you found and what it means.\n"
                             prompt += "5. Do NOT make endless recursive calls - limit yourself to the tools needed to answer the user's question.\n"
                             prompt += "To make a tool call, use the EXACT same JSON format as before:\n"
@@ -370,7 +384,8 @@ class BaseUserRequestHandler:
                             prompt += "Only use the agent names and method names that are available.\n"
                             
                             # If this was an error result, encourage follow-up investigation
-                            if isinstance(result, dict) and result.get("status") == "error":
+                            # But only for non-configuration tools
+                            if isinstance(result, dict) and result.get("status") == "error" and agent_name != "ConfigManager":
                                 prompt += "IMPORTANT: The previous tool call resulted in an error. "
                                 prompt += "Perform one more investigation tool call if it would help clarify the issue.\n"
                                 prompt += "For website errors, a DNS lookup using SampleAgentA can determine if the domain exists.\n"
@@ -559,7 +574,7 @@ class BaseUserRequestHandler:
                             suggested_agents=response_json.get("suggested_agents", suggested_agents),
                             token_counts=total_token_counts
                         )
-            except:
+            except Exception:
                 # If parsing fails, treat it as a regular response
                 pass
             

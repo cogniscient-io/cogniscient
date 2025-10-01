@@ -12,15 +12,17 @@ logger = logging.getLogger(__name__)
 class ContextualLLMService:
     """High-level service for interacting with LLMs with contextual information."""
     
-    def __init__(self, llm_service: LLMService, agent_registry: Optional[Dict[str, Any]] = None):
+    def __init__(self, llm_service: LLMService, agent_registry: Optional[Dict[str, Any]] = None, system_services: Optional[Dict[str, Any]] = None):
         """Initialize the contextual LLM service.
         
         Args:
             llm_service (LLMService): The underlying LLM service for transport.
             agent_registry (Dict[str, Any], optional): Agent registry information.
+            system_services (Dict[str, Any], optional): System services information.
         """
         self.llm_service = llm_service
         self.agent_registry = agent_registry
+        self.system_services = system_services or {}
 
     async def generate_response(
         self, 
@@ -188,8 +190,11 @@ class ContextualLLMService:
             system_services (Dict[str, Any], optional): System services information.
         """
         self.agent_registry = agent_registry
-        # System services capabilities are defined within the method that formats them,
-        # so we don't need to store them separately
+        if system_services:
+            self.system_services = system_services
+        else:
+            # Initialize with default system services if not provided
+            self.system_services = {}
 
     def _format_system_service_capabilities(self) -> str:
         """Format system service capabilities for inclusion in system prompt.
@@ -198,7 +203,7 @@ class ContextualLLMService:
             str: Formatted system service capabilities string.
         """
         # Define system service capabilities as a static structure for now
-        system_services = {
+        default_system_services = {
             "ConfigManager": {
                 "name": "ConfigService",
                 "version": "1.0.0",
@@ -270,8 +275,10 @@ class ContextualLLMService:
             }
         }
         
+        # Include any additional system services passed during initialization
+        all_system_services = {**default_system_services, **self.system_services}
         capabilities_str = "\\n[SYSTEM_SERVICES]\\n"
-        for name, service_info in system_services.items():
+        for name, service_info in all_system_services.items():
             capabilities_str += f"- {name}: {service_info.get('description', f'System service {name}')}\\n"
             
             methods = service_info.get("methods", {})

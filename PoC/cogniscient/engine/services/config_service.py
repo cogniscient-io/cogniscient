@@ -31,6 +31,10 @@ class ConfigService:
 
     def update_config_dir(self, config_dir: str):
         """Update the config directory."""
+        # Validate config_dir exists before updating
+        if config_dir and not os.path.exists(config_dir):
+            print(f"Warning: Config directory '{config_dir}' does not exist. Keeping current directory: {self.config_dir}")
+            return
         self.config_dir = config_dir
 
     def set_runtime(self, runtime):

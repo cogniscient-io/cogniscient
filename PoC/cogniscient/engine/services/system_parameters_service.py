@@ -1,5 +1,6 @@
 """System Parameters Service for dynamic system parameter adjustment."""
 
+import os
 from cogniscient.engine.config.settings import settings
 from typing import Dict, Any
 
@@ -170,6 +171,12 @@ class SystemParametersService:
                     "message": f"Log level set to {converted_value}"
                 }
             elif parameter_name == "agents_dir":
+                # Validate the agents_dir exists before updating
+                if parameter_value and not os.path.exists(parameter_value):
+                    return {
+                        "status": "error",
+                        "message": f"Agents directory '{parameter_value}' does not exist. Please provide a valid directory path."
+                    }
                 # Update the runtime's agents_dir
                 if self.gcs_runtime:
                     self.gcs_runtime.agents_dir = parameter_value
@@ -183,6 +190,12 @@ class SystemParametersService:
                     "message": f"Agents directory set to {parameter_value}"
                 }
             elif parameter_name == "config_dir":
+                # Validate the config_dir exists before updating
+                if parameter_value and not os.path.exists(parameter_value):
+                    return {
+                        "status": "error",
+                        "message": f"Config directory '{parameter_value}' does not exist. Please provide a valid directory path."
+                    }
                 # Update the runtime's config_dir
                 if self.gcs_runtime:
                     self.gcs_runtime.config_dir = parameter_value
@@ -193,20 +206,7 @@ class SystemParametersService:
                     "status": "success",
                     "message": f"Config directory set to {parameter_value}"
                 }
-            elif parameter_name == "llm_model":
-                # Update the LLM model setting
-                settings.llm_model = parameter_value
-                return {
-                    "status": "success",
-                    "message": f"LLM model set to {parameter_value}"
-                }
-            elif parameter_name == "llm_base_url":
-                # Update the LLM base URL setting
-                settings.llm_base_url = parameter_value
-                return {
-                    "status": "success",
-                    "message": f"LLM base URL set to {parameter_value}"
-                }
+
             elif parameter_name == "runtime_data_dir":
                 # Update the runtime data directory setting
                 settings.runtime_data_dir = parameter_value

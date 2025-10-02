@@ -6,8 +6,7 @@ import importlib.util
 import json
 import os
 from typing import Any, Dict, List
-from cogniscient.engine.services.litellm_adapter import LiteLLMAdapter as LLMService
-from cogniscient.engine.services.contextual_llm_service import ContextualLLMService
+from cogniscient.engine.llm_orchestrator.contextual_llm_service import ContextualLLMService
 import datetime
 from cogniscient.engine.agent_utils.local_agent_manager import LocalAgentManager
 from cogniscient.engine.agent_utils.external_agent_manager import ExternalAgentManager

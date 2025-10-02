@@ -3,9 +3,9 @@
 import logging
 from typing import Callable, Dict, Any, List
 from cogniscient.engine.gcs_runtime import GCSRuntime
-from cogniscient.engine.orchestrator.llm_evaluation import LLMEvaluation
-from cogniscient.engine.orchestrator.user_request_processor import UserRequestProcessor
-from cogniscient.engine.orchestrator.parameter_adaptation import ParameterAdaptation
+from cogniscient.engine.llm_orchestrator.llm_evaluation import LLMEvaluation
+from cogniscient.engine.llm_orchestrator.user_request_processor import UserRequestProcessor
+from cogniscient.engine.llm_orchestrator.parameter_adaptation import ParameterAdaptation
 from cogniscient.engine.services.mcp_service import MCPService
 
 logger = logging.getLogger(__name__)

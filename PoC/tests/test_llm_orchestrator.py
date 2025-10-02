@@ -2,7 +2,7 @@
 
 import pytest
 from unittest.mock import MagicMock
-from cogniscient.engine.orchestrator.llm_orchestrator import LLMOrchestrator
+from cogniscient.engine.llm_orchestrator.llm_orchestrator import LLMOrchestrator
 from cogniscient.engine.gcs_runtime import GCSRuntime
 
 

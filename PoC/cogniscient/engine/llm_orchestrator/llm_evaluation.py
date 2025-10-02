@@ -3,7 +3,7 @@
 import json
 import logging
 from typing import Dict, Any
-from cogniscient.engine.services.contextual_llm_service import ContextualLLMService
+from cogniscient.engine.llm_orchestrator.contextual_llm_service import ContextualLLMService
 from cogniscient.llm.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ class LLMEvaluation:
         if llm_service is not None:
             self.llm_service = llm_service
         elif provider_manager:
-            from cogniscient.engine.services.contextual_llm_service import ContextualLLMService
+            from cogniscient.engine.llm_orchestrator.contextual_llm_service import ContextualLLMService
             self.llm_service = ContextualLLMService(provider_manager=provider_manager)
         else:
             raise ValueError("Either llm_service or provider_manager must be provided")

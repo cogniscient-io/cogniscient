@@ -1,9 +1,9 @@
 """Unit tests for token display functionality and validation."""
 
 from unittest.mock import MagicMock, patch
-from cogniscient.engine.services.litellm_adapter import LiteLLMAdapter as LLMService
-from cogniscient.engine.services.contextual_llm_service import ContextualLLMService
-from cogniscient.engine.orchestrator.chat_interface import ChatInterface
+from cogniscient.llm.providers.litellm_adapter import LiteLLMAdapter as LLMService
+from cogniscient.engine.llm_orchestrator.contextual_llm_service import ContextualLLMService
+from cogniscient.engine.llm_orchestrator.chat_interface import ChatInterface
 from cogniscient.engine.gcs_runtime import GCSRuntime
 import pytest
 
@@ -19,8 +19,8 @@ async def test_llm_service_returns_token_counts():
     mock_response.choices[0].message.content = "Hello! How can I assist you today?"
     
     # Mock the token_counter function separately
-    with patch('cogniscient.engine.services.litellm_adapter.litellm.token_counter') as mock_token_counter, \
-         patch('cogniscient.engine.services.litellm_adapter.acompletion', return_value=mock_response):
+    with patch('cogniscient.llm.providers.litellm_adapter.litellm.token_counter') as mock_token_counter, \
+         patch('cogniscient.llm.providers.litellm_adapter.acompletion', return_value=mock_response):
         
         mock_token_counter.side_effect = [15, 25]  # Input tokens, output tokens
         

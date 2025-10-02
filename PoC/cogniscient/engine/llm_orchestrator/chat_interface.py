@@ -3,7 +3,7 @@
 import json
 import logging
 from typing import Callable, Dict, Any, List
-from cogniscient.engine.services.contextual_llm_service import ContextualLLMService
+from cogniscient.engine.llm_orchestrator.contextual_llm_service import ContextualLLMService
 from cogniscient.llm.llm_service import LLMService as ProviderManager  # The main service (formerly ProviderManager)
 from cogniscient.engine.config.settings import settings
 

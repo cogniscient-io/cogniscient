@@ -4,7 +4,6 @@ import asyncio
 import json
 import logging
 from typing import Dict, Any, List, Optional, Callable
-from cogniscient.engine.services.litellm_adapter import LiteLLMAdapter as LLMService
 from cogniscient.llm.llm_service import LLMService
 from cogniscient.engine.gcs_runtime import GCSRuntime
 from cogniscient.engine.config.settings import settings
@@ -29,7 +28,7 @@ class BaseUserRequestHandler:
             self.llm_service = gcs_runtime.llm_service  # This is the ContextualLLMService
         elif provider_manager:
             # If we only have the provider manager, create a contextual service
-            from cogniscient.engine.services.contextual_llm_service import ContextualLLMService
+            from cogniscient.engine.llm_orchestrator.contextual_llm_service import ContextualLLMService
             self.llm_service = ContextualLLMService(provider_manager=provider_manager)
         else:
             raise ValueError("Either gcs_runtime with llm_service or provider_manager must be provided")

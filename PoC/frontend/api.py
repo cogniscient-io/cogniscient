@@ -16,8 +16,8 @@ from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 
 # Import backend components from the installed cogniscient package
-from cogniscient.engine.orchestrator.chat_interface import ChatInterface
-from cogniscient.engine.orchestrator.llm_orchestrator import LLMOrchestrator
+from cogniscient.engine.llm_orchestrator.chat_interface import ChatInterface
+from cogniscient.engine.llm_orchestrator.llm_orchestrator import LLMOrchestrator
 from cogniscient.engine.gcs_runtime import GCSRuntime
 from cogniscient.engine.config.settings import settings
 

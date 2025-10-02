@@ -2,8 +2,8 @@
 
 import pytest
 from unittest.mock import Mock, patch
-from cogniscient.engine.orchestrator.chat_interface import ChatInterface
-from cogniscient.engine.orchestrator.llm_orchestrator import LLMOrchestrator
+from cogniscient.engine.llm_orchestrator.chat_interface import ChatInterface
+from cogniscient.engine.llm_orchestrator.llm_orchestrator import LLMOrchestrator
 
 
 @pytest.mark.asyncio

@@ -3,7 +3,7 @@ Main LLM Service for switching between different LLM providers.
 """
 import asyncio
 from typing import List, Dict, Any, Optional
-from cogniscient.engine.services.litellm_adapter import LiteLLMAdapter
+from cogniscient.llm.providers.litellm_adapter import LiteLLMAdapter
 from .qwen_client import QwenClient
 from cogniscient.auth.token_manager import TokenManager
 

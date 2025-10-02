@@ -3,10 +3,9 @@
 import logging
 from typing import Callable, Dict, Any, List
 from cogniscient.engine.gcs_runtime import GCSRuntime
-from cogniscient.engine.services.litellm_adapter import LiteLLMAdapter as LLMService
-from cogniscient.engine.services.contextual_llm_service import ContextualLLMService
+from cogniscient.engine.llm_orchestrator.contextual_llm_service import ContextualLLMService
 from cogniscient.llm.llm_service import LLMService
-from cogniscient.engine.orchestrator.base_user_request_handler import BaseUserRequestHandler
+from cogniscient.engine.llm_orchestrator.base_user_request_handler import BaseUserRequestHandler
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +27,7 @@ class UserRequestProcessor(BaseUserRequestHandler):
         elif hasattr(gcs_runtime, 'llm_service') and gcs_runtime.llm_service:
             actual_service = gcs_runtime.llm_service
         elif provider_manager:
-            from cogniscient.engine.services.contextual_llm_service import ContextualLLMService
+            from cogniscient.engine.llm_orchestrator.contextual_llm_service import ContextualLLMService
             actual_service = ContextualLLMService(provider_manager=provider_manager)
         else:
             raise ValueError("Either llm_service, gcs_runtime with llm_service, or provider_manager must be provided")

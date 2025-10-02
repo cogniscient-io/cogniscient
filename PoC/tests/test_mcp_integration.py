@@ -5,8 +5,7 @@ import asyncio
 from unittest.mock import Mock, AsyncMock
 
 from cogniscient.engine.services.mcp_service import MCPService, create_mcp_service
-from cogniscient.engine.services.contextual_llm_service import ContextualLLMService
-from cogniscient.engine.services.litellm_adapter import LiteLLMAdapter as LLMService
+from cogniscient.engine.llm_orchestrator.contextual_llm_service import ContextualLLMService
 from cogniscient.engine.gcs_runtime import GCSRuntime
 
 
@@ -40,8 +39,9 @@ async def test_mcp_service_integration():
     
     print("✓ MCP service has all required methods")
     
-    # Mock LLM service (provider manager)
-    mock_llm_service = Mock(spec=LLMService)  # This is the main LLMService (formerly ProviderManager)
+    # Mock provider manager (the low-level provider interface that ContextualLLMService expects)
+    # This mock needs to have a generate_response method that returns the expected data
+    mock_llm_service = AsyncMock()
     # Note: The mocked service doesn't need model/api_key since it's mocked
     
     # Create contextual LLM service with MCP service as a system service

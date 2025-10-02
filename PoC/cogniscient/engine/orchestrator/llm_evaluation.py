@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Dict, Any
 from cogniscient.engine.services.contextual_llm_service import ContextualLLMService
-from cogniscient.llm.llm_service import LLMService as ProviderManager  # For backward compatibility during transition
+from cogniscient.llm.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
 
@@ -12,12 +12,12 @@ logger = logging.getLogger(__name__)
 class LLMEvaluation:
     """Handles evaluation of agent outputs using LLM."""
 
-    def __init__(self, llm_service: ContextualLLMService = None, provider_manager: ProviderManager = None):
+    def __init__(self, llm_service: ContextualLLMService = None, provider_manager: LLMService = None):
         """Initialize the evaluation module with LLM service.
         
         Args:
             llm_service (ContextualLLMService): The contextual LLM service instance.
-            provider_manager (ProviderManager): The provider manager instance for LLM operations.
+            provider_manager (LLMService): The LLM service instance for LLM operations.
         """
         # Initialize with provided service or create contextual service from provider manager
         if llm_service is not None:

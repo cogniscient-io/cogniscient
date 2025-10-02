@@ -4,7 +4,7 @@ Demonstration script for the OAuth and Qwen LLM integration.
 import asyncio
 from cogniscient.auth.oauth_manager import OAuthManager
 from cogniscient.auth.token_manager import TokenManager
-from cogniscient.llm.provider_manager import ProviderManager
+from cogniscient.llm.llm_service import LLMService
 from cogniscient.engine.config.settings import settings
 
 
@@ -35,26 +35,26 @@ async def demo():
     has_creds = await temp_token_manager.has_valid_credentials()
     print(f"   Has valid credentials: {has_creds}")
     
-    print("\n4. Creating provider manager with token manager...")
-    provider_manager = ProviderManager(token_manager=temp_token_manager)
-    print("   Provider manager created successfully")
+    print("\n4. Creating LLM service with token manager...")
+    llm_service = LLMService(token_manager=temp_token_manager)
+    print("   LLM service created successfully")
     
     print("\n5. Getting available providers...")
-    providers = await provider_manager.get_available_providers()
+    providers = await llm_service.get_available_providers()
     print(f"   Available providers: {providers}")
     
     print("\n6. Current provider:")
-    print(f"   Active provider: {provider_manager.current_provider}")
+    print(f"   Active provider: {llm_service.current_provider}")
     
     print("\n7. Switching provider to litellm...")
-    result = provider_manager.set_provider("litellm")
+    result = llm_service.set_provider("litellm")
     print(f"   Switch successful: {result}")
-    print(f"   Active provider: {provider_manager.current_provider}")
+    print(f"   Active provider: {llm_service.current_provider}")
     
     print("\n8. Attempting to switch to Qwen provider...")
-    result = provider_manager.set_provider("qwen")
+    result = llm_service.set_provider("qwen")
     print(f"   Switch to qwen successful: {result}")
-    print(f"   Active provider: {provider_manager.current_provider if result else 'Remained as litellm'}")
+    print(f"   Active provider: {llm_service.current_provider if result else 'Remained as litellm'}")
     
     # Clean up temp directory
     import shutil

@@ -5,7 +5,7 @@ from typing import Callable, Dict, Any, List
 from cogniscient.engine.gcs_runtime import GCSRuntime
 from cogniscient.engine.services.litellm_adapter import LiteLLMAdapter as LLMService
 from cogniscient.engine.services.contextual_llm_service import ContextualLLMService
-from cogniscient.llm.llm_service import LLMService as ProviderManager  # For backward compatibility during transition
+from cogniscient.llm.llm_service import LLMService
 from cogniscient.engine.orchestrator.base_user_request_handler import BaseUserRequestHandler
 
 logger = logging.getLogger(__name__)
@@ -14,13 +14,13 @@ logger = logging.getLogger(__name__)
 class UserRequestProcessor(BaseUserRequestHandler):
     """Handles processing of user requests with LLM to determine appropriate agents."""
 
-    def __init__(self, gcs_runtime: GCSRuntime, llm_service: ContextualLLMService = None, provider_manager: ProviderManager = None):
+    def __init__(self, gcs_runtime: GCSRuntime, llm_service: ContextualLLMService = None, provider_manager: LLMService = None):
         """Initialize the user request processor.
         
         Args:
             gcs_runtime (GCSRuntime): The GCS runtime instance to manage agents.
             llm_service (ContextualLLMService): The contextual LLM service instance.
-            provider_manager (ProviderManager): The provider manager instance for LLM operations.
+            provider_manager (LLMService): The LLM service instance for LLM operations.
         """
         # Use the contextual LLM service from the GCS runtime if available
         if llm_service is not None:

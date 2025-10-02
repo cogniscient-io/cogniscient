@@ -13,7 +13,7 @@ sys.path.insert(0, str(project_root))
 from cogniscient.auth.token_manager import TokenManager
 from cogniscient.llm.qwen_client import QwenClient
 from cogniscient.engine.config.settings import settings
-from cogniscient.llm.provider_manager import ProviderManager
+from cogniscient.llm.llm_service import LLMService
 
 
 async def test_qwen_api():
@@ -101,7 +101,7 @@ async def test_qwen_api():
 
 
 async def test_provider_switch():
-    """Test switching to Qwen provider using the ProviderManager."""
+    """Test switching to Qwen provider using the LLMService."""
     print("\n" + "="*50)
     print("Testing Provider Manager with Qwen...")
     
@@ -111,13 +111,13 @@ async def test_provider_switch():
         credentials_dir=settings.qwen_credentials_dir
     )
     
-    # Initialize provider manager with token manager
-    provider_manager = ProviderManager(token_manager=token_manager)
+    # Initialize LLM service with token manager
+    llm_service = LLMService(token_manager=token_manager)
     
-    print(f"Available providers: {await provider_manager.get_available_providers()}")
+    print(f"Available providers: {await llm_service.get_available_providers()}")
     
     # Try to switch to Qwen provider
-    success = provider_manager.set_provider("qwen")
+    success = llm_service.set_provider("qwen")
     if success:
         print("✅ Successfully switched to Qwen provider!")
         
@@ -127,7 +127,7 @@ async def test_provider_switch():
             {"role": "user", "content": "Hello from Cogniscient!"}
         ]
         
-        response = await provider_manager.generate_response(
+        response = await llm_service.generate_response(
             messages=messages,
             model="coder-model"  # Using the default Qwen model from the TypeScript code
         )

@@ -5,7 +5,7 @@ import json
 import logging
 from typing import Dict, Any, List, Optional, Callable
 from cogniscient.engine.services.litellm_adapter import LiteLLMAdapter as LLMService
-from cogniscient.llm.llm_service import LLMService as ProviderManager  # For backward compatibility during transition
+from cogniscient.llm.llm_service import LLMService
 from cogniscient.engine.gcs_runtime import GCSRuntime
 from cogniscient.engine.config.settings import settings
 
@@ -16,12 +16,12 @@ logger = logging.getLogger(__name__)
 class BaseUserRequestHandler:
     """Base class for processing user requests with shared functionality."""
 
-    def __init__(self, gcs_runtime: GCSRuntime, provider_manager: 'LLMService' = None):  # Using forward reference
+    def __init__(self, gcs_runtime: GCSRuntime, provider_manager: LLMService = None):
         """Initialize the base request handler.
         
         Args:
             gcs_runtime (GCSRuntime): The GCS runtime instance to manage agents.
-            provider_manager (LLMService): The LLM service instance for LLM operations (formerly ProviderManager).
+            provider_manager (LLMService): The LLM service instance for LLM operations.
         """
         self.gcs_runtime = gcs_runtime
         # Use the provider manager's contextual LLM service if available

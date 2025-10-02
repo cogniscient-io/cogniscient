@@ -135,12 +135,12 @@ def run_command_mode():
         gcs = GCSRuntime(config_dir=settings.config_dir, agents_dir=settings.agents_dir)
         
         async def switch_provider():
-            success = gcs.provider_manager.set_provider(args.provider)
+            success = gcs.llm_service_internal.set_provider(args.provider)
             if success:
                 print(f"Provider switched to: {args.provider}")
             else:
                 print(f"Failed to switch to provider: {args.provider}")
-                available = await gcs.provider_manager.get_available_providers()
+                available = await gcs.llm_service_internal.get_available_providers()
                 print(f"Available providers: {available}")
                 sys.exit(1)
         

@@ -134,7 +134,7 @@ class InteractiveCLI:
                 f"- Current config: {current_config}\n"
                 f"- Interactions in session: {interaction_count}\n"
                 f"- Authentication: {auth_status}\n"
-                f"- Current provider: {self.gcs_runtime.provider_manager.current_provider}"
+                f"- Current provider: {self.gcs_runtime.llm_service_internal.current_provider}"
             )
             
         elif user_input.lower() in ['exit', 'quit', 'bye']:
@@ -214,7 +214,7 @@ class InteractiveCLI:
         
         elif user_input.lower() == 'list-providers' or user_input.lower() == 'list providers':
             try:
-                providers = asyncio.run(self.gcs_runtime.provider_manager.get_available_providers())
+                providers = asyncio.run(self.gcs_runtime.llm_service_internal.get_available_providers())
                 return f"Available providers: {', '.join(providers)}"
             except Exception as e:
                 return f"Error in list-providers command: {str(e)}"
@@ -447,11 +447,11 @@ class InteractiveCLI:
             String response to user
         """
         try:
-            success = self.gcs_runtime.provider_manager.set_provider(provider_name)
+            success = self.gcs_runtime.llm_service_internal.set_provider(provider_name)
             if success:
                 return f"Provider switched to: {provider_name}"
             else:
-                available = await self.gcs_runtime.provider_manager.get_available_providers()
+                available = await self.gcs_runtime.llm_service_internal.get_available_providers()
                 return f"Failed to switch to provider: {provider_name}. Available providers: {', '.join(available)}"
         except Exception as e:
             return f"Error switching provider: {str(e)}"

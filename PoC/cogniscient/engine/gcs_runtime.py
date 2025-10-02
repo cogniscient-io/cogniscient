@@ -15,7 +15,7 @@ from cogniscient.engine.agent_utils.unified_agent_manager import UnifiedAgentMan
 from cogniscient.engine.agent_utils.agent_coordinator import AgentCoordinator
 from cogniscient.engine.services.config_service import ConfigService
 from cogniscient.engine.services.system_parameters_service import SystemParametersService
-from cogniscient.llm.llm_service import LLMService as ProviderManager  # For backward compatibility during transition
+from cogniscient.llm.llm_service import LLMService
 from cogniscient.auth.token_manager import TokenManager
 from cogniscient.engine.config.settings import settings
 
@@ -53,15 +53,15 @@ class GCSRuntime:
             credentials_dir=settings.qwen_credentials_dir
         )
         
-        # Initialize provider manager with token manager
-        self.provider_manager = ProviderManager(self.token_manager)
+        # Initialize LLM service with token manager
+        self.llm_service_internal = LLMService(self.token_manager)
         
         # Set the default provider from settings
-        self.provider_manager.set_provider(settings.default_provider)
+        self.llm_service_internal.set_provider(settings.default_provider)
         
-        # Create the contextual LLM service directly using the provider manager
-        # Now that ContextualLLMService expects a provider manager directly
-        self.llm_service = ContextualLLMService(provider_manager=self.provider_manager)
+        # Create the contextual LLM service directly using the LLM service
+        # Now that ContextualLLMService expects an LLM service directly
+        self.llm_service = ContextualLLMService(provider_manager=self.llm_service_internal)
         
         # Agent registry will be set after agents are loaded
         # Set a reference to self in the runtime for agents to access

@@ -13,6 +13,9 @@ from cogniscient.engine.gcs_runtime import GCSRuntime
 from cogniscient.engine.orchestrator.chat_interface import ChatInterface
 from cogniscient.engine.orchestrator.llm_orchestrator import LLMOrchestrator
 from .session_manager import SessionManager
+from cogniscient.auth.oauth_manager import OAuthManager
+from cogniscient.auth.token_manager import TokenManager
+from cogniscient.engine.config.settings import settings
 
 class InteractiveCLI:
     """
@@ -40,7 +43,8 @@ class InteractiveCLI:
         # Define command completions
         self.completer = WordCompleter([
             'help', 'exit', 'quit', 'status', 
-            'list-configs', 'list-agents', 'run-agent'
+            'list-configs', 'list-agents', 'run-agent',
+            'auth', 'auth-status', 'switch-provider', 'list-providers'
         ])
     
     def start_session(self):
@@ -118,11 +122,20 @@ class InteractiveCLI:
             current_config = info.get('active_config', 'None')
             interaction_count = info['interaction_count']
             
+            # Check authentication status
+            import asyncio
+            try:
+                auth_status = asyncio.run(self._get_auth_status())
+            except:
+                auth_status = "Unable to check authentication status"
+            
             return (
                 f"System Status:\n"
                 f"- Active agents: {', '.join(active_agents) if active_agents else 'None'}\n"
                 f"- Current config: {current_config}\n"
-                f"- Interactions in session: {interaction_count}"
+                f"- Interactions in session: {interaction_count}\n"
+                f"- Authentication: {auth_status}\n"
+                f"- Current provider: {self.gcs_runtime.provider_manager.current_provider}"
             )
             
         elif user_input.lower() in ['exit', 'quit', 'bye']:
@@ -167,6 +180,26 @@ class InteractiveCLI:
             self.session_manager.clear_conversation_history()
             self.session_manager.update_session_context('last_action', 'Cleared conversation history')
             return "Conversation history cleared."
+        
+        # Authentication-related commands
+        elif user_input.lower().startswith('auth login') or user_input.lower() == 'auth':
+            return asyncio.run(self._perform_auth_login())
+        
+        elif user_input.lower() == 'auth-status' or user_input.lower() == 'auth status':
+            auth_status = asyncio.run(self._get_auth_status())
+            return f"Authentication status: {auth_status}"
+        
+        elif user_input.lower().startswith('switch-provider ') or user_input.lower().startswith('switch provider '):
+            parts = user_input.split(' ', 2)
+            if len(parts) >= 3:
+                provider_name = parts[-1].strip()
+                return asyncio.run(self._switch_provider(provider_name))
+            else:
+                return "Please specify a provider. Usage: switch-provider <provider_name>"
+        
+        elif user_input.lower() == 'list-providers' or user_input.lower() == 'list providers':
+            providers = asyncio.run(self.gcs_runtime.provider_manager.get_available_providers())
+            return f"Available providers: {', '.join(providers)}"
         
         # Check for direct CLI commands - these are handled directly by the GCSRuntime
         elif user_input.lower().startswith('list-configs'):
@@ -316,3 +349,63 @@ class InteractiveCLI:
             response += f"\n\n{suggestions[0]}"
         
         return response
+    async def _get_auth_status(self) -> str:
+        """
+        Get the authentication status.
+        
+        Returns:
+            String indicating the authentication status
+        """
+        token_manager = TokenManager(
+            credentials_file=settings.qwen_credentials_file,
+            credentials_dir=settings.qwen_credentials_dir
+        )
+        
+        has_creds = await token_manager.has_valid_credentials()
+        if has_creds:
+            return "Valid credentials found"
+        else:
+            return "No valid credentials found"
+
+    async def _perform_auth_login(self) -> str:
+        """
+        Perform authentication using device flow.
+        
+        Returns:
+            String response to user
+        """
+        if not settings.qwen_client_id:
+            return "Error: Qwen client ID not configured. Please set QWEN_CLIENT_ID in your environment."
+        
+        oauth_manager = OAuthManager(
+            client_id=settings.qwen_client_id,
+            authorization_server=settings.qwen_authorization_server,
+            credentials_file=settings.qwen_credentials_file,
+            credentials_dir=settings.qwen_credentials_dir
+        )
+        
+        print("Starting OAuth device flow...")
+        print("Please visit the URL shown below and enter the code when prompted:")
+        
+        success = await oauth_manager.authenticate_with_device_flow()
+        if success:
+            return "Authentication successful!"
+        else:
+            return "Authentication failed!"
+
+    async def _switch_provider(self, provider_name: str) -> str:
+        """
+        Switch the active provider.
+        
+        Args:
+            provider_name: Name of the provider to switch to
+            
+        Returns:
+            String response to user
+        """
+        success = self.gcs_runtime.provider_manager.set_provider(provider_name)
+        if success:
+            return f"Provider switched to: {provider_name}"
+        else:
+            available = await self.gcs_runtime.provider_manager.get_available_providers()
+            return f"Failed to switch to provider: {provider_name}. Available providers: {', '.join(available)}"

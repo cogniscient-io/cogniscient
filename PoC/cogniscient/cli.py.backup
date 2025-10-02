@@ -1,18 +1,19 @@
 """
-Command-line mode implementation for Cogniscient.
+Command Line Interface for Cogniscient.
 
-This module preserves the existing command-line functionality while
-allowing integration with the new interactive features.
+This module provides CLI commands for interacting with the Cogniscient system.
 """
+
 import argparse
 import sys
 from cogniscient.engine.gcs_runtime import GCSRuntime
-from cogniscient.engine.config.settings import settings
 from cogniscient.auth.oauth_manager import OAuthManager
 from cogniscient.auth.token_manager import TokenManager
+from cogniscient.engine.config.settings import settings
 
-def run_command_mode():
-    """Execute the original command-line interface."""
+
+def main():
+    """Main entry point for the Cogniscient CLI."""
     parser = argparse.ArgumentParser(description="Cogniscient - Generic Control System")
     parser.add_argument(
         "command",
@@ -22,13 +23,13 @@ def run_command_mode():
     )
     parser.add_argument(
         "--config-dir",
-        default=None,  # Using None to check if user provided value
-        help="Directory to load agent configurations from (default: from .env settings)"
+        default=".",
+        help="Directory to load agent configurations from (default: current directory)"
     )
     parser.add_argument(
         "--agents-dir",
-        default=None,  # Using None to check if user provided value
-        help="Directory where agent modules are located (default: from .env settings)"
+        default="cogniscient/agentSDK",
+        help="Directory where agent modules is located (default: cogniscient/agentSDK)"
     )
     parser.add_argument(
         "--config-name",
@@ -46,12 +47,8 @@ def run_command_mode():
         sys.exit(1)
 
     if args.command in ["run", "list-configs", "load-config"]:
-        # Use settings from .env if no command-line values provided
-        config_dir = args.config_dir if args.config_dir is not None else settings.config_dir
-        agents_dir = args.agents_dir if args.agents_dir is not None else settings.agents_dir
-
         # Initialize the GCS runtime for config-related commands
-        gcs = GCSRuntime(config_dir=config_dir, agents_dir=agents_dir)
+        gcs = GCSRuntime(config_dir=args.config_dir, agents_dir=args.agents_dir)
 
         if args.command == "run":
             # Load all agents and run a simple test
@@ -133,7 +130,7 @@ def run_command_mode():
             sys.exit(1)
         
         # Initialize GCS runtime to access provider manager
-        gcs = GCSRuntime(config_dir=settings.config_dir, agents_dir=settings.agents_dir)
+        gcs = GCSRuntime(config_dir=args.config_dir, agents_dir=args.agents_dir)
         
         import asyncio
         async def switch_provider():
@@ -148,3 +145,7 @@ def run_command_mode():
         
         asyncio.run(switch_provider())
         gcs.shutdown()
+
+
+if __name__ == "__main__":
+    main()

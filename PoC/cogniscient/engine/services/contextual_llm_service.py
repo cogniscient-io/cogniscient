@@ -23,6 +23,7 @@ class ContextualLLMService:
         self.llm_service = llm_service
         self.agent_registry = agent_registry
         self.system_services = system_services or {}
+        self.provider_manager: Optional[ProviderManager] = None
 
     async def generate_response(
         self, 
@@ -74,49 +75,103 @@ class ContextualLLMService:
             return response
         
         try:
-            # Create messages with domain context if available
-            messages = []
-            system_content = ""
-            
-            if domain:
-                system_content += (f"You are an expert in the {domain} domain. Please explain the error "
-                                   f"with information specific to this domain and provide options to resolve it.")
+            # If provider manager is available, use it instead of the base LLM service
+            if self.provider_manager:
+                # Create messages with domain context if available
+                messages = []
+                system_content = ""
+                
+                if domain:
+                    system_content += (f"You are an expert in the {domain} domain. Please explain the error "
+                                       f"with information specific to this domain and provide options to resolve it.")
 
-            # Use provided agent_registry or fall back to instance agent_registry
-            registry_to_use = agent_registry or self.agent_registry
-            
-            # Include agent capabilities if requested and available
-            if include_agent_capabilities and registry_to_use:
-                agent_capabilities = self._format_agent_capabilities(registry_to_use)
-                if agent_capabilities:
-                    system_content += agent_capabilities
+                # Use provided agent_registry or fall back to instance agent_registry
+                registry_to_use = agent_registry or self.agent_registry
+                
+                # Include agent capabilities if requested and available
+                if include_agent_capabilities and registry_to_use:
+                    agent_capabilities = self._format_agent_capabilities(registry_to_use)
+                    if agent_capabilities:
+                        system_content += agent_capabilities
+                        
+                # Include system service capabilities (always available)
+                system_service_capabilities = self._format_system_service_capabilities()
+                if system_service_capabilities:
+                    system_content += system_service_capabilities
                     
-            # Include system service capabilities (always available)
-            system_service_capabilities = self._format_system_service_capabilities()
-            if system_service_capabilities:
-                system_content += system_service_capabilities
+                if system_content:
+                    messages.append({"role": "system", "content": system_content})
+                    
+                messages.append({"role": "user", "content": prompt})
                 
-            if system_content:
-                messages.append({"role": "system", "content": system_content})
+                # Use the provider manager to generate response
+                result = await self.provider_manager.generate_response(
+                    messages=messages,
+                    model=model or self.llm_service.model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    **kwargs
+                )
                 
-            messages.append({"role": "user", "content": prompt})
-            
-            # Delegate to the underlying LLM service with token counting option
-            result = await self.llm_service.generate_response(
-                messages=messages,
-                model=model,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                return_token_counts=return_token_counts,
-                **kwargs
-            )
-            
-            # If the result from LLM service is a dict with token counts, return it as-is
-            if isinstance(result, dict) and "token_counts" in result:
+                # Return the result (we'll handle token counts in the provider manager)
+                if return_token_counts:
+                    # For now, just return the result as a dict with the response
+                    # Token counting would need to be implemented in the provider manager
+                    return {
+                        "response": result,
+                        "token_counts": {
+                            "input_tokens": 0,  # Placeholder - would need actual implementation
+                            "output_tokens": 0,  # Placeholder - would need actual implementation
+                            "total_tokens": 0   # Placeholder - would need actual implementation
+                        }
+                    }
+                
                 return result
-            
-            # Otherwise, return the string response directly
-            return result
+            else:
+                # Fallback to the original LLM service implementation
+                # Create messages with domain context if available
+                messages = []
+                system_content = ""
+                
+                if domain:
+                    system_content += (f"You are an expert in the {domain} domain. Please explain the error "
+                                       f"with information specific to this domain and provide options to resolve it.")
+
+                # Use provided agent_registry or fall back to instance agent_registry
+                registry_to_use = agent_registry or self.agent_registry
+                
+                # Include agent capabilities if requested and available
+                if include_agent_capabilities and registry_to_use:
+                    agent_capabilities = self._format_agent_capabilities(registry_to_use)
+                    if agent_capabilities:
+                        system_content += agent_capabilities
+                        
+                # Include system service capabilities (always available)
+                system_service_capabilities = self._format_system_service_capabilities()
+                if system_service_capabilities:
+                    system_content += system_service_capabilities
+                    
+                if system_content:
+                    messages.append({"role": "system", "content": system_content})
+                    
+                messages.append({"role": "user", "content": prompt})
+                
+                # Delegate to the underlying LLM service with token counting option
+                result = await self.llm_service.generate_response(
+                    messages=messages,
+                    model=model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    return_token_counts=return_token_counts,
+                    **kwargs
+                )
+                
+                # If the result from LLM service is a dict with token counts, return it as-is
+                if isinstance(result, dict) and "token_counts" in result:
+                    return result
+                
+                # Otherwise, return the string response directly
+                return result
                     
         except Exception as e:
             logger.error(f"Error calling LLM API: {str(e)}")

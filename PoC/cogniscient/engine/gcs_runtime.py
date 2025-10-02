@@ -15,6 +15,9 @@ from cogniscient.engine.agent_utils.unified_agent_manager import UnifiedAgentMan
 from cogniscient.engine.agent_utils.agent_coordinator import AgentCoordinator
 from cogniscient.engine.services.config_service import ConfigService
 from cogniscient.engine.services.system_parameters_service import SystemParametersService
+from cogniscient.llm.provider_manager import ProviderManager
+from cogniscient.auth.token_manager import TokenManager
+from cogniscient.engine.config.settings import settings
 
 
 class GCSRuntime:
@@ -43,8 +46,25 @@ class GCSRuntime:
         self.additional_prompt_info: Dict[str, Any] = {}
         # Track last call information for each agent
         self.agent_last_call: Dict[str, Dict[str, Any]] = {}
+        
+        # Initialize token manager for OAuth
+        self.token_manager = TokenManager(
+            credentials_file=settings.qwen_credentials_file,
+            credentials_dir=settings.qwen_credentials_dir
+        )
+        
+        # Initialize provider manager with token manager
+        self.provider_manager = ProviderManager(self.token_manager)
+        
+        # Set the default provider from settings
+        self.provider_manager.set_provider(settings.default_provider)
+        
         # Create the contextual LLM service without agent registry initially
+        # We'll configure it later to use our provider manager
         self.llm_service = ContextualLLMService(LLMService())
+        # Also store a reference to the provider manager in the LLM service
+        self.llm_service.provider_manager = self.provider_manager
+        
         # Agent registry will be set after agents are loaded
         # Set a reference to self in the runtime for agents to access
         self.runtime_ref = self

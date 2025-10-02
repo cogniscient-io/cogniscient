@@ -4,7 +4,7 @@ Configuration settings for the Adaptive Chatbot application.
 
 import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional
+from typing import Optional, Literal
 
 class Settings(BaseSettings):
     """Application configuration settings."""
@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     llm_base_url: str = "http://localhost:11434"
     llm_request_timeout: float = 30.0
     llm_max_retries: int = 3
+    
+    # OAuth and Provider settings
+    default_provider: Literal["litellm", "qwen"] = "litellm"
+    qwen_client_id: Optional[str] = None
+    qwen_authorization_server: str = "https://chat.qwen.ai"
+    qwen_credentials_file: Optional[str] = None
+    qwen_credentials_dir: Optional[str] = None
     
     # Conversation history settings
     max_context_size: int = 8000  # Maximum context window size in characters

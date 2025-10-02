@@ -22,7 +22,18 @@ async def test_llm_agent_selection():
     # Test that LLM is used for agent selection
     with patch.object(orchestrator, 'process_user_request') as mock_process:
         mock_process.return_value = "Website is accessible"
-        await chat_interface.process_user_input("check website https://example.com")
+        # Create a mock send_stream_event function to collect events
+        events_collected = []
+        
+        async def mock_send_stream_event(event_type: str, content: str = None, data: dict = None):
+            event = {
+                "type": event_type,
+                "content": content,
+                "data": data
+            }
+            events_collected.append(event)
+        
+        await chat_interface.process_user_input_streaming("check website https://example.com", chat_interface.conversation_history, mock_send_stream_event)
         mock_process.assert_called_once()
 
 
@@ -61,10 +72,21 @@ async def test_website_checking_command_recognition():
     ]
     
     for command in test_commands:
-        # Mock the process_user_request method
-        with patch.object(orchestrator, 'process_user_request', return_value="Mock response") as mock_handler:
+        # Mock the process_user_request method instead of process_user_request_streaming
+        with patch.object(orchestrator, 'process_user_request', return_value={"response": "Mock response"}) as mock_handler:
             # Execute
-            await chat_interface.process_user_input(command)
+            # Create a mock send_stream_event function to collect events
+            events_collected = []
+            
+            async def mock_send_stream_event(event_type: str, content: str = None, data: dict = None):
+                event = {
+                    "type": event_type,
+                    "content": content,
+                    "data": data
+                }
+                events_collected.append(event)
+            
+            result = await chat_interface.process_user_input_streaming(command, chat_interface.conversation_history, mock_send_stream_event)
             
             # Verify
             mock_handler.assert_called_once()

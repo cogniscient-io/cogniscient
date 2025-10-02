@@ -28,7 +28,18 @@ def test_conversation_history():
     # Process a message
     import asyncio
     async def run_test():
-        await chat_interface.process_user_input("Hello")
+        # Create a mock send_stream_event function to collect events
+        events_collected = []
+        
+        async def mock_send_stream_event(event_type: str, content: str = None, data: dict = None):
+            event = {
+                "type": event_type,
+                "content": content,
+                "data": data
+            }
+            events_collected.append(event)
+        
+        result = await chat_interface.process_user_input_streaming("Hello", chat_interface.conversation_history, mock_send_stream_event)
         assert len(chat_interface.conversation_history) == 2
         assert chat_interface.conversation_history[0]["role"] == "user"
         assert chat_interface.conversation_history[1]["role"] == "assistant"

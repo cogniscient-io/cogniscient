@@ -5,6 +5,7 @@ This module provides the REPL-style interactive interface.
 """
 import os
 import asyncio
+from typing import Dict, Any
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.completion import WordCompleter
@@ -182,25 +183,90 @@ class InteractiveCLI:
             else:
                 return "No agents available."
         
+        # Handle configuration loading commands
+        elif user_input.lower().startswith('load config ') or user_input.lower().startswith('load configuration '):
+            # Extract configuration name from the command
+            parts = user_input.split(' ', 2)  # Split into at most 3 parts: ['load', 'config', 'name']
+            if len(parts) >= 3:
+                config_name = parts[2].strip()
+                try:
+                    self.gcs_runtime.load_configuration(config_name)
+                    agents = list(self.gcs_runtime.agents.keys())
+                    return f"Configuration '{config_name}' loaded successfully. Active agents: {', '.join(agents) if agents else 'None'}"
+                except Exception as e:
+                    return f"Error loading configuration '{config_name}': {str(e)}"
+            else:
+                return "Please specify a configuration name. Available configs: " + \
+                       ", ".join(self.gcs_runtime.list_available_configurations())
+        
         # For all other inputs, use the ChatInterface which connects to the LLM
         else:
             try:
-                # Run the async process_user_input in a new event loop
+                # Create a simple callback to collect events for CLI output
+                events_collected = []
+                
+                async def mock_send_stream_event(event_type: str, content: str = None, data: Dict[str, Any] = None):
+                    event = {
+                        "type": event_type,
+                    }
+                    if content is not None:
+                        event["content"] = content
+                    if data is not None:
+                        event["data"] = data
+                    events_collected.append(event)
+                    
+                    # For streaming to the CLI, we might want to print events as they come in
+                    # This would provide real-time updates to the user as in the web interface
+                    if event_type == 'tool_call':
+                        tool_data = data or {}
+                        tool_name = tool_data.get('agent_name', 'Unknown Tool')
+                        tool_method = tool_data.get('method_name', 'Unknown Method')
+                        tool_params = tool_data.get('parameters', {})
+                        print(f"🔧 Calling tool: {tool_name}.{tool_method} with params: {tool_params}")
+                    elif event_type == 'tool_response':
+                        tool_data = data or {}
+                        tool_result = tool_data.get('result', 'No result')
+                        print(f"✅ Tool response: {tool_result}")
+                    elif event_type == 'assistant_response':
+                        print(f"💬 Assistant: {content}")
+                
+                # Run the async process_user_input_streaming in a new event loop with direct streaming
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
                     result = loop.run_until_complete(
-                        self.chat_interface.process_user_input(user_input)
+                        self.chat_interface.process_user_input_streaming(user_input, self.chat_interface.conversation_history, mock_send_stream_event)
                     )
                     
-                    # Handle the result properly
-                    if isinstance(result, dict):
-                        # Extract the response if it's in a structured result
-                        response = result.get('response', str(result))
-                    else:
-                        response = str(result)
+                    # Process the collected events to build a response
+                    # For CLI, we're mainly interested in the final response
+                    response = result.get('response', str(result)) if isinstance(result, dict) else str(result)
+                    
+                    # Add any tool call information to the response if available
+                    tool_call_info = ""
+                    for event in events_collected:
+                        if event.get('type') == 'tool_call':
+                            tool_data = event.get('data', {})
+                            tool_name = tool_data.get('agent_name', 'Unknown Tool')  # Use agent_name instead of name
+                            tool_method = tool_data.get('method_name', 'Unknown Method')  # Use method_name
+                            tool_args = tool_data.get('parameters', {})
+                            tool_call_info += f"\n🔧 Tool Call: {tool_name}.{tool_method}"
+                            if tool_args:
+                                tool_call_info += f" Parameters: {tool_args}"
+                        elif event.get('type') == 'tool_response':
+                            tool_data = event.get('data', {})
+                            tool_name = tool_data.get('agent_name', 'Unknown Tool')  # Use agent_name instead of name
+                            tool_result = tool_data.get('result', tool_data.get('response', 'No result'))
+                            tool_call_info += f"\n✅ Tool Response: {tool_name}"
+                            if tool_result != 'No result':
+                                tool_call_info += f"\nResult: {tool_result}"
+                
                 finally:
                     loop.close()
+                    
+                # Combine tool call info with the main response
+                if tool_call_info.strip():
+                    response = tool_call_info + "\n" + response
             except Exception as e:
                 # If async processing fails, provide an error message
                 response = f"Error processing with LLM: {str(e)}"

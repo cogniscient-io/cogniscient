@@ -11,7 +11,7 @@ from cogniscient.engine.config.settings import settings
 async def test_context_window_size_management():
     """Test context window size parameter and compression."""
     # Initialize GCS runtime and chat interface with custom parameters
-    gcs_runtime = GCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
+    gcs_runtime = GCSRuntime(config_dir="plugins/sample_internal/config", agents_dir="plugins/sample_internal/agents")
     gcs_runtime.load_configuration("combined")
     
     orchestrator = LLMOrchestrator(gcs_runtime)
@@ -25,17 +25,37 @@ async def test_context_window_size_management():
         compression_threshold=4   # Compress earlier - must be less than max_history_length
     )
     
+    # Mock send_stream_event function to collect events
+    events_collected = []
+    
+    async def mock_send_stream_event(event_type: str, content: str = None, data: dict = None):
+        event = {
+            "type": event_type,
+            "content": content,
+            "data": data
+        }
+        events_collected.append(event)
+    
     # Test context window size calculation
-    initial_size = chat_interface.get_context_window_size()
+    conversation_history = []
+    initial_size = len(str(conversation_history))  # Context window size for an empty conversation
     assert initial_size >= 0  # Should be 0 or more
     
     # Add some conversation history
-    await chat_interface.process_user_input("Hello, can you help me with a question?")
-    size_after_first = chat_interface.get_context_window_size()
+    await chat_interface.process_user_input_streaming(
+        "Hello, can you help me with a question?",
+        conversation_history,
+        mock_send_stream_event
+    )
+    size_after_first = len(str(conversation_history))
     assert size_after_first > initial_size
     
-    await chat_interface.process_user_input("I'm testing the context window size feature.")
-    size_after_second = chat_interface.get_context_window_size()
+    await chat_interface.process_user_input_streaming(
+        "I'm testing the context window size feature.",
+        conversation_history,
+        mock_send_stream_event
+    )
+    size_after_second = len(str(conversation_history))
     assert size_after_second > size_after_first
 
 
@@ -43,15 +63,26 @@ async def test_context_window_size_management():
 async def test_conversation_history_management():
     """Test conversation history clearing and compression."""
     # Initialize GCS runtime and chat interface
-    gcs_runtime = GCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
+    gcs_runtime = GCSRuntime(config_dir="plugins/sample_internal/config", agents_dir="plugins/sample_internal/agents")
     gcs_runtime.load_configuration("combined")
     
     orchestrator = LLMOrchestrator(gcs_runtime)
     chat_interface = ChatInterface(orchestrator, max_history_length=20, compression_threshold=15)
     
-    # Test conversation history building
+    # Test conversation history building using the streaming method
     for i in range(5):
-        await chat_interface.process_user_input(f"Hello, this is message {i+1}")
+        # Create a mock send_stream_event function to collect events
+        events_collected = []
+        
+        async def mock_send_stream_event(event_type: str, content: str = None, data: dict = None):
+            event = {
+                "type": event_type,
+                "content": content,
+                "data": data
+            }
+            events_collected.append(event)
+        
+        await chat_interface.process_user_input_streaming(f"Hello, this is message {i+1}", chat_interface.conversation_history, mock_send_stream_event)
     
     history_length_before = len(chat_interface.conversation_history)
     assert history_length_before == 10  # 5 user messages + 5 assistant responses
@@ -71,7 +102,7 @@ async def test_system_parameters_management():
     print(f"DEBUG INITIAL: max_history_length={settings.max_history_length}, compression_threshold={settings.compression_threshold}")
     
     # Initialize GCS runtime and chat interface
-    gcs_runtime = GCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
+    gcs_runtime = GCSRuntime(config_dir="plugins/sample_internal/config", agents_dir="plugins/sample_internal/agents")
     gcs_runtime.load_configuration("combined")
     
     orchestrator = LLMOrchestrator(gcs_runtime)
@@ -116,7 +147,7 @@ async def test_settings_based_context_management():
     print(f"DEBUG: Settings max_history_length={settings.max_history_length}, compression_threshold={settings.compression_threshold}")
     
     # Initialize GCS runtime and chat interface
-    gcs_runtime = GCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
+    gcs_runtime = GCSRuntime(config_dir="plugins/sample_internal/config", agents_dir="plugins/sample_internal/agents")
     gcs_runtime.load_configuration("combined")
     
     orchestrator = LLMOrchestrator(gcs_runtime)

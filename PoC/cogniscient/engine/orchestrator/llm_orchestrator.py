@@ -70,8 +70,8 @@ class LLMOrchestrator:
         """
         return await self.evaluator.evaluate_agent_output(agent_name, output)
 
-    async def process_user_request_streaming(self, user_input: str, conversation_history: List[Dict[str, str]], 
-                                           send_stream_event: Callable[[str, str, Dict[str, Any]], Any]) -> Dict[str, Any]:
+    async def process_user_request(self, user_input: str, conversation_history: List[Dict[str, str]], 
+                               send_stream_event: Callable[[str, str, Dict[str, Any]], Any]) -> Dict[str, Any]:
         """Process user request using LLM to determine appropriate agents with streaming support.
         
         Args:
@@ -82,7 +82,7 @@ class LLMOrchestrator:
         Returns:
             dict: A dictionary containing the final response and tool call information.
         """
-        return await self.user_request_processor.process_user_request_streaming(
+        return await self.user_request_processor.process_user_request(
             user_input, conversation_history, send_stream_event
         )
 
@@ -164,15 +164,3 @@ class LLMOrchestrator:
                 "method": method_name,
                 "error": str(e)
             }
-
-    async def process_user_request(self, user_input: str, conversation_history: List[Dict[str, str]]) -> dict:
-        """Process user request using LLM to determine appropriate agents.
-        
-        Args:
-            user_input (str): The user's input message.
-            conversation_history (List[Dict[str, str]]): The conversation history.
-            
-        Returns:
-            dict: A dictionary containing the final response and tool call information.
-        """
-        return await self.user_request_processor.process_user_request(user_input, conversation_history)

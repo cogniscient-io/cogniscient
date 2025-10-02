@@ -109,6 +109,7 @@ Key configuration options:
 - **LLMOrchestrator**: Orchestrates agent executions and uses an LLM to evaluate results and decide on next steps.
 - **SampleAgentA**: A sample agent that performs DNS lookups using a configurable DNS server.
 - **SampleAgentB**: Another sample agent that performs website checks.
+- **Streaming Architecture**: All LLM interactions use streaming by default for real-time feedback, with synchronous wrappers for non-streaming contexts.
 
 ## Orchestration Flow
 
@@ -139,7 +140,7 @@ graph TD
 
 ```mermaid
 graph TD
-    A[User Input] --> B[Process Request]
+    A[User Input] --> B[Process Request with Streaming]
     B --> C[LLM Determines Tool Call]
     C --> D{Tool Call?}
     D -->|Yes| E[Execute Agent Method]
@@ -150,8 +151,10 @@ graph TD
     I --> E
     H -->|No| J[Generate User Response]
     D -->|No| J
-    J --> K[Return Response]
+    J --> K[Return Response with Streaming Events]
 ```
+
+The system now uses streaming by default for all LLM interactions, providing real-time feedback to the user. For non-streaming contexts, the system uses synchronous event collectors that aggregate the events and return them as a single response.
 
 ### Key Changes in Orchestration Logic
 
@@ -214,6 +217,7 @@ python -m build
 # - Agent management utilities
 # - Configuration services
 # - CLI interface
+# - Streaming architecture for real-time LLM interactions
 ```
 
 For more details on the release process, see [RELEASE.md](RELEASE.md).

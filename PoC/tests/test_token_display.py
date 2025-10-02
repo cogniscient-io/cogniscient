@@ -82,7 +82,7 @@ async def test_chat_interface_formats_token_counts():
     from unittest.mock import AsyncMock
     
     # Initialize full system stack
-    ucs_runtime = GCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
+    ucs_runtime = GCSRuntime(config_dir="plugins/sample_internal/config", agents_dir="plugins/sample_internal/agents")
     ucs_runtime.load_all_agents()
     
     # Create a mock orchestrator that returns a result with token counts
@@ -95,13 +95,36 @@ async def test_chat_interface_formats_token_counts():
             "total_tokens": 582
         }
     }
-    # Mock the process_user_request method to return our expected result
-    mock_orchestrator.process_user_request.return_value = mock_result
+    # Mock the process_user_request method to simulate streaming behavior
+    async def mock_process_user_request(user_input, conversation_history, send_stream_event):
+        # Simulate sending events like the real implementation would
+        await send_stream_event("assistant_response", "This is a test response.", None)
+        await send_stream_event("token_counts", None, {
+            "input_tokens": 560,
+            "output_tokens": 22,
+            "total_tokens": 582
+        })
+        await send_stream_event("final_response", None, {
+            "conversation_history": conversation_history + [{"role": "assistant", "content": "This is a test response."}]
+        })
+        return mock_result
+    
+    mock_orchestrator.process_user_request.side_effect = mock_process_user_request
     
     chat_interface = ChatInterface(mock_orchestrator, max_history_length=20, compression_threshold=15)
     
-    # Process user input
-    result = await chat_interface.process_user_input("What is your name?")
+    # Process user input with streaming
+    events_collected = []
+    
+    async def mock_send_stream_event(event_type: str, content: str = None, data: dict = None):
+        event = {
+            "type": event_type,
+            "content": content,
+            "data": data
+        }
+        events_collected.append(event)
+    
+    result = await chat_interface.process_user_input_streaming("What is your name?", chat_interface.conversation_history, mock_send_stream_event)
     
     # Verify result contains token counts
     assert "token_counts" in result
@@ -131,7 +154,7 @@ async def test_chat_interface_handles_result_without_token_counts():
     from unittest.mock import AsyncMock
     
     # Initialize full system stack
-    ucs_runtime = GCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
+    ucs_runtime = GCSRuntime(config_dir="plugins/sample_internal/config", agents_dir="plugins/sample_internal/agents")
     ucs_runtime.load_all_agents()
     
     # Create a mock orchestrator that returns a result without token counts
@@ -140,8 +163,16 @@ async def test_chat_interface_handles_result_without_token_counts():
         "response": "This is a test response without token counts.",
         # Note: no token_counts in this result
     }
-    # Mock the process_user_request method to return our expected result
-    mock_orchestrator.process_user_request.return_value = mock_result
+    # Mock the process_user_request method to simulate streaming behavior without token counts
+    async def mock_process_user_request_no_tokens(user_input, conversation_history, send_stream_event):
+        # Simulate sending events like the real implementation would (without token counts)
+        await send_stream_event("assistant_response", "This is a test response without token counts.", None)
+        await send_stream_event("final_response", None, {
+            "conversation_history": conversation_history + [{"role": "assistant", "content": "This is a test response without token counts."}]
+        })
+        return mock_result
+    
+    mock_orchestrator.process_user_request.side_effect = mock_process_user_request_no_tokens
     
     chat_interface = ChatInterface(mock_orchestrator, max_history_length=20, compression_threshold=15)
 

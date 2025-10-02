@@ -14,16 +14,16 @@ def test_import():
 
 def test_gcs_runtime_initialization():
     """Test that GCSRuntime can be initialized."""
-    gcs = GCSRuntime(config_dir="tests/test_configs", agents_dir="tests/test_agents")
+    gcs = GCSRuntime(config_dir="plugins/sample_internal/config", agents_dir="plugins/sample_internal/agents")
     assert gcs is not None
-    assert gcs.config_dir == "tests/test_configs"
-    assert gcs.agents_dir == "tests/test_agents"
+    assert gcs.config_dir == "plugins/sample_internal/config"
+    assert gcs.agents_dir == "plugins/sample_internal/agents"
 
 
 @pytest.mark.asyncio
 async def test_gcs_runtime_with_mock_agents():
     """Test that GCSRuntime can be initialized and run basic operations."""
-    gcs = GCSRuntime(config_dir="tests/test_configs", agents_dir="tests/test_agents")
+    gcs = GCSRuntime(config_dir="plugins/sample_internal/config", agents_dir="plugins/sample_internal/agents")
     
     # Since we don't have actual agents in the test environment, 
     # we'll just test that initialization works

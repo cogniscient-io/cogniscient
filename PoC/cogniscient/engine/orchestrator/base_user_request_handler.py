@@ -1,11 +1,13 @@
 """Base module for user request processing functionality in LLM Orchestration Engine."""
 
+import asyncio
 import json
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Callable
 from cogniscient.engine.services.llm_service import LLMService
 from cogniscient.engine.gcs_runtime import GCSRuntime
 from cogniscient.engine.config.settings import settings
+
 
 logger = logging.getLogger(__name__)
 
@@ -192,20 +194,33 @@ class BaseUserRequestHandler:
         self, 
         user_input: str, 
         conversation_history: List[Dict[str, str]], 
-        streaming: bool = False,
-        send_stream_event: Optional[callable] = None
+        send_stream_event: Callable[[str, str, Dict[str, Any]], Any]
     ) -> Dict[str, Any]:
-        """Execute the core request processing logic.
+        """Execute the core request processing logic with streaming by default.
         
         Args:
             user_input (str): The user's input message.
             conversation_history (List[Dict[str, str]]): The conversation history.
-            streaming (bool): Whether this is a streaming request.
-            send_stream_event (Optional[callable]): Function to send streaming events (for streaming requests)
+            send_stream_event (Callable): Function to send streaming events (required)
             
         Returns:
             dict: A dictionary containing the final response and tool call information.
         """
+        # Check if this is the synchronous event collector
+        import inspect
+        is_async_send_stream_event = True
+        if not inspect.iscoroutinefunction(send_stream_event):
+            # This is a synchronous function, so we'll call it directly without await
+            is_async_send_stream_event = False
+
+        # Helper function to call send_stream_event properly
+        async def call_send_stream_event(event_type: str, content: str = None, data: Dict[str, Any] = None):
+            if send_stream_event:
+                if is_async_send_stream_event:
+                    await send_stream_event(event_type, content, data)
+                else:
+                    send_stream_event(event_type, content, data)
+            
         # Initialize tool call tracking
         tool_calls = []
         total_token_counts = {
@@ -282,22 +297,14 @@ class BaseUserRequestHandler:
                     response_json = self._parse_llm_json_response(llm_response)
                     # Handle case where _parse_llm_json_response returns an error object
                     if "error" in response_json:
-                        # If streaming, send a direct response event, otherwise return
-                        if streaming:
-                            if send_stream_event:
-                                await send_stream_event("assistant_response", llm_response, None)
-                            return {
-                                "response": llm_response,
-                                "tool_calls": tool_calls,
-                                "token_counts": total_token_counts
-                            }
-                        else:
-                            # Return original response as direct response to user with tool call info
-                            return {
-                                "response": llm_response,
-                                "tool_calls": tool_calls,
-                                "token_counts": total_token_counts
-                            }
+                        # Send a direct response event
+                        if send_stream_event:
+                            await call_send_stream_event("assistant_response", llm_response, None)
+                        return {
+                            "response": llm_response,
+                            "tool_calls": tool_calls,
+                            "token_counts": total_token_counts
+                        }
                         
                     if "tool_call" in response_json:
                         # Check if this is a duplicate tool call
@@ -324,13 +331,12 @@ class BaseUserRequestHandler:
                         }
                         
                         # For streaming, add token counts to tool call info
-                        if streaming and isinstance(llm_response_result, dict) and "token_counts" in llm_response_result:
+                        if isinstance(llm_response_result, dict) and "token_counts" in llm_response_result:
                             tool_call_info["token_counts"] = llm_response_result["token_counts"]
                         
-                        if streaming:
-                            # Send tool call event to frontend
-                            if send_stream_event:
-                                await send_stream_event("tool_call", None, tool_call_info)
+                        # Send tool call event to frontend
+                        if send_stream_event:
+                            await call_send_stream_event("tool_call", None, tool_call_info)
                         
                         # Execute agent method
                         try:
@@ -341,10 +347,9 @@ class BaseUserRequestHandler:
                             tool_call_info["success"] = True
                             tool_calls.append(tool_call_info)
                             
-                            if streaming:
-                                # Send tool response event to frontend
-                                if send_stream_event:
-                                    await send_stream_event("tool_response", None, tool_call_info)
+                            # Send tool response event to frontend
+                            if send_stream_event:
+                                await send_stream_event("tool_response", None, tool_call_info)
                             
                             # Generate follow-up prompt with the result
                             prompt = "Previous tool call result:\n"
@@ -397,10 +402,9 @@ class BaseUserRequestHandler:
                             tool_call_info["success"] = False
                             tool_calls.append(tool_call_info)
                             
-                            if streaming:
-                                # Send tool response event to frontend
-                                if send_stream_event:
-                                    await send_stream_event("tool_response", None, tool_call_info)
+                            # Send tool response event to frontend
+                            if send_stream_event:
+                                await send_stream_event("tool_response", None, tool_call_info)
                             
                             prompt = "Error executing tool call:\n"
                             prompt += f"Agent: {agent_name}\n"
@@ -433,60 +437,39 @@ class BaseUserRequestHandler:
                     response_json = self._parse_llm_json_response(llm_response)
                     # If parsing failed, return as direct response to user
                     if "error" in response_json:
-                        if streaming:
-                            if send_stream_event:
-                                await send_stream_event("assistant_response", llm_response, None)
-                                # Send token counts for streaming
-                                await send_stream_event("token_counts", None, total_token_counts)
-                            return {
-                                "response": llm_response,
-                                "tool_calls": tool_calls,
-                                "token_counts": total_token_counts
-                            }
-                        else:
-                            return {
-                                "response": llm_response,
-                                "tool_calls": tool_calls,
-                                "token_counts": total_token_counts
-                            }
+                        if send_stream_event:
+                            await send_stream_event("assistant_response", llm_response, None)
+                            # Send token counts for streaming
+                            await send_stream_event("token_counts", None, total_token_counts)
+                        return {
+                            "response": llm_response,
+                            "tool_calls": tool_calls,
+                            "token_counts": total_token_counts
+                        }
                     else:
                         # Not an error, but also not a tool call - handle as direct response
-                        if streaming:
-                            if send_stream_event:
-                                await send_stream_event("assistant_response", llm_response, None)
-                                # Send token counts for streaming
-                                await send_stream_event("token_counts", None, total_token_counts)
-                            return {
-                                "response": llm_response,
-                                "tool_calls": tool_calls,
-                                "token_counts": total_token_counts
-                            }
-                        else:
-                            return {
-                                "response": llm_response,
-                                "tool_calls": tool_calls,
-                                "token_counts": total_token_counts
-                            }
+                        if send_stream_event:
+                            await send_stream_event("assistant_response", llm_response, None)
+                            # Send token counts for streaming
+                            await send_stream_event("token_counts", None, total_token_counts)
+                        return {
+                            "response": llm_response,
+                            "tool_calls": tool_calls,
+                            "token_counts": total_token_counts
+                        }
             
             # If we've reached the maximum number of tool calls, we need to generate a final response
             # Check if we have any errors that we can directly interpret
             error_response = self._generate_error_response(tool_calls, user_input)
             if not error_response.startswith("I encountered an error while checking the website"):
                 # We have a specific error response, use it
-                if streaming:
-                    if send_stream_event:
-                        await send_stream_event("assistant_response", error_response, None)
-                    return {
-                        "response": error_response,
-                        "tool_calls": tool_calls,
-                        "token_counts": total_token_counts
-                    }
-                else:
-                    return {
-                        "response": error_response,
-                        "tool_calls": tool_calls,
-                        "token_counts": total_token_counts
-                    }
+                if send_stream_event:
+                    await send_stream_event("assistant_response", error_response, None)
+                return {
+                    "response": error_response,
+                    "tool_calls": tool_calls,
+                    "token_counts": total_token_counts
+                }
             
             # Generate a final prompt to get a user-friendly response
             final_prompt = f"User request: {user_input}\n"
@@ -544,55 +527,45 @@ class BaseUserRequestHandler:
                 response_json = self._parse_llm_json_response(final_response)
                 if isinstance(response_json, dict) and "response" in response_json:
                     # The LLM provided a structured response with suggested agents
-                    if streaming:
-                        # Send suggested agents event
-                        if suggested_agents:
-                            if send_stream_event:
-                                await send_stream_event("suggested_agents", None, suggested_agents)
-                        
-                        # Send the final response
+                    # Send suggested agents event
+                    if suggested_agents:
                         if send_stream_event:
-                            await send_stream_event("assistant_response", response_json["response"], None)
-                        
-                        # Send token counts separately if available
-                        logger.debug(f"Sending final token counts: {total_token_counts}")
-                        if send_stream_event:
-                            await send_stream_event("token_counts", None, total_token_counts)
-                        logger.debug("Sent final token counts event")
-                        
-                        return self._compose_result(
-                            response=response_json["response"],
-                            tool_calls=tool_calls,
-                            suggested_agents=response_json.get("suggested_agents", suggested_agents),
-                            token_counts=total_token_counts
-                        )
-                    else:
-                        # Non-streaming path
-                        return self._compose_result(
-                            response=response_json["response"],
-                            tool_calls=tool_calls,
-                            suggested_agents=response_json.get("suggested_agents", suggested_agents),
-                            token_counts=total_token_counts
-                        )
+                            await send_stream_event("suggested_agents", None, suggested_agents)
+                    
+                    # Send the final response
+                    if send_stream_event:
+                        await send_stream_event("assistant_response", response_json["response"], None)
+                    
+                    # Send token counts separately if available
+                    logger.debug(f"Sending final token counts: {total_token_counts}")
+                    if send_stream_event:
+                        await send_stream_event("token_counts", None, total_token_counts)
+                    logger.debug("Sent final token counts event")
+                    
+                    return self._compose_result(
+                        response=response_json["response"],
+                        tool_calls=tool_calls,
+                        suggested_agents=response_json.get("suggested_agents", suggested_agents),
+                        token_counts=total_token_counts
+                    )
             except Exception:
                 # If parsing fails, treat it as a regular response
                 pass
             
-            # For streaming, send suggested agents if any
-            if streaming and suggested_agents:
+            # Send suggested agents if any
+            if suggested_agents:
                 if send_stream_event:
                     await send_stream_event("suggested_agents", None, suggested_agents)
             
-            # For streaming, send the final response
-            if streaming:
-                if send_stream_event:
-                    await send_stream_event("assistant_response", final_response, None)
-                
-                # Send token counts separately if available
-                logger.debug(f"Sending final token counts (second path): {total_token_counts}")
-                if send_stream_event:
-                    await send_stream_event("token_counts", None, total_token_counts)
-                logger.debug("Sent final token counts event (second path)")
+            # Send the final response
+            if send_stream_event:
+                await send_stream_event("assistant_response", final_response, None)
+            
+            # Send token counts separately if available
+            logger.debug(f"Sending final token counts (second path): {total_token_counts}")
+            if send_stream_event:
+                await send_stream_event("token_counts", None, total_token_counts)
+            logger.debug("Sent final token counts event (second path)")
             
             # Return the response with any extracted suggested agents
             return self._compose_result(
@@ -604,19 +577,38 @@ class BaseUserRequestHandler:
             
         except Exception as e:
             logger.error(f"Error processing user request: {e}")
-            if streaming:
-                if send_stream_event:
-                    await send_stream_event("assistant_response", "I encountered an error while processing your request. Please try again later.", None)
-                    # Send token counts even in error case
-                    await send_stream_event("token_counts", None, total_token_counts)
-                return {
-                    "response": "I encountered an error while processing your request. Please try again later.",
-                    "tool_calls": tool_calls,
-                    "token_counts": total_token_counts
-                }
-            else:
-                return {
-                    "response": "I encountered an error while processing your request. Please try again later.",
-                    "tool_calls": tool_calls,
-                    "token_counts": total_token_counts
-                }
+            if send_stream_event:
+                await send_stream_event("assistant_response", "I encountered an error while processing your request. Please try again later.", None)
+                # Send token counts even in error case
+                await send_stream_event("token_counts", None, total_token_counts)
+            return {
+                "response": "I encountered an error while processing your request. Please try again later.",
+                "tool_calls": tool_calls,
+                "token_counts": total_token_counts
+            }
+
+    def _compose_result(self, response: str, tool_calls: List[Dict[str, Any]], 
+                       suggested_agents: List[Dict[str, Any]] = None, 
+                       token_counts: Dict[str, int] = None) -> Dict[str, Any]:
+        """Compose the final result dictionary.
+        
+        Args:
+            response: The final response string
+            tool_calls: List of tool calls made during processing
+            suggested_agents: List of suggested agents
+            token_counts: Token usage counts
+            
+        Returns:
+            Dictionary containing all result information
+        """
+        result = {
+            "response": response,
+            "tool_calls": tool_calls
+        }
+        
+        if suggested_agents:
+            result["suggested_agents"] = suggested_agents
+        if token_counts:
+            result["token_counts"] = token_counts
+            
+        return result

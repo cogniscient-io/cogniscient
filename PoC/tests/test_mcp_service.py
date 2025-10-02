@@ -87,7 +87,10 @@ async def test_mcp_connected_agents():
     
     # Initially, no agents should be connected
     connected_agents = mcp_service.get_connected_agents()
-    assert connected_agents == []
+    # The method returns a dict with success status and list of connected agents
+    assert connected_agents["success"] is True
+    assert connected_agents["connected_agents"] == []
+    assert connected_agents["count"] == 0
 
 
 if __name__ == "__main__":

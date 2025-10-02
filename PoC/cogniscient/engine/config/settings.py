@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     qwen_authorization_server: str = "https://chat.qwen.ai"
     qwen_credentials_file: Optional[str] = None
     qwen_credentials_dir: Optional[str] = None
+    qwen_model: str = "coder-model"  # Default model for Qwen API
     
     # Conversation history settings
     max_context_size: int = 8000  # Maximum context window size in characters

@@ -164,7 +164,8 @@ class BaseUserRequestHandler:
         """
         # Clean up the response text
         # Remove any markdown code block markers
-        cleaned_text = response_text.strip()
+        # Ensure response_text is not None before calling strip()
+        cleaned_text = response_text.strip() if response_text is not None else ""
         if cleaned_text.startswith("```json"):
             cleaned_text = cleaned_text[7:]
         if cleaned_text.startswith("```"):

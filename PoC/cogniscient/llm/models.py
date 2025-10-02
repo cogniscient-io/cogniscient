@@ -32,7 +32,7 @@ class QwenChatResponse(BaseModel):
     created: int
     model: str
     choices: List[Dict[str, Any]]
-    usage: Dict[str, int]
+    usage: Dict[str, Any]  # Changed from Dict[str, int] to Dict[str, Any] to handle nested structures
 
 
 class QwenCompletionResponse(BaseModel):
@@ -42,4 +42,4 @@ class QwenCompletionResponse(BaseModel):
     created: int
     model: str
     choices: List[Dict[str, Any]]
-    usage: Dict[str, int]
+    usage: Dict[str, Any]  # Changed from Dict[str, int] to Dict[str, Any] to handle nested structures

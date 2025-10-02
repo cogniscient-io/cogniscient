@@ -59,11 +59,9 @@ class GCSRuntime:
         # Set the default provider from settings
         self.provider_manager.set_provider(settings.default_provider)
         
-        # Create the contextual LLM service without agent registry initially
-        # We'll configure it later to use our provider manager
-        self.llm_service = ContextualLLMService(LLMService())
-        # Also store a reference to the provider manager in the LLM service
-        self.llm_service.provider_manager = self.provider_manager
+        # Create the contextual LLM service directly using the provider manager
+        # Now that ContextualLLMService expects a provider manager directly
+        self.llm_service = ContextualLLMService(provider_manager=self.provider_manager)
         
         # Agent registry will be set after agents are loaded
         # Set a reference to self in the runtime for agents to access

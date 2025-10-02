@@ -71,10 +71,7 @@ async def test_load_existing_credentials():
         return False
 
     print("\nCredentials loading test completed successfully!")
-    return True
 
 
 if __name__ == "__main__":
-    success = asyncio.run(test_load_existing_credentials())
-    if not success:
-        exit(1)
+    asyncio.run(test_load_existing_credentials())

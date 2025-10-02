@@ -39,9 +39,13 @@ class AuthenticatedHTTPClient:
 
     def _get_headers(self, token: str) -> Dict[str, str]:
         """Get headers with Authorization."""
+        # For DashScope API, the token should be sent directly as the API key
+        # This is how the TypeScript implementation works
         return {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
+            "Authorization": f"Bearer {token}",  # This is required by the API
+            "Content-Type": "application/json",
+            # Also include the token as the API key for compatibility
+            "api-key": token
         }
 
     async def _make_request(

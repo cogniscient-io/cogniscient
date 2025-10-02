@@ -75,7 +75,7 @@ class ProviderManager:
     async def generate_response(
         self,
         messages: List[Dict[str, str]],
-        model: str = "ollama_chat/qwen3:8b",
+        model: str = None,  # Changed to None so we can set provider-specific defaults
         **kwargs
     ) -> Optional[str]:
         """
@@ -83,12 +83,20 @@ class ProviderManager:
         
         Args:
             messages: List of messages in the format {"role": "...", "content": "..."}
-            model: Model to use for generation
+            model: Model to use for generation (uses provider-specific defaults if None)
             **kwargs: Additional parameters to pass to the provider
             
         Returns:
             Generated response text, or None if the request failed
         """
+        # Set provider-specific default model if none provided
+        if model is None:
+            from cogniscient.engine.config.settings import settings
+            if self.current_provider == "qwen":
+                model = settings.qwen_model  # Default model for Qwen API from settings
+            else:
+                model = settings.llm_model  # Default model for litellm/Ollama from settings
+        
         provider = self.get_provider()
         if not provider:
             print(f"Provider '{self.current_provider}' not found")

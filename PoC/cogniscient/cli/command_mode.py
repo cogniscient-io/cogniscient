@@ -5,6 +5,7 @@ This module preserves the existing command-line functionality while
 allowing integration with the new interactive features.
 """
 import argparse
+import asyncio
 import sys
 from cogniscient.engine.gcs_runtime import GCSRuntime
 from cogniscient.engine.config.settings import settings
@@ -94,7 +95,6 @@ def run_command_mode():
             credentials_dir=settings.qwen_credentials_dir
         )
         
-        import asyncio
         async def authenticate():
             print("Starting OAuth device flow...")
             success = await oauth_manager.authenticate_with_device_flow()
@@ -113,7 +113,6 @@ def run_command_mode():
             credentials_dir=settings.qwen_credentials_dir
         )
         
-        import asyncio
         async def check_auth_status():
             has_creds = await token_manager.has_valid_credentials()
             if has_creds:
@@ -135,7 +134,6 @@ def run_command_mode():
         # Initialize GCS runtime to access provider manager
         gcs = GCSRuntime(config_dir=settings.config_dir, agents_dir=settings.agents_dir)
         
-        import asyncio
         async def switch_provider():
             success = gcs.provider_manager.set_provider(args.provider)
             if success:

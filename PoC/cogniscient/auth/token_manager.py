@@ -53,6 +53,12 @@ class QwenCredentials:
         }
         if self.expiry_date:
             data["expiry_date"] = self.expiry_date.isoformat()
+        
+        # Add any additional attributes (like resource_url)
+        for attr_name, attr_value in self.__dict__.items():
+            if attr_name not in ["access_token", "refresh_token", "token_type", "expiry_date"]:
+                data[attr_name] = attr_value
+                
         return data
 
     @classmethod
@@ -70,11 +76,22 @@ class QwenCredentials:
                     expiry_date = datetime.fromtimestamp(expiry_value / 1000.0)
                 else:  # Otherwise it's seconds
                     expiry_date = datetime.fromtimestamp(expiry_value)
+        
+        # Extract standard fields and any additional fields
+        access_token = data["access_token"]
+        refresh_token = data["refresh_token"]
+        token_type = data.get("token_type", "Bearer")
+        
+        # Get any additional fields (like resource_url)
+        additional_fields = {k: v for k, v in data.items() 
+                            if k not in ["access_token", "refresh_token", "token_type", "expiry_date"]}
+        
         return cls(
-            access_token=data["access_token"],
-            refresh_token=data["refresh_token"],
-            token_type=data.get("token_type", "Bearer"),
-            expiry_date=expiry_date
+            access_token=access_token,
+            refresh_token=refresh_token,
+            token_type=token_type,
+            expiry_date=expiry_date,
+            **additional_fields  # Pass any additional fields as keyword arguments
         )
 
 
@@ -254,12 +271,77 @@ class TokenManager:
         Returns:
             New credentials with refreshed access token, or None if refresh failed
         """
-        # This method would call the OAuth provider's token refresh endpoint
-        # Since we're implementing this generically, we'll return None
-        # In a real implementation, this would make an HTTP request to refresh the token
-        # and update the stored credentials
-        print("Token refresh functionality would be implemented here")
-        return None
+        import aiohttp
+        
+        # Get the Qwen client ID from settings
+        from cogniscient.engine.config.settings import settings
+        
+        if not settings.qwen_client_id:
+            print("Error: QWEN_CLIENT_ID not configured in environment.")
+            return None
+        
+        # Prepare the data for the token refresh request
+        token_data = {
+            "grant_type": "refresh_token",
+            "refresh_token": credentials.refresh_token,
+            "client_id": settings.qwen_client_id
+        }
+        
+        # Use the authorization server URL for token refresh
+        token_endpoint = f"{settings.qwen_authorization_server}/api/v1/oauth2/token"
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    token_endpoint,
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    data=aiohttp.FormData(token_data)
+                ) as response:
+                    if response.status == 200:
+                        response_data = await response.json()
+                        
+                        # Create new credentials with updated token information
+                        new_expiry_date = None
+                        if "expires_in" in response_data:
+                            import datetime
+                            new_expiry_date = datetime.datetime.now() + datetime.timedelta(
+                                seconds=response_data["expires_in"]
+                            )
+                        
+                        # Use the resource_url from response if provided, otherwise preserve existing one
+                        resource_url = getattr(credentials, 'resource_url', None)
+                        if 'resource_url' in response_data and response_data['resource_url']:
+                            resource_url = response_data['resource_url']
+                        
+                        new_credentials = QwenCredentials(
+                            access_token=response_data["access_token"],
+                            refresh_token=response_data.get("refresh_token", credentials.refresh_token),
+                            token_type=response_data.get("token_type", "Bearer"),
+                            expiry_date=new_expiry_date,
+                            resource_url=resource_url  # Preserve or update resource_url
+                        )
+                        
+                        # Save the new credentials to file
+                        if await self.save_credentials(new_credentials):
+                            print("Token successfully refreshed and saved to file.")
+                            return new_credentials
+                        else:
+                            print("Failed to save refreshed token to file.")
+                            return None
+                    else:                        
+                        # If refresh fails with 400, we should clear the credentials
+                        error_text = await response.text()
+                        print(f"Token refresh failed with status {response.status}: {error_text}")
+                        
+                        # If it's a 400 error (likely refresh token expired), clear the credentials
+                        if response.status == 400:
+                            print("Refresh token may be expired, clearing credentials.")
+                            await self.clear_credentials()
+                        
+                        return None
+        except Exception as e:
+            print(f"Error during token refresh: {e}")
+            return None
 
     async def clear_credentials(self) -> bool:
         """

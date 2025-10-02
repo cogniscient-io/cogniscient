@@ -123,7 +123,6 @@ class InteractiveCLI:
             interaction_count = info['interaction_count']
             
             # Check authentication status
-            import asyncio
             try:
                 auth_status = asyncio.run(self._get_auth_status())
             except:
@@ -183,23 +182,42 @@ class InteractiveCLI:
         
         # Authentication-related commands
         elif user_input.lower().startswith('auth login') or user_input.lower() == 'auth':
-            return asyncio.run(self._perform_auth_login())
+            try:
+                return asyncio.run(self._perform_auth_login())
+            except Exception as e:
+                return f"Error in auth command: {str(e)}"
         
-        elif user_input.lower() == 'auth-status' or user_input.lower() == 'auth status':
-            auth_status = asyncio.run(self._get_auth_status())
-            return f"Authentication status: {auth_status}"
+        elif user_input.lower() == 'auth-status' or user_input.lower().startswith('auth status'):
+            try:
+                auth_status = asyncio.run(self._get_auth_status())
+                return f"Authentication status: {auth_status}"
+            except Exception as e:
+                return f"Error in auth-status command: {str(e)}"
         
-        elif user_input.lower().startswith('switch-provider ') or user_input.lower().startswith('switch provider '):
-            parts = user_input.split(' ', 2)
-            if len(parts) >= 3:
-                provider_name = parts[-1].strip()
-                return asyncio.run(self._switch_provider(provider_name))
-            else:
-                return "Please specify a provider. Usage: switch-provider <provider_name>"
+        elif user_input.lower().startswith('switch-provider ') or user_input.lower() == 'switch-provider':
+            # Handle both 'switch-provider' and 'switch-provider <name>'
+            try:
+                if user_input.lower() == 'switch-provider':
+                    return "Please specify a provider. Usage: switch-provider <provider_name>"
+                
+                # Normalize the command to a consistent format and extract provider name
+                normalized = user_input.lower().replace('switch provider ', 'switch-provider ')
+                # Extract the provider name after 'switch-provider '
+                parts = normalized.split(' ', 1)
+                if len(parts) == 2:
+                    provider_name = parts[1].strip()
+                    return asyncio.run(self._switch_provider(provider_name))
+                else:
+                    return "Please specify a provider. Usage: switch-provider <provider_name>"
+            except Exception as e:
+                return f"Error in switch-provider command: {str(e)}"
         
         elif user_input.lower() == 'list-providers' or user_input.lower() == 'list providers':
-            providers = asyncio.run(self.gcs_runtime.provider_manager.get_available_providers())
-            return f"Available providers: {', '.join(providers)}"
+            try:
+                providers = asyncio.run(self.gcs_runtime.provider_manager.get_available_providers())
+                return f"Available providers: {', '.join(providers)}"
+            except Exception as e:
+                return f"Error in list-providers command: {str(e)}"
         
         # Check for direct CLI commands - these are handled directly by the GCSRuntime
         elif user_input.lower().startswith('list-configs'):
@@ -263,42 +281,67 @@ class InteractiveCLI:
                     elif event_type == 'assistant_response':
                         print(f"💬 Assistant: {content}")
                 
-                # Run the async process_user_input_streaming in a new event loop with direct streaming
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
+                # Run the async process_user_input_streaming properly
+                # Check if we're in an existing event loop
                 try:
-                    result = loop.run_until_complete(
-                        self.chat_interface.process_user_input_streaming(user_input, self.chat_interface.conversation_history, mock_send_stream_event)
-                    )
+                    # This will raise RuntimeError if no loop is running
+                    asyncio.get_running_loop()
+                    # If we reach this line, we're in an event loop
+                    # We need to handle this differently - for now, we'll try a different approach
+                    import concurrent.futures
+                    import threading
                     
-                    # Process the collected events to build a response
-                    # For CLI, we're mainly interested in the final response
-                    response = result.get('response', str(result)) if isinstance(result, dict) else str(result)
+                    # Create a separate thread with a new event loop
+                    def run_async_in_new_thread():
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        try:
+                            return loop.run_until_complete(
+                                self.chat_interface.process_user_input_streaming(user_input, self.chat_interface.conversation_history, mock_send_stream_event)
+                            )
+                        finally:
+                            loop.close()
                     
-                    # Add any tool call information to the response if available
-                    tool_call_info = ""
-                    for event in events_collected:
-                        if event.get('type') == 'tool_call':
-                            tool_data = event.get('data', {})
-                            tool_name = tool_data.get('agent_name', 'Unknown Tool')  # Use agent_name instead of name
-                            tool_method = tool_data.get('method_name', 'Unknown Method')  # Use method_name
-                            tool_args = tool_data.get('parameters', {})
-                            tool_call_info += f"\n🔧 Tool Call: {tool_name}.{tool_method}"
-                            if tool_args:
-                                tool_call_info += f" Parameters: {tool_args}"
-                        elif event.get('type') == 'tool_response':
-                            tool_data = event.get('data', {})
-                            tool_name = tool_data.get('agent_name', 'Unknown Tool')  # Use agent_name instead of name
-                            tool_result = tool_data.get('result', tool_data.get('response', 'No result'))
-                            tool_call_info += f"\n✅ Tool Response: {tool_name}"
-                            if tool_result != 'No result':
-                                tool_call_info += f"\nResult: {tool_result}"
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(run_async_in_new_thread)
+                        result = future.result()
+                        
+                except RuntimeError:
+                    # No event loop running, run normally
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        result = loop.run_until_complete(
+                            self.chat_interface.process_user_input_streaming(user_input, self.chat_interface.conversation_history, mock_send_stream_event)
+                        )
+                    finally:
+                        loop.close()
                 
-                finally:
-                    loop.close()
-                    
+                # Process the collected events to build a response
+                # For CLI, we're mainly interested in the final response
+                response = result.get('response', str(result)) if isinstance(result, dict) else str(result)
+                
+                # Add any tool call information to the response if available
+                tool_call_info = ""
+                for event in events_collected:
+                    if event.get('type') == 'tool_call':
+                        tool_data = event.get('data', {})
+                        tool_name = tool_data.get('agent_name', 'Unknown Tool')  # Use agent_name instead of name
+                        tool_method = tool_data.get('method_name', 'Unknown Method')  # Use method_name
+                        tool_args = tool_data.get('parameters', {})
+                        tool_call_info += f"\n🔧 Tool Call: {tool_name}.{tool_method}"
+                        if tool_args:
+                            tool_call_info += f" Parameters: {tool_args}"
+                    elif event.get('type') == 'tool_response':
+                        tool_data = event.get('data', {})
+                        tool_name = tool_data.get('agent_name', 'Unknown Tool')  # Use agent_name instead of name
+                        tool_result = tool_data.get('result', tool_data.get('response', 'No result'))
+                        tool_call_info += f"\n✅ Tool Response: {tool_name}"
+                        if tool_result != 'No result':
+                            tool_call_info += f"\nResult: {tool_result}"
+                
                 # Combine tool call info with the main response
-                if tool_call_info.strip():
+                if tool_call_info and tool_call_info.strip():
                     response = tool_call_info + "\n" + response
             except Exception as e:
                 # If async processing fails, provide an error message
@@ -403,9 +446,12 @@ class InteractiveCLI:
         Returns:
             String response to user
         """
-        success = self.gcs_runtime.provider_manager.set_provider(provider_name)
-        if success:
-            return f"Provider switched to: {provider_name}"
-        else:
-            available = await self.gcs_runtime.provider_manager.get_available_providers()
-            return f"Failed to switch to provider: {provider_name}. Available providers: {', '.join(available)}"
+        try:
+            success = self.gcs_runtime.provider_manager.set_provider(provider_name)
+            if success:
+                return f"Provider switched to: {provider_name}"
+            else:
+                available = await self.gcs_runtime.provider_manager.get_available_providers()
+                return f"Failed to switch to provider: {provider_name}. Available providers: {', '.join(available)}"
+        except Exception as e:
+            return f"Error switching provider: {str(e)}"

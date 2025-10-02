@@ -4,7 +4,8 @@ import asyncio
 import json
 import logging
 from typing import Dict, Any, List, Optional, Callable
-from cogniscient.engine.services.llm_service import LLMService
+from cogniscient.engine.services.litellm_adapter import LiteLLMAdapter as LLMService
+from cogniscient.llm.llm_service import LLMService as ProviderManager  # For backward compatibility during transition
 from cogniscient.engine.gcs_runtime import GCSRuntime
 from cogniscient.engine.config.settings import settings
 
@@ -15,15 +16,23 @@ logger = logging.getLogger(__name__)
 class BaseUserRequestHandler:
     """Base class for processing user requests with shared functionality."""
 
-    def __init__(self, gcs_runtime: GCSRuntime, llm_service: LLMService):
+    def __init__(self, gcs_runtime: GCSRuntime, provider_manager: 'LLMService' = None):  # Using forward reference
         """Initialize the base request handler.
         
         Args:
             gcs_runtime (GCSRuntime): The GCS runtime instance to manage agents.
-            llm_service (LLMService): The LLM service instance.
+            provider_manager (LLMService): The LLM service instance for LLM operations (formerly ProviderManager).
         """
         self.gcs_runtime = gcs_runtime
-        self.llm_service = llm_service
+        # Use the provider manager's contextual LLM service if available
+        if hasattr(gcs_runtime, 'llm_service') and gcs_runtime.llm_service:
+            self.llm_service = gcs_runtime.llm_service  # This is the ContextualLLMService
+        elif provider_manager:
+            # If we only have the provider manager, create a contextual service
+            from cogniscient.engine.services.contextual_llm_service import ContextualLLMService
+            self.llm_service = ContextualLLMService(provider_manager=provider_manager)
+        else:
+            raise ValueError("Either gcs_runtime with llm_service or provider_manager must be provided")
 
     def _calculate_context_size(self, conversation_history: List[Dict[str, str]]) -> int:
         """Calculate the total context size in characters.

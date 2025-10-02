@@ -6,7 +6,7 @@ import importlib.util
 import json
 import os
 from typing import Any, Dict, List
-from cogniscient.engine.services.llm_service import LLMService
+from cogniscient.engine.services.litellm_adapter import LiteLLMAdapter as LLMService
 from cogniscient.engine.services.contextual_llm_service import ContextualLLMService
 import datetime
 from cogniscient.engine.agent_utils.local_agent_manager import LocalAgentManager
@@ -15,7 +15,7 @@ from cogniscient.engine.agent_utils.unified_agent_manager import UnifiedAgentMan
 from cogniscient.engine.agent_utils.agent_coordinator import AgentCoordinator
 from cogniscient.engine.services.config_service import ConfigService
 from cogniscient.engine.services.system_parameters_service import SystemParametersService
-from cogniscient.llm.provider_manager import ProviderManager
+from cogniscient.llm.llm_service import LLMService as ProviderManager  # For backward compatibility during transition
 from cogniscient.auth.token_manager import TokenManager
 from cogniscient.engine.config.settings import settings
 

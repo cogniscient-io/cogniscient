@@ -3,7 +3,9 @@
 import logging
 from typing import Callable, Dict, Any, List
 from cogniscient.engine.gcs_runtime import GCSRuntime
-from cogniscient.engine.services.llm_service import LLMService
+from cogniscient.engine.services.litellm_adapter import LiteLLMAdapter as LLMService
+from cogniscient.engine.services.contextual_llm_service import ContextualLLMService
+from cogniscient.llm.llm_service import LLMService as ProviderManager  # For backward compatibility during transition
 from cogniscient.engine.orchestrator.base_user_request_handler import BaseUserRequestHandler
 
 logger = logging.getLogger(__name__)
@@ -12,14 +14,26 @@ logger = logging.getLogger(__name__)
 class UserRequestProcessor(BaseUserRequestHandler):
     """Handles processing of user requests with LLM to determine appropriate agents."""
 
-    def __init__(self, gcs_runtime: GCSRuntime, llm_service: LLMService):
+    def __init__(self, gcs_runtime: GCSRuntime, llm_service: ContextualLLMService = None, provider_manager: ProviderManager = None):
         """Initialize the user request processor.
         
         Args:
             gcs_runtime (GCSRuntime): The GCS runtime instance to manage agents.
-            llm_service (LLMService): The LLM service instance.
+            llm_service (ContextualLLMService): The contextual LLM service instance.
+            provider_manager (ProviderManager): The provider manager instance for LLM operations.
         """
-        super().__init__(gcs_runtime, llm_service)
+        # Use the contextual LLM service from the GCS runtime if available
+        if llm_service is not None:
+            actual_service = llm_service
+        elif hasattr(gcs_runtime, 'llm_service') and gcs_runtime.llm_service:
+            actual_service = gcs_runtime.llm_service
+        elif provider_manager:
+            from cogniscient.engine.services.contextual_llm_service import ContextualLLMService
+            actual_service = ContextualLLMService(provider_manager=provider_manager)
+        else:
+            raise ValueError("Either llm_service, gcs_runtime with llm_service, or provider_manager must be provided")
+        
+        super().__init__(gcs_runtime, actual_service)
 
     async def process_user_request(self, user_input: str, conversation_history: List[Dict[str, str]], 
                                 send_stream_event: Callable[[str, str, Dict[str, Any]], Any]) -> Dict[str, Any]:

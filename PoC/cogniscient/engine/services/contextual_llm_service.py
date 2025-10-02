@@ -4,17 +4,17 @@ High-level LLM service that adds domain context and agent registry information.
 
 import logging
 from typing import Dict, Any, Optional
-from cogniscient.llm.provider_manager import ProviderManager
+from cogniscient.llm.llm_service import LLMService  # This is the new main LLM service (formerly ProviderManager)
 
 logger = logging.getLogger(__name__)
 
 
 class ContextualLLMService:
-    def __init__(self, provider_manager: ProviderManager = None, agent_registry: Optional[Dict[str, Any]] = None, system_services: Optional[Dict[str, Any]] = None):
+    def __init__(self, provider_manager: 'LLMService' = None, agent_registry: Optional[Dict[str, Any]] = None, system_services: Optional[Dict[str, Any]] = None):
         """Initialize the contextual LLM service.
         
         Args:
-            provider_manager (ProviderManager, optional): The provider manager for handling LLM calls.
+            provider_manager (LLMService, optional): The LLM service for handling LLM calls (formerly ProviderManager).
             agent_registry (Dict[str, Any], optional): Agent registry information.
             system_services (Dict[str, Any], optional): System services information.
         """
@@ -112,20 +112,29 @@ class ContextualLLMService:
                 **kwargs
             )
             
-            # Return the result (we'll handle token counts in the provider manager)
-            if return_token_counts:
-                # For now, just return the result as a dict with the response
-                # Token counting would need to be implemented in the provider manager
-                return {
-                    "response": result,
-                    "token_counts": {
-                        "input_tokens": 0,  # Placeholder - would need actual implementation
-                        "output_tokens": 0,  # Placeholder - would need actual implementation
-                        "total_tokens": 0   # Placeholder - would need actual implementation
+            # Handle the result based on whether it contains token counts
+            if isinstance(result, dict) and "token_counts" in result and "response" in result:
+                # The provider already returned token counts, so use them
+                if return_token_counts:
+                    return result  # Return as-is with token counts
+                else:
+                    # Caller doesn't want return_token_counts format, just return response
+                    return result["response"]
+            else:
+                # The provider returned a string or a non-token-count-aware result
+                if return_token_counts:
+                    # Return in token count format with zeros for token counts
+                    return {
+                        "response": result,
+                        "token_counts": {
+                            "input_tokens": 0,
+                            "output_tokens": 0,
+                            "total_tokens": 0
+                        }
                     }
-                }
-            
-            return result
+                else:
+                    # Return as-is
+                    return result
                     
         except Exception as e:
             logger.error(f"Error calling LLM API: {str(e)}")
@@ -134,7 +143,9 @@ class ContextualLLMService:
             # Return error response with token counts if requested
             if return_token_counts:
                 import litellm
-                error_tokens = litellm.token_counter(model=model or self.llm_service.model, text=error_response)
+                # Use a default model for token counting in case of error
+                default_model = model or "gpt-3.5-turbo"
+                error_tokens = litellm.token_counter(model=default_model, text=error_response)
                 return {
                     "response": error_response,
                     "token_counts": {

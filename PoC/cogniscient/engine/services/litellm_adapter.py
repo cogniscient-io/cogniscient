@@ -1,5 +1,5 @@
 """
-Generic LLM service using LiteLLM for transport.
+LiteLLM adapter for interacting with LLM APIs.
 """
 
 import logging
@@ -14,11 +14,11 @@ litellm.set_verbose = False  # Set to True for debugging
 logger = logging.getLogger(__name__)
 
 
-class LLMService:
-    """Generic service for interacting with LLM APIs using LiteLLM."""
+class LiteLLMAdapter:
+    """Adapter for interacting with LLM APIs using LiteLLM."""
     
     def __init__(self, model: str = None, api_key: str = None, base_url: str = None):
-        """Initialize the LLM service.
+        """Initialize the LiteLLM adapter.
         
         Args:
             model (str, optional): The model to use. If not provided, will use settings.

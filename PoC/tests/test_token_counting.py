@@ -2,14 +2,14 @@
 
 import pytest
 from unittest.mock import patch, MagicMock
-from cogniscient.engine.services.llm_service import LLMService
+from cogniscient.engine.services.litellm_adapter import LiteLLMAdapter as LLMService
 
 
 def test_llm_service_token_counting():
     """Should count tokens for input and output."""
     # Mock the LiteLLM token_counter function
-    with patch('cogniscient.engine.services.llm_service.litellm.token_counter') as mock_token_counter:
-        with patch('cogniscient.engine.services.llm_service.acompletion') as mock_acompletion:
+    with patch('cogniscient.engine.services.litellm_adapter.litellm.token_counter') as mock_token_counter:
+        with patch('cogniscient.engine.services.litellm_adapter.acompletion') as mock_acompletion:
             # Set up mocks
             mock_token_counter.side_effect = [15, 25]  # Input tokens, output tokens
             mock_acompletion.return_value = MagicMock()
@@ -45,8 +45,8 @@ def test_llm_service_token_counting():
 async def test_llm_service_token_counting_async():
     """Should count tokens for input and output in async context."""
     # Mock the LiteLLM token_counter function
-    with patch('cogniscient.engine.services.llm_service.litellm.token_counter') as mock_token_counter:
-        with patch('cogniscient.engine.services.llm_service.acompletion') as mock_acompletion:
+    with patch('cogniscient.engine.services.litellm_adapter.litellm.token_counter') as mock_token_counter:
+        with patch('cogniscient.engine.services.litellm_adapter.acompletion') as mock_acompletion:
             # Set up mocks
             mock_token_counter.side_effect = [12, 18]  # Input tokens, output tokens
             mock_acompletion.return_value = MagicMock()
@@ -75,8 +75,8 @@ async def test_llm_service_token_counting_async():
 def test_llm_service_token_counting_with_custom_model():
     """Should count tokens using a custom model."""
     # Mock the LiteLLM token_counter function
-    with patch('cogniscient.engine.services.llm_service.litellm.token_counter') as mock_token_counter:
-        with patch('cogniscient.engine.services.llm_service.acompletion') as mock_acompletion:
+    with patch('cogniscient.engine.services.litellm_adapter.litellm.token_counter') as mock_token_counter:
+        with patch('cogniscient.engine.services.litellm_adapter.acompletion') as mock_acompletion:
             # Set up mocks
             mock_token_counter.side_effect = [20, 30]  # Input tokens, output tokens
             mock_acompletion.return_value = MagicMock()

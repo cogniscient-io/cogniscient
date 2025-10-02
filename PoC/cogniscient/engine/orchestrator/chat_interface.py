@@ -3,7 +3,8 @@
 import json
 import logging
 from typing import Callable, Dict, Any, List
-from cogniscient.engine.services.llm_service import LLMService
+from cogniscient.engine.services.contextual_llm_service import ContextualLLMService
+from cogniscient.llm.llm_service import LLMService as ProviderManager  # The main service (formerly ProviderManager)
 from cogniscient.engine.config.settings import settings
 
 
@@ -22,7 +23,6 @@ class ChatInterface:
             compression_threshold (int, optional): Compress when history reaches this length.
         """
         self.orchestrator = orchestrator
-        self.llm_service = LLMService()
         self.conversation_history: List[Dict[str, str]] = []
         self.max_history_length = max_history_length or settings.max_history_length
         self.compression_threshold = compression_threshold or settings.compression_threshold
@@ -30,6 +30,12 @@ class ChatInterface:
         # Validate parameters
         if self.compression_threshold >= self.max_history_length:
             raise ValueError("Compression threshold must be less than max history length")
+        
+        # Get the contextual LLM service from the GCS runtime
+        if hasattr(orchestrator, 'gcs_runtime') and hasattr(orchestrator.gcs_runtime, 'llm_service'):
+            self.llm_service = orchestrator.gcs_runtime.llm_service
+        else:
+            raise ValueError("Orchestrator must have a gcs_runtime with an llm_service")
         
         # Register this chat interface with the GCS runtime
         if hasattr(orchestrator, 'gcs_runtime'):
@@ -125,7 +131,13 @@ class ChatInterface:
             
             compression_prompt += "\nProvide a concise summary that captures the main topics and context of this conversation."
             
-            compressed_summary = await self.llm_service.generate_response(compression_prompt)
+            compressed_summary_result = await self.llm_service.generate_response(compression_prompt, return_token_counts=True)
+            
+            # Handle the response based on whether token counts were returned
+            if isinstance(compressed_summary_result, dict) and "token_counts" in compressed_summary_result:
+                compressed_summary = compressed_summary_result["response"]
+            else:
+                compressed_summary = compressed_summary_result
             
             # Replace the conversation history with the summary
             self.conversation_history = [
@@ -166,7 +178,13 @@ class ChatInterface:
             
             compression_prompt += "\nProvide a concise summary that captures the main topics and context of this conversation."
             
-            compressed_summary = await self.llm_service.generate_response(compression_prompt)
+            compressed_summary_result = await self.llm_service.generate_response(compression_prompt, return_token_counts=True)
+            
+            # Handle the response based on whether token counts were returned
+            if isinstance(compressed_summary_result, dict) and "token_counts" in compressed_summary_result:
+                compressed_summary = compressed_summary_result["response"]
+            else:
+                compressed_summary = compressed_summary_result
             
             # Replace the conversation history with the summary
             compressed_history = [
@@ -255,10 +273,20 @@ class ChatInterface:
         
         try:
             # Generate a response using the LLM service with the approval prompt
-            response = await self.llm_service.generate_response([
-                {"role": "system", "content": "You are a system administrator reviewing approval requests for system changes. Respond with either 'yes' or 'no' based on the provided information."},
-                {"role": "user", "content": approval_prompt}
-            ])
+            # The contextual LLM service expects a single prompt string, not a messages list
+            full_prompt = (
+                "You are a system administrator reviewing approval requests for system changes. "
+                "Respond with either 'yes' or 'no' based on the provided information.\n\n"
+                f"{approval_prompt}"
+            )
+            
+            response_result = await self.llm_service.generate_response(full_prompt, return_token_counts=True)
+            
+            # Handle the response based on whether token counts were returned
+            if isinstance(response_result, dict) and "token_counts" in response_result:
+                response = response_result["response"]
+            else:
+                response = response_result
             
             # Parse the user's response to determine approval
             approval_decision = response.lower().strip()

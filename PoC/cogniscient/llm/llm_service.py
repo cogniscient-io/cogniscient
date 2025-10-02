@@ -1,29 +1,29 @@
 """
-Provider Manager for switching between different LLM providers.
+Main LLM Service for switching between different LLM providers.
 """
 import asyncio
 from typing import List, Dict, Any, Optional
-from cogniscient.engine.services.llm_service import LLMService
+from cogniscient.engine.services.litellm_adapter import LiteLLMAdapter
 from .qwen_client import QwenClient
 from cogniscient.auth.token_manager import TokenManager
 
 
-class ProviderManager:
-    """Manages switching between different LLM providers."""
+class LLMService:
+    """Main service for switching between different LLM providers."""
     
     def __init__(self, token_manager: Optional[TokenManager] = None):
         """
-        Initialize the Provider Manager.
+        Initialize the LLM Service.
         
         Args:
             token_manager: Token manager for Qwen provider (optional)
         """
         self.current_provider = "litellm"  # Default provider
         self.providers = {
-            "litellm": LLMService(),  # Current implementation
+            "litellm": LiteLLMAdapter(),  # Current implementation
         }
         
-        # Set up Qwen provider if token manager is provided
+        # Set up Qwen provider if token_manager is provided
         if token_manager:
             self.qwen_client = QwenClient(token_manager)
             self.providers["qwen"] = self.qwen_client
@@ -32,7 +32,7 @@ class ProviderManager:
 
     def add_provider(self, name: str, provider: Any):
         """
-        Add a new provider to the manager.
+        Add a new provider to the service.
         
         Args:
             name: Name of the provider

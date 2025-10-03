@@ -93,12 +93,15 @@ class BaseExternalAgent:
             description=description,
         )(tool_wrapper)
     
-    def run(self):
+    def run(self, transport: str = "stdio"):
         """
         Run the MCP external agent server synchronously.
+        
+        Args:
+            transport: Transport protocol to use ("stdio", "sse", or "streamable-http")
         """
-        self.logger.info(f"Starting MCP external agent {self.name}")
-        self.mcp.run()
+        self.logger.info(f"Starting MCP external agent {self.name} with {transport} transport")
+        self.mcp.run(transport=transport)
     
     async def run_async(self):
         """
@@ -110,6 +113,35 @@ class BaseExternalAgent:
         # This is a simplified version - in practice, you would handle async differently
         await self.mcp.run()
     
+    def run_http_server(self, host: str = "127.0.0.1", port: int = 8080):
+        """
+        Run the MCP external agent as an HTTP server using streamable HTTP transport.
+        
+        Args:
+            host: Host address for the HTTP server (default: 127.0.0.1)
+            port: Port for the HTTP server (default: 8080)
+        """
+        self.logger.info(f"Starting MCP external agent HTTP server {self.name} on {host}:{port}")
+        # Update the MCP server settings for HTTP
+        self.mcp.settings.host = host
+        self.mcp.settings.port = port
+        self.mcp.run(transport="streamable-http")
+    
+    def run_sse_server(self, host: str = "127.0.0.1", port: int = 8080, mount_path: str = "/"):
+        """
+        Run the MCP external agent using Server-Sent Events (SSE) transport.
+        
+        Args:
+            host: Host address for the SSE server (default: 127.0.0.1)
+            port: Port for the SSE server (default: 8080)
+            mount_path: Mount path for the SSE endpoints (default: "/")
+        """
+        self.logger.info(f"Starting MCP external agent SSE server {self.name} on {host}:{port}")
+        # Update the MCP server settings for SSE
+        self.mcp.settings.host = host
+        self.mcp.settings.port = port
+        self.mcp.run(transport="sse", mount_path=mount_path)
+
     def get_mcp_registration_info(self) -> Dict[str, Any]:
         """
         Get the MCP registration information needed for tool discovery.
@@ -123,6 +155,7 @@ class BaseExternalAgent:
             "version": self.version,
             "mcp_compliant": True,
             "mcp_exposed_methods": list(self.mcp._tool_manager._tools.keys()) if hasattr(self.mcp, '_tool_manager') else [],
+            "supported_transports": ["stdio", "sse", "streamable-http"]
         }
         
         return registration_info
@@ -189,51 +222,30 @@ if __name__ == "__main__":
     agent.run()
 
 
-class SimpleMathAgent(BaseExternalAgent):
-    """
-    Example implementation of a simple math agent to demonstrate usage.
-    """
-    
-    def __init__(self):
-        super().__init__(
-            name="SimpleMathAgent",
-            version="1.0.0",
-            description="A simple agent that performs basic math operations"
-        )
-        
-        # Register the methods this agent supports
-        self.register_method(
-            "add", 
-            description="Add two numbers", 
-            parameters={
-                "a": {"type": "number", "description": "First number", "required": True},
-                "b": {"type": "number", "description": "Second number", "required": True}
-            }
-        )
-        
-        self.register_method(
-            "multiply", 
-            description="Multiply two numbers", 
-            parameters={
-                "a": {"type": "number", "description": "First number", "required": True},
-                "b": {"type": "number", "description": "Second number", "required": True}
-            }
-        )
-    
-    def add(self, a: float, b: float) -> float:
-        """Add two numbers."""
-        result = a + b
-        self.logger.info(f"Calculated {a} + {b} = {result}")
-        return result
-    
-    def multiply(self, a: float, b: float) -> float:
-        """Multiply two numbers."""
-        result = a * b
-        self.logger.info(f"Calculated {a} * {b} = {result}")
-        return result
-
-
+# Example usage for HTTP server
 if __name__ == "__main__":
-    # Example usage
+    import sys
+    
+    # Create an instance of the agent
     agent = SimpleMathAgent()
-    agent.run()
+    
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "http":
+            # Run as HTTP server
+            print("Starting agent as HTTP server on http://127.0.0.1:8080/mcp")
+            agent.run_http_server(host="127.0.0.1", port=8080)
+        elif sys.argv[1] == "sse":
+            # Run as SSE server
+            print("Starting agent as SSE server on http://127.0.0.1:8080")
+            agent.run_sse_server(host="127.0.0.1", port=8080)
+        elif sys.argv[1] == "stdio":
+            # Run with stdio (default)
+            print("Starting agent with stdio transport")
+            agent.run(transport="stdio")
+        else:
+            print(f"Unknown transport: {sys.argv[1]}")
+            print("Usage: python base_external_agent.py [http|sse|stdio]")
+    else:
+        # Default to stdio transport
+        print("Starting agent with stdio transport (default)")
+        agent.run(transport="stdio")

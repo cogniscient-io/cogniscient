@@ -54,11 +54,29 @@ Parameters:
 - `description` (str): Description of what the tool does
 - `input_schema` (dict): JSON schema describing the parameters the tool accepts
 
-#### `run(self)`
+#### `run(self, transport="stdio")`
 Run the MCP external agent server synchronously.
+
+Parameters:
+- `transport` (str): Transport protocol to use ("stdio", "sse", or "streamable-http"). Default is "stdio".
 
 #### `run_async(self)`
 Run the MCP external agent server asynchronously.
+
+#### `run_http_server(self, host="127.0.0.1", port=8080)`
+Run the MCP external agent as an HTTP server using streamable HTTP transport.
+
+Parameters:
+- `host` (str): Host address for the HTTP server (default: "127.0.0.1")
+- `port` (int): Port for the HTTP server (default: 8080)
+
+#### `run_sse_server(self, host="127.0.0.1", port=8080, mount_path="/")`
+Run the MCP external agent using Server-Sent Events (SSE) transport.
+
+Parameters:
+- `host` (str): Host address for the SSE server (default: "127.0.0.1")
+- `port` (int): Port for the SSE server (default: 8080)
+- `mount_path` (str): Mount path for the SSE endpoints (default: "/")
 
 #### `get_mcp_registration_info(self)`
 Get the MCP registration information needed for tool discovery and management.
@@ -114,9 +132,60 @@ class WeatherAgent(BaseExternalAgent):
             raise
 
 if __name__ == "__main__":
+    import sys
     agent = WeatherAgent()
-    agent.run()
+    
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "http":
+            port = 8080
+            if len(sys.argv) > 2:
+                try:
+                    port = int(sys.argv[2])
+                except ValueError:
+                    print(f"Invalid port {sys.argv[2]}, using default 8080")
+                    port = 8080
+            agent.run_http_server(host="127.0.0.1", port=port)
+        elif sys.argv[1] == "sse":
+            port = 8080
+            if len(sys.argv) > 2:
+                try:
+                    port = int(sys.argv[2])
+                except ValueError:
+                    print(f"Invalid port {sys.argv[2]}, using default 8080")
+                    port = 8080
+            agent.run_sse_server(host="127.0.0.1", port=port)
+        elif sys.argv[1] == "stdio":
+            agent.run(transport="stdio")
+        else:
+            print(f"Unknown transport: {sys.argv[1]}")
+            print("Usage: python your_agent.py [http|sse|stdio] [port]")
+    else:
+        # Default to stdio transport
+        agent.run(transport="stdio")
 ```
+
+## Running External Agents with HTTP Support
+
+Your MCP external agents now support multiple transport mechanisms:
+
+### STDIO Transport (Default)
+```bash
+python your_agent.py stdio
+```
+
+### HTTP Transport (Streamable HTTP)
+```bash
+python your_agent.py http          # Uses default port 8080
+python your_agent.py http 8090     # Uses custom port 8090
+```
+
+### SSE Transport (Server-Sent Events)
+```bash
+python your_agent.py sse           # Uses default port 8080
+python your_agent.py sse 8090      # Uses custom port 8090
+```
+
+The HTTP and SSE transports will make your agent available as an HTTP service that can be accessed at the specified port. The HTTP transport uses the MCP Streamable HTTP protocol and will be available at `http://<host>:<port>/mcp`.
 
 ## MCP Registration Process
 

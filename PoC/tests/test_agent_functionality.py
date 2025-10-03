@@ -2,6 +2,7 @@
 
 import asyncio
 import pytest
+from unittest.mock import AsyncMock, MagicMock
 from cogniscient.engine.gcs_runtime import GCSRuntime
 from cogniscient.engine.llm_orchestrator.llm_orchestrator import LLMOrchestrator
 from cogniscient.engine.llm_orchestrator.chat_interface import ChatInterface
@@ -42,6 +43,11 @@ async def test_additional_prompt_info_functionality():
     # Initialize UCS runtime and chat interface
     ucs_runtime = GCSRuntime(config_dir="plugins/sample_internal/config", agents_dir="plugins/sample_internal/agents")
     orchestrator = LLMOrchestrator(ucs_runtime)
+    
+    # Mock the LLM service to avoid actual LLM calls
+    mock_generate_response = AsyncMock(return_value={"response": "Mocked response", "token_counts": {"input_tokens": 10, "output_tokens": 20, "total_tokens": 30}})
+    ucs_runtime.llm_service.generate_response = mock_generate_response
+    
     chat_interface = ChatInterface(orchestrator)
     
     # Load website only configuration
@@ -78,6 +84,11 @@ async def test_dns_only_config_functionality():
     ucs_runtime.load_configuration("dns_only")
     
     orchestrator = LLMOrchestrator(ucs_runtime)
+    
+    # Mock the LLM service to avoid actual LLM calls
+    mock_generate_response = AsyncMock(return_value="Mocked response")
+    ucs_runtime.llm_service.generate_response = mock_generate_response
+    
     chat_interface = ChatInterface(orchestrator)
     
     # Check that additional prompt info was loaded
@@ -101,6 +112,11 @@ async def test_combined_config_functionality():
     ucs_runtime.load_configuration("combined")
     
     orchestrator = LLMOrchestrator(ucs_runtime)
+    
+    # Mock the LLM service to avoid actual LLM calls
+    mock_generate_response = AsyncMock(return_value="Mocked response")
+    ucs_runtime.llm_service.generate_response = mock_generate_response
+    
     chat_interface = ChatInterface(orchestrator)
     
     # Check that additional prompt info was loaded

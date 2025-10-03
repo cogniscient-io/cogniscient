@@ -223,9 +223,10 @@ class WebsiteHostManagerAgent(BaseExternalAgent):
             await ctx.error(result["message"])
             return result
 
-# Example usage
+# Example usage with HTTP server support
 if __name__ == "__main__":
     import json
+    import sys
     
     # Load config from file or use defaults
     config = {
@@ -240,4 +241,41 @@ if __name__ == "__main__":
         print("Config file not found, using defaults")
     
     agent = WebsiteHostManagerAgent(config)
-    agent.run()
+    
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "http":
+            port = 8080  # default port
+            if len(sys.argv) > 2:
+                try:
+                    port = int(sys.argv[2])
+                    print(f"Starting agent as HTTP server on http://127.0.0.1:{port}/mcp")
+                except ValueError:
+                    print(f"Invalid port: {sys.argv[2]}. Using default port 8080.")
+                    port = 8080
+            else:
+                print(f"Starting agent as HTTP server on http://127.0.0.1:{port}/mcp")
+            
+            agent.run_http_server(host="127.0.0.1", port=port)
+        elif sys.argv[1] == "sse":
+            port = 8080  # default port
+            if len(sys.argv) > 2:
+                try:
+                    port = int(sys.argv[2])
+                    print(f"Starting agent as SSE server on http://127.0.0.1:{port}")
+                except ValueError:
+                    print(f"Invalid port: {sys.argv[2]}. Using default port 8080.")
+                    port = 8080
+            else:
+                print(f"Starting agent as SSE server on http://127.0.0.1:{port}")
+            
+            agent.run_sse_server(host="127.0.0.1", port=port)
+        elif sys.argv[1] == "stdio":
+            print("Starting agent with stdio transport")
+            agent.run(transport="stdio")
+        else:
+            print(f"Unknown transport: {sys.argv[1]}")
+            print("Usage: python website_host_manager.py [http|sse|stdio] [port]")
+    else:
+        # Default to stdio transport for backward compatibility
+        print("Starting agent with stdio transport (default)")
+        agent.run(transport="stdio")

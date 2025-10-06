@@ -6,21 +6,24 @@ import logging
 from typing import Dict, Any, Optional
 from cogniscient.llm.llm_service import LLMService  # This is the new main LLM service (formerly ProviderManager)
 
+
 logger = logging.getLogger(__name__)
 
 
 class ContextualLLMService:
-    def __init__(self, provider_manager: 'LLMService' = None, agent_registry: Optional[Dict[str, Any]] = None, system_services: Optional[Dict[str, Any]] = None):
+    def __init__(self, provider_manager: 'LLMService' = None, agent_registry: Optional[Dict[str, Any]] = None, system_services: Optional[Dict[str, Any]] = None, mcp_client_service: Optional['MCPClientService'] = None):
         """Initialize the contextual LLM service.
         
         Args:
             provider_manager (LLMService, optional): The LLM service for handling LLM calls (formerly ProviderManager).
             agent_registry (Dict[str, Any], optional): Agent registry information.
             system_services (Dict[str, Any], optional): System services information.
+            mcp_client_service (MCPClientService, optional): MCP client service for external agent connections.
         """
         self.provider_manager = provider_manager
         self.agent_registry = agent_registry
         self.system_services = system_services or {}
+        self.mcp_client_service = mcp_client_service  # NEW: MCP client service for external agent connections
 
     async def generate_response(
         self, 
@@ -202,12 +205,13 @@ class ContextualLLMService:
         capabilities_str += "[/AGENT_REGISTRY]\n"
         return capabilities_str
 
-    def set_agent_registry(self, agent_registry: Dict[str, Any], system_services: Optional[Dict[str, Any]] = None) -> None:
+    def set_agent_registry(self, agent_registry: Dict[str, Any], system_services: Optional[Dict[str, Any]] = None, mcp_client_service: Optional['MCPClientService'] = None) -> None:
         """Set the agent registry for this service, with optional system services.
         
         Args:
             agent_registry (Dict[str, Any]): Agent registry information.
             system_services (Dict[str, Any], optional): System services information.
+            mcp_client_service (MCPClientService, optional): MCP client service for external agent connections.
         """
         self.agent_registry = agent_registry
         if system_services:
@@ -215,6 +219,40 @@ class ContextualLLMService:
         else:
             # Initialize with default system services if not provided
             self.system_services = {}
+        
+        # Set MCP client service if provided
+        if mcp_client_service:
+            self.mcp_client_service = mcp_client_service
+
+    def _format_mcp_client_capabilities(self) -> str:
+        """Format MCP client service capabilities for inclusion in system prompt.
+        
+        Returns:
+            str: Formatted MCP client service capabilities string.
+        """
+        if not self.mcp_client_service:
+            return ""
+            
+        capabilities_str = "\\n[MCP_CLIENT_CAPABILITIES]\\n"
+        capabilities_str += "- system.connect_external_agent: Connect to an external agent using MCP protocol\\n"
+        capabilities_str += "  Available parameters:\\n"
+        capabilities_str += "  - agent_id: string (required) - Unique identifier for the external agent\\n"
+        capabilities_str += "  - connection_params: object (required) - Connection parameters including type, command, args, and env\\n"
+        capabilities_str += "    Properties:\\n"
+        capabilities_str += "    - type: string (required) - Type of connection ('stdio' or 'http')\\n"
+        capabilities_str += "    - url: string - URL for HTTP connections (required if type is 'http')\\n"
+        capabilities_str += "    - command: string - Command for stdio connections (required if type is 'stdio')\\n"
+        capabilities_str += "    - args: array - Arguments for stdio command (optional)\\n"
+        capabilities_str += "    - headers: object - HTTP headers for HTTP connections (optional)\\n"
+        capabilities_str += "    - authorization: string - Authorization header for HTTP connections (optional)\\n"
+        capabilities_str += "    - env: object - Environment variables for stdio processes (optional)\\n"
+        
+        capabilities_str += "- system.list_connected_agents: Get a list of currently connected external agents\\n"
+        capabilities_str += "- system.disconnect_external_agent: Disconnect from an external agent by its ID\\n"
+        capabilities_str += "  Available parameters:\\n"
+        capabilities_str += "  - agent_id: string (required) - Unique identifier for the external agent to disconnect\\n"
+        capabilities_str += "[/MCP_CLIENT_CAPABILITIES]\\n"
+        return capabilities_str
 
     def _format_system_service_capabilities(self) -> str:
         """Format system service capabilities for inclusion in system prompt.
@@ -317,4 +355,9 @@ class ContextualLLMService:
                             capabilities_str += f"    - {param_name}: {param_type} - {param_desc}{required}\\n"
                     
         capabilities_str += "[/SYSTEM_SERVICES]\\n"
+        
+        # Include MCP client capabilities if available
+        if self.mcp_client_service:
+            capabilities_str += self._format_mcp_client_capabilities()
+            
         return capabilities_str

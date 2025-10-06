@@ -10,7 +10,9 @@ from cogniscient.engine.llm_orchestrator.llm_orchestrator import LLMOrchestrator
 def test_chat_interface_initialization():
     """Should initialize chat interface successfully with MCP compliance."""
     gcs_runtime = MagicMock(spec=GCSRuntime)
+    gcs_runtime.llm_service = MagicMock()  # Add the required attribute
     orchestrator = MagicMock(spec=LLMOrchestrator)
+    orchestrator.gcs_runtime = gcs_runtime  # Set the gcs_runtime attribute
     chat_interface = ChatInterface(orchestrator)
     assert chat_interface is not None
     assert chat_interface.orchestrator == orchestrator
@@ -19,7 +21,10 @@ def test_chat_interface_initialization():
 def test_conversation_history():
     """Should maintain conversation history."""
     gcs_runtime = MagicMock(spec=GCSRuntime)
+    gcs_runtime.llm_service = MagicMock()  # Add the required attribute
+    gcs_runtime.register_chat_interface = MagicMock()  # Add required method
     orchestrator = MagicMock(spec=LLMOrchestrator)
+    orchestrator.gcs_runtime = gcs_runtime  # Set the gcs_runtime attribute
     chat_interface = ChatInterface(orchestrator)
     
     # Add a mock to the llm_service to prevent actual API calls
@@ -52,7 +57,10 @@ def test_conversation_history():
 async def test_approval_workflow():
     """Should handle approval requests properly."""
     gcs_runtime = MagicMock(spec=GCSRuntime)
+    gcs_runtime.llm_service = MagicMock()  # Add the required attribute
+    gcs_runtime.register_chat_interface = MagicMock()  # Add required method
     orchestrator = MagicMock(spec=LLMOrchestrator)
+    orchestrator.gcs_runtime = gcs_runtime  # Set the gcs_runtime attribute
     chat_interface = ChatInterface(orchestrator)
     
     # Mock the LLM service response for approval

@@ -14,6 +14,8 @@ from cogniscient.engine.agent_utils.unified_agent_manager import UnifiedAgentMan
 from cogniscient.engine.agent_utils.agent_coordinator import AgentCoordinator
 from cogniscient.engine.services.config_service import ConfigService
 from cogniscient.engine.services.system_parameters_service import SystemParametersService
+from cogniscient.engine.services.mcp_service import MCPService
+from cogniscient.engine.services.mcp_client_service import MCPClientService
 from cogniscient.llm.llm_service import LLMService
 from cogniscient.auth.token_manager import TokenManager
 from cogniscient.engine.config.settings import settings
@@ -57,10 +59,6 @@ class GCSRuntime:
         
         # Set the default provider from settings
         self.llm_service_internal.set_provider(settings.default_provider)
-        
-        # Create the contextual LLM service directly using the LLM service
-        # Now that ContextualLLMService expects an LLM service directly
-        self.llm_service = ContextualLLMService(provider_manager=self.llm_service_internal)
         
         # Agent registry will be set after agents are loaded
         # Set a reference to self in the runtime for agents to access
@@ -116,6 +114,18 @@ class GCSRuntime:
         # Set the runtime reference for agents that need access to runtime functionality
         self.local_agent_manager.set_runtime_ref(self)
         self.unified_agent_manager.set_runtime_ref(self)
+        
+        # NOW we can initialize the MCP service since unified_agent_manager is available
+        # to avoid initialization order issues
+        self.mcp_service = MCPService(self)
+        
+        # Create the contextual LLM service directly using the LLM service
+        # Now that ContextualLLMService expects an LLM service directly
+        # Pass the MCP client service to provide access to external agent connections
+        self.llm_service = ContextualLLMService(
+            provider_manager=self.llm_service_internal,
+            mcp_client_service=self.mcp_service.mcp_client
+        )
 
     @property
     def agents(self):
@@ -235,8 +245,11 @@ class GCSRuntime:
         self.local_agent_manager.set_runtime_ref(self)
         self.unified_agent_manager.set_runtime_ref(self)
         
-        # Set the agent registry in the LLM service
-        self.llm_service.set_agent_registry(self.agents)
+        # Set the agent registry in the LLM service with MCP client service
+        self.llm_service.set_agent_registry(
+            agent_registry=self.agents,
+            mcp_client_service=self.mcp_service.mcp_client
+        )
 
     def load_configuration(self, config_name: str) -> None:
         """Load a specific configuration which determines which agents to load.
@@ -305,8 +318,11 @@ class GCSRuntime:
         self.local_agent_manager.set_runtime_ref(self)
         self.unified_agent_manager.set_runtime_ref(self)
         
-        # Set the agent registry in the LLM service
-        self.llm_service.set_agent_registry(self.agents)
+        # Set the agent registry in the LLM service with MCP client service
+        self.llm_service.set_agent_registry(
+            agent_registry=self.agents,
+            mcp_client_service=self.mcp_service.mcp_client
+        )
         
         # Notify chat interfaces that the configuration has changed
         self._notify_configuration_change()
@@ -355,7 +371,10 @@ class GCSRuntime:
         # Note: We don't clear additional_prompt_info here as it's set by load_configuration
         
         # Update the LLM service with empty agent registry
-        self.llm_service.set_agent_registry(self.agents)
+        self.llm_service.set_agent_registry(
+            agent_registry=self.agents,
+            mcp_client_service=self.mcp_service.mcp_client
+        )
 
     def list_available_configurations(self) -> List[str]:
         """List all available configuration files.

@@ -230,29 +230,167 @@ class ContextualLLMService:
         Returns:
             str: Formatted MCP client service capabilities string.
         """
+        # Since MCP functionality is now properly exposed as the MCPClient agent,
+        # we don't need to present standalone mcp_* tools in the system capabilities.
+        # The LLM can access all MCP functionality through the MCPClient agent methods.
         if not self.mcp_client_service:
             return ""
             
-        capabilities_str = "\\n[MCP_CLIENT_CAPABILITIES]\\n"
-        capabilities_str += "- system.connect_external_agent: Connect to an external agent using MCP protocol\\n"
-        capabilities_str += "  Available parameters:\\n"
-        capabilities_str += "  - agent_id: string (required) - Unique identifier for the external agent\\n"
-        capabilities_str += "  - connection_params: object (required) - Connection parameters including type, command, args, and env\\n"
-        capabilities_str += "    Properties:\\n"
-        capabilities_str += "    - type: string (required) - Type of connection ('stdio' or 'http')\\n"
-        capabilities_str += "    - url: string - URL for HTTP connections (required if type is 'http')\\n"
-        capabilities_str += "    - command: string - Command for stdio connections (required if type is 'stdio')\\n"
-        capabilities_str += "    - args: array - Arguments for stdio command (optional)\\n"
-        capabilities_str += "    - headers: object - HTTP headers for HTTP connections (optional)\\n"
-        capabilities_str += "    - authorization: string - Authorization header for HTTP connections (optional)\\n"
-        capabilities_str += "    - env: object - Environment variables for stdio processes (optional)\\n"
+        # Return empty string since MCP functionality is available through the MCPClient agent
+        return ""
+
+    def get_all_available_tools(self) -> Dict[str, Any]:
+        """Get a comprehensive list of all available tools in the system.
         
-        capabilities_str += "- system.list_connected_agents: Get a list of currently connected external agents\\n"
-        capabilities_str += "- system.disconnect_external_agent: Disconnect from an external agent by its ID\\n"
-        capabilities_str += "  Available parameters:\\n"
-        capabilities_str += "  - agent_id: string (required) - Unique identifier for the external agent to disconnect\\n"
-        capabilities_str += "[/MCP_CLIENT_CAPABILITIES]\\n"
-        return capabilities_str
+        Returns:
+            Dict containing all available tools organized by type.
+        """
+        tools_info = {
+            "system_services": {},
+            "mcp_tools": {},
+            "agent_methods": {},
+            "connected_external_agent_tools": {}
+        }
+        
+        # 1. System services from the default and additional system services
+        default_system_services = {
+            "ConfigManager": {
+                "name": "ConfigService",
+                "version": "1.0.0",
+                "methods": {
+                    "list_configurations": {
+                        "description": "List all available system configurations",
+                        "parameters": {}
+                    },
+                    "load_configuration": {
+                        "description": "Load a specific system configuration by name",
+                        "parameters": {
+                            "config_name": {
+                                "type": "string", 
+                                "description": "Name of the configuration to load", 
+                                "required": True
+                            }
+                        }
+                    },
+                    "get_configuration": {
+                        "description": "Get a specific system configuration from cache or file",
+                        "parameters": {
+                            "config_name": {
+                                "type": "string", 
+                                "description": "Name of the configuration to get", 
+                                "required": True
+                            }
+                        }
+                    },
+                    "get_all_cached_configs": {
+                        "description": "Get all currently cached configurations",
+                        "parameters": {}
+                    },
+                    "clear_config_cache": {
+                        "description": "Clear the configuration cache",
+                        "parameters": {}
+                    }
+                },
+                "description": "Service for managing system configurations"
+            },
+            "SystemParametersManager": {
+                "name": "SystemParametersService", 
+                "version": "1.0.0",
+                "methods": {
+                    "get_system_parameters": {
+                        "description": "Get current system parameter values",
+                        "parameters": {}
+                    },
+                    "set_system_parameter": {
+                        "description": "Set a system parameter value",
+                        "parameters": {
+                            "parameter_name": {
+                                "type": "string", 
+                                "description": "Name of the parameter to set", 
+                                "required": True
+                            },
+                            "parameter_value": {
+                                "type": "string", 
+                                "description": "New value for the parameter", 
+                                "required": True
+                            }
+                        }
+                    },
+                    "get_parameter_descriptions": {
+                        "description": "Get descriptions of all system parameters",
+                        "parameters": {}
+                    }
+                },
+                "description": "Service for managing system parameters dynamically"
+            }
+        }
+        
+        # Include any additional system services passed during initialization
+        all_system_services = {**default_system_services, **self.system_services}
+        tools_info["system_services"] = all_system_services
+        
+        # 2. MCP client tools for LLM control (using internal mcp. namespace, not system. namespace)
+        if self.mcp_client_service:
+            tools_info["mcp_tools"] = {
+                "mcp.connect_external_agent": {
+                    "description": "Connect to an external agent using MCP protocol",
+                    "parameters": {
+                        "agent_id": {"type": "string", "description": "Unique identifier for the external agent", "required": True},
+                        "connection_params": {"type": "object", "description": "Connection parameters including type, url/command, etc.", "required": True}
+                    }
+                },
+                "mcp.list_connected_agents": {
+                    "description": "Get a list of currently connected external agents",
+                    "parameters": {}
+                },
+                "mcp.disconnect_external_agent": {
+                    "description": "Disconnect from an external agent by its ID",
+                    "parameters": {
+                        "agent_id": {"type": "string", "description": "Unique identifier for the external agent to disconnect", "required": True}
+                    }
+                },
+                "mcp.list_external_agent_capabilities": {
+                    "description": "Get capabilities (tools) of a connected external agent",
+                    "parameters": {
+                        "agent_id": {"type": "string", "description": "Unique identifier for the external agent", "required": True}
+                    }
+                },
+                "mcp.call_external_agent_tool": {
+                    "description": "Call a specific tool on a connected external agent",
+                    "parameters": {
+                        "agent_id": {"type": "string", "description": "Unique identifier for the external agent", "required": True},
+                        "tool_name": {"type": "string", "description": "Name of the tool to call", "required": True},
+                        "tool_parameters": {"type": "object", "description": "Parameters to pass to the tool", "required": False}
+                    }
+                }
+            }
+            
+            # Also include tools from connected external agents
+            connected_tools = self.mcp_client_service.get_registered_external_tools()
+            if connected_tools.get("success"):
+                tools_info["connected_external_agent_tools"] = connected_tools.get("external_agent_tools", {})
+        
+        # 3. Agent methods (if agent registry is available)
+        if self.agent_registry:
+            for agent_name, agent_instance in self.agent_registry.items():
+                agent_methods = {}
+                if hasattr(agent_instance, "self_describe"):
+                    try:
+                        agent_info = agent_instance.self_describe()
+                        agent_methods = agent_info.get("methods", {})
+                    except Exception:
+                        # If self_describe fails, try to extract methods using introspection
+                        for attr_name in dir(agent_instance):
+                            if not attr_name.startswith('_') and callable(getattr(agent_instance, attr_name)):
+                                agent_methods[attr_name] = {
+                                    "description": f"Method {attr_name} on agent {agent_name}",
+                                    "parameters": {}
+                                }
+                
+                if agent_methods:
+                    tools_info["agent_methods"][agent_name] = agent_methods
+        
+        return tools_info
 
     def _format_system_service_capabilities(self) -> str:
         """Format system service capabilities for inclusion in system prompt.

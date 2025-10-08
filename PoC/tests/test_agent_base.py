@@ -1,6 +1,6 @@
 """Unit tests for the agent base class."""
 
-from cogniscient.agentSDK.base_local_agent import Agent
+from cogniscient.engine.agent_utils.base_agent import Agent
 
 
 def test_agent_base_class():

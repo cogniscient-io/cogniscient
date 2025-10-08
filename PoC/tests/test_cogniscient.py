@@ -36,8 +36,11 @@ async def test_gcs_runtime_with_mock_agents():
     
     # Verify that agent managers are initialized
     assert hasattr(gcs, 'local_agent_manager')
-    assert hasattr(gcs, 'external_agent_manager')
-    assert hasattr(gcs, 'agent_coordinator')
+    # The external_agent_manager and agent_coordinator have been replaced by MCP service
+    assert hasattr(gcs, 'mcp_service')
+    # The mcp_service has both client (for connecting to external agents) and server functionality
+    assert hasattr(gcs.mcp_service, 'mcp_client')
+    assert hasattr(gcs.mcp_service, 'mcp_server')
     
     # Basic unload test
     gcs.unload_all_agents()

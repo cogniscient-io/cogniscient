@@ -71,3 +71,9 @@ def main():
             # Restore sys.argv and run command mode
             sys.argv = original_argv
             run_command_mode()
+
+
+# This allows the module to be run directly with `python -m cogniscient.cli.main`
+# while still supporting the entry point configuration in pyproject.toml
+if __name__ == "__main__":
+    main()

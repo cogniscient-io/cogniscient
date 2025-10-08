@@ -4,7 +4,7 @@ import socket
 import time
 import random
 import dns.resolver
-from cogniscient.agentSDK.base_local_agent import Agent
+from cogniscient.engine.agent_utils.base_agent import Agent
 
 
 class SampleAgentA(Agent):

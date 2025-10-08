@@ -4,7 +4,7 @@ import urllib.request
 import urllib.error
 import time
 import random
-from cogniscient.agentSDK.base_local_agent import Agent
+from cogniscient.engine.agent_utils.base_agent import Agent
 
 
 class SampleAgentB(Agent):

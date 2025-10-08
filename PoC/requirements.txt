@@ -9,3 +9,4 @@ mcp>=0.1.0
 prompt-toolkit>=3.0.0
 filelock>=3.12.0
 aiofiles>=23.0.0
+aiohttp>=3.9.0

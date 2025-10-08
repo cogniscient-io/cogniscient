@@ -8,9 +8,9 @@ from typing import List, Dict, Any
 from mcp.server.fastmcp import FastMCP
 from mcp.server.session import ServerSession
 from mcp.server.fastmcp import Context
+import logging
 
 from typing import TYPE_CHECKING
-from typing import List, Dict, Any
 
 if TYPE_CHECKING:
     from cogniscient.engine.gcs_runtime import GCSRuntime
@@ -33,6 +33,9 @@ class MCPServerService:
         )
         self.gcs_runtime = gcs_runtime
         
+        # Set up logging
+        self.logger = logging.getLogger(__name__)
+        
         # Register all agents as MCP tools (server role)
         self._register_agent_tools()
         
@@ -53,87 +56,266 @@ class MCPServerService:
     def _register_system_tools(self):
         """Register system-level tools that provide access to GCS functionality."""
         # Tool to list available agents
-        async def list_agents_tool(ctx: Context[ServerSession, None]):
-            await ctx.info("Listing available agents")
-            return {
-                "agents": list(self.gcs_runtime.agents.keys()),
-                "count": len(self.gcs_runtime.agents)
-            }
-        
-        self.mcp_server.tool(
+        @self.mcp_server.tool(
             name="system.list_agents",
             description="List all available agents in the GCS system"
-        )(list_agents_tool)
+        )
+        async def list_agents_tool(ctx: Context[ServerSession, None]):
+            await ctx.info("Listing available agents")
+            try:
+                agent_list = list(self.gcs_runtime.agents.keys())
+                result = {
+                    "agents": agent_list,
+                    "count": len(agent_list)
+                }
+                await ctx.info(f"Successfully listed {len(agent_list)} agents")
+                return result
+            except Exception as e:
+                await ctx.error(f"Error listing agents: {str(e)}")
+                raise
+        
+        # Tool to list all available system tools
+        @self.mcp_server.tool(
+            name="system.list_tools",
+            description="List all available system tools and connected agent tools"
+        )
+        async def list_system_tools_tool(ctx: Context[ServerSession, None]):
+            await ctx.info("Listing available system tools")
+            try:
+                # Get all registered tools from the server
+                tools_result = await ctx.session.list_tools()
+                tools = tools_result.get('tools', [])
+                
+                # Also include MCP client tools if available
+                client_tools = {}
+                if hasattr(self.gcs_runtime, 'mcp_client_service'):
+                    # Get tools from connected external agents
+                    client_tools = self.gcs_runtime.mcp_client_service.get_registered_external_tools()
+                
+                result = {
+                    "system_tools": [
+                        {"name": tool.get("name"), "description": tool.get("description", "")}
+                        for tool in tools
+                    ],
+                    "connected_agent_tools": client_tools,
+                    "total_tools": len(tools)
+                }
+                await ctx.info(f"Successfully listed {len(tools)} system tools")
+                return result
+            except Exception as e:
+                await ctx.error(f"Error listing system tools: {str(e)}")
+                raise
         
         # Tool to get GCS system status
-        async def system_status_tool(ctx: Context[ServerSession, None]):
-            await ctx.info("Getting system status")
-            return {
-                "status": "operational",
-                "agent_count": len(self.gcs_runtime.agents),
-                "active_clients": len(self.gcs_runtime.mcp_client_service.clients) if hasattr(self.gcs_runtime, 'mcp_client_service') else 0
-            }
-        
-        self.mcp_server.tool(
+        @self.mcp_server.tool(
             name="system.status",
             description="Get the current status of the GCS system"
-        )(system_status_tool)
+        )
+        async def system_status_tool(ctx: Context[ServerSession, None]):
+            await ctx.info("Getting system status")
+            try:
+                active_clients = 0
+                if hasattr(self.gcs_runtime, 'mcp_client_service'):
+                    active_clients = len(self.gcs_runtime.mcp_client_service.clients)
+                    
+                result = {
+                    "status": "operational",
+                    "agent_count": len(self.gcs_runtime.agents),
+                    "active_clients": active_clients,
+                    "timestamp": __import__('datetime').datetime.now().isoformat()
+                }
+                await ctx.info("Successfully retrieved system status")
+                return result
+            except Exception as e:
+                await ctx.error(f"Error getting system status: {str(e)}")
+                raise
         
         # Tool to connect to external agents via MCP protocol - this will need access to MCP client service
-        async def connect_external_agent_tool(ctx: Context[ServerSession, None], agent_id: str, connection_params: Dict[str, Any]):
-            await ctx.info(f"Connecting to external agent {agent_id}")
-            # Note: We'll need access to the MCP client service to make this call
-            # This will be resolved when the services are properly integrated
-            if hasattr(self.gcs_runtime, 'mcp_client_service'):
-                result = await self.gcs_runtime.mcp_client_service.connect_to_external_agent(agent_id, connection_params)
-                return result
-            else:
-                return {
-                    "success": False,
-                    "message": "MCP client service not available"
-                }
-        
-        self.mcp_server.tool(
+        @self.mcp_server.tool(
             name="system.connect_external_agent",
             description="Connect to an external agent using MCP protocol with specified connection parameters (type can be 'stdio' or 'http')"
-        )(connect_external_agent_tool)
+        )
+        async def connect_external_agent_tool(ctx: Context[ServerSession, None], agent_id: str, connection_params: Dict[str, Any]):
+            await ctx.info(f"Connecting to external agent {agent_id}")
+            try:
+                # Note: We'll need access to the MCP client service to make this call
+                # This will be resolved when the services are properly integrated
+                if hasattr(self.gcs_runtime, 'mcp_client_service'):
+                    result = await self.gcs_runtime.mcp_client_service.connect_to_external_agent(agent_id, connection_params)
+                    if result.get("success"):
+                        await ctx.info(f"Successfully connected to external agent {agent_id}")
+                    else:
+                        await ctx.warn(f"Failed to connect to external agent {agent_id}: {result.get('message')}")
+                    return result
+                else:
+                    error_result = {
+                        "success": False,
+                        "message": "MCP client service not available"
+                    }
+                    await ctx.error("MCP client service not available")
+                    return error_result
+            except Exception as e:
+                await ctx.error(f"Error connecting to external agent {agent_id}: {str(e)}")
+                raise
         
         # Tool to get list of connected external agents
-        async def list_connected_agents_tool(ctx: Context[ServerSession, None]):
-            await ctx.info("Listing connected external agents")
-            # Note: We'll need access to the MCP client service to make this call
-            if hasattr(self.gcs_runtime, 'mcp_client_service'):
-                result = self.gcs_runtime.mcp_client_service.get_connected_agents()
-                return result
-            else:
-                return {
-                    "success": False,
-                    "connected_agents": [],
-                    "count": 0
-                }
-        
-        self.mcp_server.tool(
+        @self.mcp_server.tool(
             name="system.list_connected_agents",
             description="Get a list of currently connected external agents"
-        )(list_connected_agents_tool)
+        )
+        async def list_connected_agents_tool(ctx: Context[ServerSession, None]):
+            await ctx.info("Listing connected external agents")
+            try:
+                # Note: We'll need access to the MCP client service to make this call
+                if hasattr(self.gcs_runtime, 'mcp_client_service'):
+                    result = self.gcs_runtime.mcp_client_service.get_connected_agents()
+                    await ctx.info(f"Successfully retrieved {result.get('count', 0)} connected agents")
+                    return result
+                else:
+                    error_result = {
+                        "success": False,
+                        "connected_agents": [],
+                        "count": 0,
+                        "message": "MCP client service not available"
+                    }
+                    await ctx.error("MCP client service not available")
+                    return error_result
+            except Exception as e:
+                await ctx.error(f"Error listing connected agents: {str(e)}")
+                raise
         
         # Tool to disconnect from an external agent
-        async def disconnect_external_agent_tool(ctx: Context[ServerSession, None], agent_id: str):
-            await ctx.info(f"Disconnecting from external agent {agent_id}")
-            # Note: We'll need access to the MCP client service to make this call
-            if hasattr(self.gcs_runtime, 'mcp_client_service'):
-                result = await self.gcs_runtime.mcp_client_service.disconnect_from_external_agent(agent_id)
-                return result
-            else:
-                return {
-                    "success": False,
-                    "message": "MCP client service not available"
-                }
-        
-        self.mcp_server.tool(
+        @self.mcp_server.tool(
             name="system.disconnect_external_agent",
             description="Disconnect from an external agent by its ID"
-        )(disconnect_external_agent_tool)
+        )
+        async def disconnect_external_agent_tool(ctx: Context[ServerSession, None], agent_id: str):
+            await ctx.info(f"Disconnecting from external agent {agent_id}")
+            try:
+                # Note: We'll need access to the MCP client service to make this call
+                if hasattr(self.gcs_runtime, 'mcp_client_service'):
+                    result = await self.gcs_runtime.mcp_client_service.disconnect_from_external_agent(agent_id)
+                    if result.get("success"):
+                        await ctx.info(f"Successfully disconnected from external agent {agent_id}")
+                    else:
+                        await ctx.warn(f"Failed to disconnect from external agent {agent_id}: {result.get('message')}")
+                    return result
+                else:
+                    error_result = {
+                        "success": False,
+                        "message": "MCP client service not available"
+                    }
+                    await ctx.error("MCP client service not available")
+                    return error_result
+            except Exception as e:
+                await ctx.error(f"Error disconnecting from external agent {agent_id}: {str(e)}")
+                raise
+        
+        # Tool to list all available system tools
+        @self.mcp_server.tool(
+            name="system.list_all_tools",
+            description="List all available tools in the system including system services, MCP tools, and agent methods"
+        )
+        async def list_all_tools_tool(ctx: Context[ServerSession, None]):
+            await ctx.info("Listing all available system tools")
+            try:
+                # Build comprehensive list of all tools available in the system
+                tools_info = {
+                    "mcp_server_tools": {
+                        "name": "MCP Server Tools",
+                        "description": "Tools provided by the MCP server functionality",
+                        "tools": {}
+                    },
+                    "mcp_client_tools": {
+                        "name": "MCP Client Tools", 
+                        "description": "Tools for connecting to external MCP agents",
+                        "tools": {}
+                    },
+                    "system_services": {
+                        "name": "System Services",
+                        "description": "Core system services available",
+                        "tools": {}
+                    },
+                    "agent_methods": {
+                        "name": "Agent Methods",
+                        "description": "Methods available on registered agents",
+                        "tools": {}
+                    }
+                }
+                
+                # Add tools registered in the MCP server
+                tools_result = await ctx.session.list_tools()
+                server_tools = {}
+                for tool in tools_result.get('tools', []):
+                    name = tool.get("name")
+                    if name:
+                        server_tools[name] = {
+                            "description": tool.get("description", ""),
+                            "input_schema": tool.get("inputSchema", {})
+                        }
+                
+                tools_info["mcp_server_tools"]["tools"] = server_tools
+                
+                # Add MCP client tools info if available
+                if hasattr(self.gcs_runtime, 'mcp_client_service'):
+                    client_tools_info = self.gcs_runtime.mcp_client_service.get_registered_external_tools()
+                    tools_info["mcp_client_tools"]["tools"] = client_tools_info.get("external_agent_tools", {})
+                
+                # Add agent methods
+                for agent_name in self.gcs_runtime.agents.keys():
+                    agent_instance = self.gcs_runtime.agents.get(agent_name)
+                    if agent_instance:
+                        agent_methods = {}
+                        # Get methods from the agent that should be exposed as tools
+                        for method_name in self._get_agent_methods(agent_instance):
+                            # Use reflection to get method signature for input schema
+                            import inspect
+                            method = getattr(agent_instance, method_name)
+                            sig = inspect.signature(method)
+                            
+                            # Create basic schema based on method signature
+                            params_schema = {"type": "object", "properties": {}, "required": []}
+                            for param_name, param in sig.parameters.items():
+                                if param_name != 'self' and param_name != 'ctx':  # Skip 'self' and 'ctx' parameters
+                                    param_schema = {"type": "string"}  # Default to string type
+                                    if param.annotation != inspect.Parameter.empty:
+                                        # Map Python types to JSON schema types
+                                        if param.annotation == int:
+                                            param_schema["type"] = "integer"
+                                        elif param.annotation == float:
+                                            param_schema["type"] = "number"
+                                        elif param.annotation == bool:
+                                            param_schema["type"] = "boolean"
+                                        elif param.annotation == list or param.annotation == list:
+                                            param_schema["type"] = "array"
+                                        elif param.annotation == dict:
+                                            param_schema["type"] = "object"
+                                    
+                                    params_schema["properties"][param_name] = param_schema
+                                    if param.default == inspect.Parameter.empty:
+                                        params_schema["required"].append(param_name)
+                            
+                            agent_methods[f"{agent_name}.{method_name}"] = {
+                                "description": f"Execute {method_name} method on {agent_name} agent",
+                                "input_schema": params_schema
+                            }
+                        if agent_methods:
+                            tools_info["agent_methods"]["tools"][agent_name] = agent_methods
+                
+                result = {
+                    "status": "success",
+                    "tools": tools_info,
+                    "total_tools_count": sum(len(cat.get("tools", {})) for cat in tools_info.values())
+                }
+                await ctx.info(f"Successfully listed all tools: {result['total_tools_count']} total")
+                return result
+            except Exception as e:
+                await ctx.error(f"Error listing all tools: {str(e)}")
+                error_result = {
+                    "status": "error",
+                    "message": f"Error retrieving tool list: {str(e)}"
+                }
+                return error_result
     
     def _get_agent_methods(self, agent_instance) -> List[str]:
         """Get methods from an agent that should be exposed as tools.
@@ -161,33 +343,94 @@ class MCPServerService:
             method_name: Name of the method to register.
             is_system_tool: Flag to indicate if this is a system tool vs dynamic agent.
         """
+        # Get the agent instance to inspect the method
+        agent_instance = self.gcs_runtime.agents.get(agent_name)
+        if not agent_instance:
+            self.logger.warning(f"Cannot register method {method_name} for agent {agent_name}: agent not found")
+            return
+
+        # Use reflection to get method signature for input schema
+        import inspect
+        method = getattr(agent_instance, method_name)
+        sig = inspect.signature(method)
+        
+        # Create schema based on method signature
+        params_schema = {"type": "object", "properties": {}, "required": []}
+        for param_name, param in sig.parameters.items():
+            if param_name != 'self' and param_name != 'ctx':  # Skip 'self' and 'ctx' parameters
+                param_schema = {"type": "string"}  # Default to string type
+                if param.annotation != inspect.Parameter.empty:
+                    # Map Python types to JSON schema types
+                    if param.annotation == int:
+                        param_schema["type"] = "integer"
+                    elif param.annotation == float:
+                        param_schema["type"] = "number"
+                    elif param.annotation == bool:
+                        param_schema["type"] = "boolean"
+                    elif param.annotation in (list, List):
+                        param_schema["type"] = "array"
+                    elif param.annotation in (dict, Dict):
+                        param_schema["type"] = "object"
+                
+                params_schema["properties"][param_name] = param_schema
+                if param.default == inspect.Parameter.empty:
+                    params_schema["required"].append(param_name)
+
         # Create a wrapper function that calls the agent method through GCS
         async def agent_method_tool(ctx: Context[ServerSession, None], **kwargs):
             try:
+                self.logger.info(f"Executing {agent_name}.{method_name} with params: {list(kwargs.keys())}")
+                # Log the call for debugging
+                await ctx.info(f"Executing {agent_name}.{method_name}")
+                
                 # Execute the agent method through the GCS runtime
                 result = self.gcs_runtime.run_agent(agent_name, method_name, **kwargs)
                 await ctx.info(f"Successfully executed {agent_name}.{method_name}")
+                self.logger.info(f"Successfully executed {agent_name}.{method_name}")
                 return result
             except Exception as e:
-                await ctx.error(f"Error executing {agent_name}.{method_name}: {str(e)}")
+                error_msg = f"Error executing {agent_name}.{method_name}: {str(e)}"
+                await ctx.error(error_msg)
+                self.logger.error(error_msg, exc_info=True)
                 raise
         
-        # Create a tool name using the agent and method name
-        tool_name = f"{agent_name}.{method_name}"
-        
-        # Prepare tool options including the is_system_tool flag
-        tool_options = {
-            "name": tool_name,
-            "description": f"Execute {method_name} method on {agent_name} agent (system tool: {is_system_tool})"
-        }
-        
-        # Register the tool with the MCP server using the @self.mcp_server.tool decorator
+        # Register the tool with the MCP server using the decorator
+        # The schema is inferred from the function signature by FastMCP
         # This creates a tool that can be called by upstream MCP clients
-        self.mcp_server.tool(**tool_options)(agent_method_tool)
+        self.mcp_server.tool(
+            name=f"{agent_name}.{method_name}",
+            description=f"Execute {method_name} method on {agent_name} agent (system tool: {is_system_tool})"
+        )(agent_method_tool)
     
-    def start_server(self):
-        """Start the MCP server (so GCS can be used by upstream orchestrators)."""
-        return self.mcp_server.run()
+    def start_server(self, transport: str = "stdio"):
+        """Start the MCP server (so GCS can be used by upstream orchestrators).
+        
+        Args:
+            transport: Transport protocol to use - 'stdio', 'sse', or 'streamable-http'
+        """
+        if transport == "stdio":
+            return self.mcp_server.run()
+        elif transport == "streamable-http":
+            return self.mcp_server.run_streamable_http()
+        elif transport == "sse":
+            return self.mcp_server.run_sse()
+        else:
+            raise ValueError(f"Unsupported transport: {transport}. Use 'stdio', 'streamable-http', or 'sse'")
+    
+    async def start_server_async(self, transport: str = "stdio"):
+        """Start the MCP server asynchronously.
+        
+        Args:
+            transport: Transport protocol to use - 'stdio', 'sse', or 'streamable-http'
+        """
+        if transport == "stdio":
+            return await self.mcp_server.run_async()
+        elif transport == "streamable-http":
+            return await self.mcp_server.run_streamable_http_async()
+        elif transport == "sse":
+            return await self.mcp_server.run_sse_async()
+        else:
+            raise ValueError(f"Unsupported transport: {transport}. Use 'stdio', 'streamable-http', or 'sse'")
 
     def describe_mcp_service(self) -> Dict[str, Any]:
         """Describe the capabilities of the MCP service for LLM consumption.

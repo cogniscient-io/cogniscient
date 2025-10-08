@@ -92,7 +92,11 @@ def test_backward_compatibility():
     
     # Test that legacy managers still exist for backward compatibility
     assert hasattr(gcs, 'local_agent_manager')
-    assert hasattr(gcs, 'external_agent_manager')
+    # The external_agent_manager has been replaced by MCP service
+    assert hasattr(gcs, 'mcp_service')
+    # The mcp_service has both client (for connecting to external agents) and server functionality
+    assert hasattr(gcs.mcp_service, 'mcp_client')
+    assert hasattr(gcs.mcp_service, 'mcp_server')
     
     # Test that agents property still works and filters out services
     agents = gcs.agents

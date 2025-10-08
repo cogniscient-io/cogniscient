@@ -9,9 +9,7 @@ from typing import Any, Dict, List
 from cogniscient.engine.llm_orchestrator.contextual_llm_service import ContextualLLMService
 import datetime
 from cogniscient.engine.agent_utils.local_agent_manager import LocalAgentManager
-from cogniscient.engine.agent_utils.external_agent_manager import ExternalAgentManager
 from cogniscient.engine.agent_utils.unified_agent_manager import UnifiedAgentManager, ComponentType, UnifiedComponent
-from cogniscient.engine.agent_utils.agent_coordinator import AgentCoordinator
 from cogniscient.engine.services.config_service import ConfigService
 from cogniscient.engine.services.system_parameters_service import SystemParametersService
 from cogniscient.engine.services.mcp_service import MCPService
@@ -83,6 +81,7 @@ class GCSRuntime:
         )
         
         # Register the internal services with the unified manager
+        from cogniscient.engine.agent_utils.base_agent_manager import UnifiedComponent, ComponentType
         config_service_component = UnifiedComponent(
             name="ConfigManager",
             component_type=ComponentType.INTERNAL_SERVICE,
@@ -105,8 +104,6 @@ class GCSRuntime:
             agents_dir=agents_dir,
             system_parameters_service=self.system_parameters_service
         )
-        self.external_agent_manager = ExternalAgentManager()
-        self.agent_coordinator = AgentCoordinator(self.local_agent_manager, self.external_agent_manager)
 
         # Store references for backward compatibility but delegate functionality to unified_agent_manager
         self.agent_configs = self.local_agent_manager.agent_configs
@@ -119,11 +116,41 @@ class GCSRuntime:
         # to avoid initialization order issues
         self.mcp_service = MCPService(self)
         
+        # Register the MCP client agent with the unified agent manager
+        # This makes MCP client functionality available as a regular agent
+        try:
+            from cogniscient.engine.agents.mcp_client_agent import MCPClientAgent
+            from cogniscient.engine.agent_utils.base_agent_manager import UnifiedComponent, ComponentType
+            mcp_client_agent = MCPClientAgent(self)
+            mcp_client_component = UnifiedComponent(
+                name="MCPClient",
+                component_type=ComponentType.LOCAL_AGENT,
+                config={
+                    "service_type": "mcp_client",
+                    "description": "Agent for managing MCP client connections and external agent interactions"
+                },
+                load_behavior="static"
+            )
+            # Set the instance directly since we already have it created
+            mcp_client_component.instance = mcp_client_agent
+            mcp_client_component.is_loaded = True
+            self.unified_agent_manager.register_component(mcp_client_component)
+            print("MCPClient agent registered successfully")
+        except Exception as e:
+            print(f"Warning: Failed to register MCPClient agent: {e}")
+        
         # Create the contextual LLM service directly using the LLM service
         # Now that ContextualLLMService expects an LLM service directly
         # Pass the MCP client service to provide access to external agent connections
         self.llm_service = ContextualLLMService(
             provider_manager=self.llm_service_internal,
+            mcp_client_service=self.mcp_service.mcp_client
+        )
+        
+        # Set the initial agent registry in the LLM service
+        # This ensures that all registered agents (including MCPClient) are available to the LLM
+        self.llm_service.set_agent_registry(
+            agent_registry=self.agents,
             mcp_client_service=self.mcp_service.mcp_client
         )
 

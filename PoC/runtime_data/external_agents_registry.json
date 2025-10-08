@@ -5,8 +5,8 @@
       "type": "stdio",
       "command": "test_command"
     },
-    "timestamp": "2025-10-06T12:45:04.836388",
+    "timestamp": "2025-10-07T21:26:29.497846",
     "status": "connected",
-    "last_validated": "2025-10-06T12:45:04.836393"
+    "last_validated": "2025-10-07T21:26:29.497852"
   }
 }

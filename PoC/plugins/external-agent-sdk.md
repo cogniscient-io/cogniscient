@@ -5,12 +5,11 @@ This document provides guidelines and tools for developing external agents that 
 
 ## Table of Contents
 1. [Getting Started](#getting-started)
-2. [Base External Agent](#base-external-agent)
-3. [Creating Your First MCP External Agent](#creating-your-first-mcp-external-agent)
-4. [MCP Registration Process](#mcp-registration-process)
-5. [MCP Tool Contract](#mcp-tool-contract)
-6. [Best Practices](#best-practices)
-7. [Examples](#examples)
+2. [Creating Your First MCP External Agent](#creating-your-first-mcp-external-agent)
+3. [MCP Registration Process](#mcp-registration-process)
+4. [MCP Tool Contract](#mcp-tool-contract)
+5. [Best Practices](#best-practices)
+6. [Examples](#examples)
 
 ## Getting Started
 
@@ -26,114 +25,78 @@ To get started, install the required dependencies:
 pip install modelcontextprotocol
 ```
 
-## Base External Agent
-
-The `BaseExternalAgent` class provides a foundation for creating MCP-compliant external agents. It handles:
-- MCP server setup using FastMCP
-- Tool registration and schema validation
-- Standardized tool discovery
-- Context-aware tool interactions
-- Logging
-
-### Key Methods
-
-#### `__init__(self, name, version, description, instructions)`
-Initialize the MCP external agent with basic metadata.
-
-Parameters:
-- `name` (str): Name of the agent
-- `version` (str): Version of the agent (default: "1.0.0")
-- `description` (str): Description of the agent's functionality
-- `instructions` (str): Instructions for how the agent should be used
-
-#### `register_tool(self, name, description, input_schema)`
-Register a tool with the agent to make it available for LLM-driven calls.
-
-Parameters:
-- `name` (str): Name of the tool (should be unique)
-- `description` (str): Description of what the tool does
-- `input_schema` (dict): JSON schema describing the parameters the tool accepts
-
-#### `run(self, transport="stdio")`
-Run the MCP external agent server synchronously.
-
-Parameters:
-- `transport` (str): Transport protocol to use ("stdio", "sse", or "streamable-http"). Default is "stdio".
-
-#### `run_async(self)`
-Run the MCP external agent server asynchronously.
-
-#### `run_http_server(self, host="127.0.0.1", port=8080)`
-Run the MCP external agent as an HTTP server using streamable HTTP transport.
-
-Parameters:
-- `host` (str): Host address for the HTTP server (default: "127.0.0.1")
-- `port` (int): Port for the HTTP server (default: 8080)
-
-#### `run_sse_server(self, host="127.0.0.1", port=8080, mount_path="/")`
-Run the MCP external agent using Server-Sent Events (SSE) transport.
-
-Parameters:
-- `host` (str): Host address for the SSE server (default: "127.0.0.1")
-- `port` (int): Port for the SSE server (default: 8080)
-- `mount_path` (str): Mount path for the SSE endpoints (default: "/")
-
-#### `get_mcp_registration_info(self)`
-Get the MCP registration information needed for tool discovery and management.
-
 ## Creating Your First MCP External Agent
 
-To create an MCP-compliant external agent, inherit from `BaseExternalAgent` and implement your specific tools:
+To create an MCP-compliant external agent, you implement your tools directly through the Model Context Protocol (MCP) using the FastMCP framework:
 
 ```python
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp import Context
 from mcp.types import Tool
-from cogniscient.agentSDK.base_external_agent import BaseExternalAgent
-import requests
+import asyncio
+import json
 
-class WeatherAgent(BaseExternalAgent):
-    def __init__(self):
-        super().__init__(
-            name="WeatherAgent",
-            version="1.0.0",
-            description="An agent that retrieves weather information",
-            instructions="Use this agent to get current weather information for various locations."
-        )
-        
-        # Register the tools this agent supports
-        self.register_tool(
-            "get_weather", 
-            description="Get current weather for a location", 
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "city": {"type": "string", "description": "City name"},
-                    "country_code": {"type": "string", "description": "Country code"}
-                },
-                "required": ["city", "country_code"]
-            }
-        )
+# Create your MCP server directly with FastMCP
+mcp = FastMCP(
+    name="WeatherAgent",
+    version="1.0.0",
+    description="An agent that retrieves weather information",
+)
+
+# Register your tools using the @mcp.tool decorator
+@mcp.tool(
+    name="get_weather",
+    description="Get current weather for a location",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "city": {"type": "string", "description": "City name"},
+            "country_code": {"type": "string", "description": "Country code"}
+        },
+        "required": ["city", "country_code"]
+    }
+)
+async def get_weather(ctx: Context, city: str, country_code: str) -> dict:
+    """Get current weather for a location."""
+    try:
+        # Implementation would make API calls to weather service
+        result = {
+            "city": city,
+            "country": country_code,
+            "temperature": 22.5,
+            "description": "Partly cloudy"
+        }
+        await ctx.info(f"Weather data retrieved for {city}, {country_code}")
+        return result
+    except Exception as e:
+        await ctx.error(f"Error retrieving weather: {str(e)}")
+        raise
+
+# Function to run the MCP server with different transports
+def run_stdio():
+    """Run the MCP server using stdio transport."""
+    from mcp import stdio_server
+    import asyncio
     
-    async def get_weather(self, ctx: Context, city: str, country_code: str) -> dict:
-        """Get current weather for a location."""
-        try:
-            # Implementation would make API calls to weather service
-            result = {
-                "city": city,
-                "country": country_code,
-                "temperature": 22.5,
-                "description": "Partly cloudy"
-            }
-            await ctx.info(f"Weather data retrieved for {city}, {country_code}")
-            return result
-        except Exception as e:
-            await ctx.error(f"Error retrieving weather: {str(e)}")
-            raise
+    async def run_server():
+        async with stdio_server(mcp) as server:
+            await server.join()  # Wait indefinitely for requests
+    
+    asyncio.run(run_server())
+
+def run_http(host="127.0.0.1", port=8080):
+    """Run the MCP server using streamable HTTP transport."""
+    from mcp import http_server
+    import asyncio
+    
+    async def run_server():
+        async with http_server(mcp, host=host, port=port) as server:
+            await server.join()  # Wait indefinitely for requests
+    
+    asyncio.run(run_server())
 
 if __name__ == "__main__":
     import sys
-    agent = WeatherAgent()
     
     if len(sys.argv) > 1:
         if sys.argv[1] == "http":
@@ -144,24 +107,15 @@ if __name__ == "__main__":
                 except ValueError:
                     print(f"Invalid port {sys.argv[2]}, using default 8080")
                     port = 8080
-            agent.run_http_server(host="127.0.0.1", port=port)
-        elif sys.argv[1] == "sse":
-            port = 8080
-            if len(sys.argv) > 2:
-                try:
-                    port = int(sys.argv[2])
-                except ValueError:
-                    print(f"Invalid port {sys.argv[2]}, using default 8080")
-                    port = 8080
-            agent.run_sse_server(host="127.0.0.1", port=port)
+            run_http(host="127.0.0.1", port=port)
         elif sys.argv[1] == "stdio":
-            agent.run(transport="stdio")
+            run_stdio()
         else:
             print(f"Unknown transport: {sys.argv[1]}")
-            print("Usage: python your_agent.py [http|sse|stdio] [port]")
+            print("Usage: python your_agent.py [http|stdio] [port]")
     else:
         # Default to stdio transport
-        agent.run(transport="stdio")
+        run_stdio()
 ```
 
 ## Running External Agents with HTTP Support
@@ -179,31 +133,27 @@ python your_agent.py http          # Uses default port 8080
 python your_agent.py http 8090     # Uses custom port 8090
 ```
 
-### SSE Transport (Server-Sent Events)
-```bash
-python your_agent.py sse           # Uses default port 8080
-python your_agent.py sse 8090      # Uses custom port 8090
-```
+The HTTP transport will make your agent available as an HTTP service that can be accessed at the specified port. The HTTP transport uses the MCP Streamable HTTP protocol and will be available at `http://<host>:<port>/mcp`.
 
-The HTTP and SSE transports will make your agent available as an HTTP service that can be accessed at the specified port. The HTTP transport uses the MCP Streamable HTTP protocol and will be available at `http://<host>:<port>/mcp`.
+Note: The SSE transport is not directly supported in this simplified example but can be implemented using the appropriate MCP server functions.
 
 ## MCP Registration Process
 
 Once your MCP external agent is running, it will automatically register its tools with the MCP client (Cogniscient system) through the standardized MCP protocol:
 
 ### 1. Automatic Tool Discovery
-MCP agents automatically expose their available tools through the MCP discovery protocol. The `get_mcp_registration_info` method can be used to understand the tool registration:
+MCP agents automatically expose their available tools through the MCP discovery protocol. When you define tools using `@mcp.tool` decorator, they're automatically registered:
 
 ```python
-agent = YourMCPAgent()
-registration_info = agent.get_mcp_registration_info()
+# Tools defined with @mcp.tool are automatically available for discovery
+# No special registration methods needed
 ```
 
 ### 2. MCP Client Integration
-The Cogniscient system acts as an MCP client that connects to your external agent as an MCP server. The connection happens through standardized MCP transport (typically stdio, HTTP or WebSocket):
+The Cogniscient system acts as an MCP client that connects to your external agent as an MCP server. The connection happens through standardized MCP transport (typically stdio, HTTP):
 
 ```python
-from mcp.client import StdioClient
+from mcp.client import stdio_client, http_client
 
 # The Cogniscient system will automatically discover and connect to your MCP server
 # Tools will be available for LLM orchestration through the MCP protocol
@@ -294,7 +244,8 @@ MCP agents can send logging messages to the client:
 5. **Schema Validation**: Properly define JSON schemas for tool parameters to enable validation
 6. **Security**: Implement proper authentication and validation as MCP servers may receive requests from multiple clients
 7. **MCP Compliance**: Follow the Model Context Protocol specification for maximum interoperability
+8. **Transport Selection**: Choose the appropriate transport (stdio for single use, HTTP for multiple clients)
 
 ## Examples
 
-See the MCP-compliant agent implementations in the Cogniscient system for complete examples of MCP server implementations that integrate with the LLM orchestrator.
+See the MCP-compliant agent implementations and the FastMCP documentation for complete examples of MCP server implementations that integrate with the LLM orchestrator.

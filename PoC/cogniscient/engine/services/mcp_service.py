@@ -33,7 +33,7 @@ class MCPService:
         
         # For backward compatibility, we'll also expose the client and server properties
         # directly on this class so existing code continues to work
-        self.clients = self.mcp_client.clients
+        self.clients = self.mcp_client.clients  # This now refers to the alias in MCPClientService
         self.connected_agent_tools = self.mcp_client.connected_agent_tools
         self.mcp_registry = self.mcp_client.mcp_registry
         self.mcp_server_instance = self.mcp_server.mcp_server

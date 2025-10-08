@@ -150,20 +150,39 @@ class UnifiedAgentManager(BaseUnifiedAgentManager):
             The component instance or None if not found
         """
         if name not in self.components:
-            # Try to fetch from registry if not in components
-            external_agent = self._get_external_agent_from_registry(name)
-            if external_agent:
-                # Add to components if found in registry
-                component = UnifiedComponent(
-                    name=name,
-                    component_type=ComponentType.EXTERNAL_AGENT,
-                    config={},
-                    load_behavior="dynamic"
-                )
-                component.instance = external_agent
-                component.is_loaded = True
-                self.components[name] = component
-                return component
+            # Check if we can get this from the runtime's MCP client service
+            if self.runtime_ref and hasattr(self.runtime_ref, 'mcp_client_service'):
+                # Check if this is a connected external agent via MCP
+                connected_agents = self.runtime_ref.mcp_client_service.get_connected_agents()
+                if name in connected_agents.get('connected_agents', []):
+                    # Return a special proxy object that can access MCP connected agents
+                    # This approach allows external agents to be accessed transparently
+                    # through the same interface as local agents
+                    class MCPAgentProxy:
+                        def __init__(self, runtime_ref, agent_name):
+                            self.runtime_ref = runtime_ref
+                            self.agent_name = agent_name
+                        
+                        def __getattr__(self, method_name):
+                            # Return a function that calls the MCP service to execute the method
+                            async def call_mcp_method(*args, **kwargs):
+                                return await self.runtime_ref.mcp_client_service.call_external_agent_tool(
+                                    self.agent_name, method_name, *args, **kwargs
+                                )
+                            return call_mcp_method
+                    
+                    # Create a component for the MCP agent to maintain consistency
+                    component = UnifiedComponent(
+                        name=name,
+                        component_type=ComponentType.EXTERNAL_AGENT,
+                        config={},
+                        load_behavior="dynamic"
+                    )
+                    component.instance = MCPAgentProxy(self.runtime_ref, name)
+                    component.is_loaded = True
+                    self.components[name] = component
+                    return component
+            
             return None
 
         component = self.components[name]
@@ -218,7 +237,9 @@ class UnifiedAgentManager(BaseUnifiedAgentManager):
             # If we're inside an event loop, we need to handle the async call appropriately
             try:
                 _ = asyncio.get_running_loop()
-                # If we're inside an event loop, return the coroutine for the caller to await
+                # If we're inside an event loop, we can't use asyncio.run
+                # We need to return the coroutine so the caller can await it
+                # But the caller (in base_user_request_handler) needs to handle this properly
                 return method(*args, **kwargs)
             except RuntimeError:
                 # No event loop running, safe to use asyncio.run
@@ -264,20 +285,10 @@ class UnifiedAgentManager(BaseUnifiedAgentManager):
 
     def _load_external_agent(self, config: Dict[str, Any]) -> Any:
         """Load an external agent based on its configuration."""
-        # For now, this is a placeholder. In a real implementation, this would
-        # communicate with an external service to register and access the agent.
-        # Since we don't have the actual external agent adapter in the PRP, 
-        # we'll just return a placeholder.
-        from .external_agent_manager import ExternalAgentManager
-        from .external_agent_registry import ExternalAgentRegistry
-
-        # Create an external agent registry and register the agent
-        registry = ExternalAgentRegistry()
-        registry.register_agent(config)
-
-        # Create an external agent manager and get the agent
-        external_manager = ExternalAgentManager()
-        return external_manager.get_external_agent(config["name"])
+        # This functionality has been replaced by the MCP service
+        # External agents are now managed through the MCP client service
+        print(f"External agent {config['name']} is handled by MCP service instead of legacy implementation")
+        return None
 
     def _load_internal_service(self, config: Dict[str, Any]) -> Any:
         """Load an internal service based on its configuration."""
@@ -345,6 +356,21 @@ class UnifiedAgentManager(BaseUnifiedAgentManager):
             The result of the method execution.
         """
         return self.run_component_method(agent_name, method_name, *args, **kwargs)
+
+    def _get_external_agent_from_registry(self, name: str) -> Any:
+        """Get an external agent from the registry by name.
+        
+        Args:
+            name: Name of the external agent to retrieve
+            
+        Returns:
+            The external agent instance or None if not found
+        """
+        # This method is expected by the get_component method
+        # but external agents connected via MCP are handled differently
+        # External agents are now managed through the MCP client service
+        # No longer using the legacy external agent manager
+        return None
 
     def set_runtime_ref(self, runtime_ref) -> None:
         """Set a reference to the runtime for all components that need it.

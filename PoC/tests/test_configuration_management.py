@@ -134,18 +134,18 @@ def test_agents_dir_system_parameter():
     """Test that agents_dir can be configured via system parameters service."""
     
     # Initialize UCS runtime with the original default path
-    ucs_runtime = GCSRuntime(config_dir=".", agents_dir="cogniscient/agentSDK")
+    ucs_runtime = GCSRuntime(config_dir=".", agents_dir="plugins/sample_internal/agents")
     
     # Verify initial agents_dir
-    assert ucs_runtime.agents_dir == "cogniscient/agentSDK"
-    assert ucs_runtime.local_agent_manager.agents_dir == "cogniscient/agentSDK"
-    assert ucs_runtime.local_agent_manager.config_manager.agents_dir == "cogniscient/agentSDK"
+    assert ucs_runtime.agents_dir == "plugins/sample_internal/agents"
+    assert ucs_runtime.local_agent_manager.agents_dir == "plugins/sample_internal/agents"
+    assert ucs_runtime.local_agent_manager.config_manager.agents_dir == "plugins/sample_internal/agents"
     
     # Check that the agents_dir parameter is available in system parameters
     params_result = ucs_runtime.system_parameters_service.get_system_parameters()
     assert params_result["status"] == "success"
     assert "agents_dir" in params_result["parameters"]
-    assert params_result["parameters"]["agents_dir"] == "cogniscient/agentSDK"
+    assert params_result["parameters"]["agents_dir"] == "plugins/sample_internal/agents"
     
     # Create the target directory to ensure it exists
     import os

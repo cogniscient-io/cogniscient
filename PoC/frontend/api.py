@@ -105,8 +105,8 @@ async def lifespan(app: FastAPI):
     orchestrator = LLMOrchestrator(gcs_runtime)
     chat_interface = ChatInterface(orchestrator)
     
-    # Start health monitoring for external agents
-    await gcs_runtime.external_agent_manager.external_agent_registry.start_health_checks()
+    # Start health monitoring for external agents via MCP service
+    await gcs_runtime.mcp_service.mcp_client.mcp_registry.start_health_checks()
     
     # Mount static files after initialization
     if os.path.exists(static_dir):
@@ -116,8 +116,8 @@ async def lifespan(app: FastAPI):
     
     # Shutdown: Clean up backend components
     if gcs_runtime:
-        # Stop health monitoring for external agents
-        await gcs_runtime.external_agent_manager.external_agent_registry.stop_health_checks()
+        # Stop health monitoring for external agents via MCP service
+        await gcs_runtime.mcp_service.mcp_client.mcp_registry.stop_health_checks()
         
         # Shutdown all agents
         gcs_runtime.shutdown()
@@ -331,16 +331,27 @@ async def register_external_agent(agent_request: ExternalAgentRequest, api_key: 
         if agent_request.settings:
             agent_config["settings"] = agent_request.settings
         
-        # Attempt to validate the agent endpoint before registration
-        validation_result = await gcs_runtime.external_agent_manager.external_agent_registry.validate_agent_endpoint(agent_config)
-        if validation_result["status"] != "success":
+        # Prepare connection parameters for MCP
+        connection_params = {
+            "type": "stdio",  # Default to stdio, can be overridden by agent_request
+            "command": agent_config["endpoint_url"],  # This may need to be parsed differently 
+        }
+        
+        if agent_config.get("settings"):
+            connection_params.update(agent_config["settings"])
+        
+        # Register the external agent via MCP service
+        registration_result = await gcs_runtime.mcp_service.connect_to_external_agent(
+            agent_config["name"], 
+            connection_params
+        )
+        
+        registration_success = registration_result.get("success", False)
+        if not registration_success:
             return ExternalAgentResponse(
                 status="error",
-                message=f"Failed to validate agent endpoint: {validation_result['message']}"
+                message=f"Failed to register external agent: {registration_result.get('message', 'Unknown error')}"
             )
-        
-        # Register the external agent
-        registration_success = gcs_runtime.external_agent_manager.register_agent(agent_config)
         
         if registration_success:
             return ExternalAgentResponse(
@@ -369,8 +380,9 @@ async def deregister_external_agent(agent_name: str, api_key: str = Depends(veri
         )
     
     try:
-        # Deregister the external agent
-        deregistration_success = gcs_runtime.external_agent_manager.deregister_agent(agent_name)
+        # Deregister the external agent via MCP service
+        deregistration_result = await gcs_runtime.mcp_service.disconnect_from_external_agent(agent_name)
+        deregistration_success = deregistration_result.get("success", False)
         
         if deregistration_success:
             return ExternalAgentResponse(
@@ -398,8 +410,9 @@ async def list_external_agents():
         )
     
     try:
-        # Get registered external agents from the registry
-        external_agent_names = gcs_runtime.external_agent_manager.external_agent_registry.list_agents()
+        # Get registered external agents via MCP service
+        connected_agents_result = gcs_runtime.mcp_service.get_connected_agents()
+        external_agent_names = connected_agents_result.get('connected_agents', [])
         return ExternalAgentListResponse(
             status="success",
             agents=external_agent_names
@@ -421,14 +434,18 @@ async def get_external_agent(agent_name: str):
         )
     
     try:
-        # Get the agent configuration
-        agent_config = gcs_runtime.external_agent_manager.external_agent_registry.get_agent_config(agent_name)
+        # Get the agent configuration via MCP service
+        capabilities_result = await gcs_runtime.mcp_service.get_external_agent_capabilities(agent_name)
         
-        if agent_config:
+        if capabilities_result["success"]:
+            agent_info = {
+                "name": agent_name,
+                "capabilities": capabilities_result.get("capabilities", [])
+            }
             return ExternalAgentResponse(
                 status="success",
                 message=f"Found external agent: {agent_name}",
-                agent_info=agent_config
+                agent_info=agent_info
             )
         else:
             return ExternalAgentResponse(
@@ -452,15 +469,16 @@ async def get_external_agent_health(agent_name: str):
         )
     
     try:
-        # Get health status from the registry
-        health_info = await gcs_runtime.external_agent_manager.external_agent_registry.get_agent_health(agent_name)
+        # Note: MCP doesn't have the same health check functionality
+        # For now, we'll check if the agent is connected
+        connected_agents_result = gcs_runtime.mcp_service.get_connected_agents()
+        connected_agents = connected_agents_result.get('connected_agents', [])
         
-        if health_info:
+        if agent_name in connected_agents:
             return HealthCheckResponse(
                 status="success",
-                health_status=health_info["health_status"],
-                last_check=health_info["last_health_check"],
-                error_message=health_info.get("health_status_error")
+                health_status="connected",
+                error_message=None
             )
         else:
             return HealthCheckResponse(

@@ -349,7 +349,118 @@ class BaseUserRequestHandler:
                         
                         # Execute agent method
                         try:
-                            result = self.gcs_runtime.run_agent(agent_name, method_name, **parameters)
+                            # Check if this is an internal MCP client tool (formatted as a single name like "mcp_connect_external_agent")
+                            if agent_name.startswith("mcp_"):
+                                # This is an internal MCP client tool call for the LLM to control MCP functionality
+                                # The agent_name contains the full tool name (e.g., "mcp_connect_external_agent")
+                                # NOTE: This is legacy code that's no longer used. MCP functionality is now exposed through the MCPClient agent.
+                                # We should not be reaching this code path with the new architecture.
+                                raise ValueError(f"MCP client tools should be called through the MCPClient agent, not directly. Attempted to call: {agent_name}")
+                            elif agent_name.startswith("mcp."):
+                                # Handle legacy mcp.* tool names (for compatibility with previous LLM responses)
+                                # The agent_name contains the full tool name (e.g., "mcp.connect_external_agent")
+                                legacy_tool_name = agent_name
+                                
+                                # For legacy tools, we need to handle them specially
+                                # Check if it's an MCP-related legacy tool
+                                if hasattr(self.gcs_runtime, 'mcp_service') and hasattr(self.gcs_runtime.mcp_service, 'mcp_client'):
+                                    mcp_client = self.gcs_runtime.mcp_service.mcp_client
+                                    
+                                    if legacy_tool_name == "mcp.connect_external_agent":
+                                        result = await mcp_client.connect_to_external_agent(
+                                            agent_id=parameters.get("agent_id"),
+                                            connection_params=parameters.get("connection_params", {})
+                                        )
+                                    elif legacy_tool_name == "mcp.list_connected_agents":
+                                        result = mcp_client.get_connected_agents()
+                                    elif legacy_tool_name == "mcp.disconnect_external_agent":
+                                        result = await mcp_client.disconnect_from_external_agent(
+                                            agent_id=parameters.get("agent_id")
+                                        )
+                                    elif legacy_tool_name == "mcp.list_external_agent_capabilities":
+                                        result = await mcp_client.get_external_agent_capabilities(
+                                            agent_id=parameters.get("agent_id")
+                                        )
+                                    elif legacy_tool_name == "mcp.call_external_agent_tool":
+                                        agent_id = parameters.get("agent_id")
+                                        tool_name = parameters.get("tool_name") 
+                                        tool_parameters = parameters.get("tool_parameters", {})
+                                        result = await mcp_client.call_external_agent_tool(
+                                            agent_id=agent_id,
+                                            tool_name=tool_name,
+                                            **tool_parameters
+                                        )
+                                    else:
+                                        # For other legacy tools, try to execute via the MCP client
+                                        raise ValueError(f"Unknown legacy MCP tool: {legacy_tool_name}")
+                                else:
+                                    raise ValueError(f"MCP client service not available to execute {legacy_tool_name}")
+                            elif agent_name.startswith("system."):
+                                # This is an MCP system-level tool call (for compatibility with legacy LLM responses)
+                                # The agent_name contains the full tool name (e.g., "system.connect_external_agent")
+                                system_tool_name = agent_name
+                                
+                                # For system tools, we need to handle them specially
+                                # Check if it's an MCP-related system tool
+                                if hasattr(self.gcs_runtime, 'mcp_service'):
+                                    if system_tool_name == "system.connect_external_agent":
+                                        result = await self.gcs_runtime.mcp_service.connect_to_external_agent(
+                                            agent_id=parameters.get("agent_id"),
+                                            connection_params=parameters.get("connection_params", {})
+                                        )
+                                    elif system_tool_name == "system.list_connected_agents":
+                                        result = self.gcs_runtime.mcp_service.get_connected_agents()
+                                    elif system_tool_name == "system.disconnect_external_agent":
+                                        result = await self.gcs_runtime.mcp_service.disconnect_from_external_agent(
+                                            agent_id=parameters.get("agent_id")
+                                        )
+                                    elif system_tool_name == "system.list_all_tools":
+                                        # For list_all_tools, we need to create a comprehensive listing
+                                        result = {
+                                            "status": "success",
+                                            "tools": {
+                                                "mcp_server_tools": {
+                                                    "name": "MCP Server Tools",
+                                                    "description": "Tools provided by the MCP server functionality",
+                                                    "tools": {
+                                                        "system.connect_external_agent": {
+                                                            "description": "Connect to an external agent using MCP protocol with specified connection parameters (type can be 'stdio' or 'http')",
+                                                            "parameters": {
+                                                                "agent_id": {"type": "string", "description": "Unique identifier for the external agent", "required": True},
+                                                                "connection_params": {"type": "object", "description": "Connection parameters including type, url/command, etc.", "required": True}
+                                                            }
+                                                        },
+                                                        "system.list_connected_agents": {
+                                                            "description": "Get a list of currently connected external agents",
+                                                            "parameters": {}
+                                                        },
+                                                        "system.disconnect_external_agent": {
+                                                            "description": "Disconnect from an external agent by its ID",
+                                                            "parameters": {
+                                                                "agent_id": {"type": "string", "description": "Unique identifier for the external agent to disconnect", "required": True}
+                                                            }
+                                                        },
+                                                        "system.list_all_tools": {
+                                                            "description": "List all available tools in the system including system services, MCP tools, and agent methods",
+                                                            "parameters": {}
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "total_count": 4
+                                        }
+                                    else:
+                                        # For other system tools, try to execute via the MCP server
+                                        # This might need to be expanded based on specific tools
+                                        raise ValueError(f"Unknown system tool: {system_tool_name}")
+                                else:
+                                    raise ValueError(f"MCP service not available to execute {system_tool_name}")
+                            else:
+                                # Execute as a regular agent method
+                                result = self.gcs_runtime.run_agent(agent_name, method_name, **parameters)
+                                # Check if result is a coroutine (for async methods)
+                                if asyncio.iscoroutine(result):
+                                    result = await result
                             
                             # Record the tool response
                             tool_call_info["result"] = result

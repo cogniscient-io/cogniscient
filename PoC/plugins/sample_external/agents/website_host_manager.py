@@ -218,91 +218,22 @@ class WebsiteHostManagerAgent:
         print(f"Starting MCP external agent WebsiteHostManager with {transport} transport")
         self.mcp.run(transport=transport)
 
-    async def run_http_server_async(self, host: str = "127.0.0.1", port: int = 8080):
-        """
-        Run the MCP external agent as an HTTP server using streamable HTTP transport asynchronously.
-
-        Args:
-            host: Host address for the HTTP server (default: 127.0.0.1)
-            port: Port for the HTTP server (default: 8080)
-        """
-        print(f"Starting MCP external agent HTTP server WebsiteHostManager on {host}:{port}")
-        # Update the MCP server settings for HTTP
-        self.mcp.settings.host = host
-        self.mcp.settings.port = port
-        await self.mcp.run_streamable_http_async()
-
-    def run_http_server(self, host: str = "127.0.0.1", port: int = 8080):
+    def run_http_server(self, host: str = "127.0.0.1", port: int = 9100):
         """
         Run the MCP external agent as an HTTP server using streamable HTTP transport.
 
         Args:
             host: Host address for the HTTP server (default: 127.0.0.1)
-            port: Port for the HTTP server (default: 8080)
+            port: Port for the HTTP server (default: 9100)
         """
         import asyncio
         print(f"Starting MCP external agent HTTP server WebsiteHostManager on {host}:{port}")
         # Update the MCP server settings for HTTP
         self.mcp.settings.host = host
         self.mcp.settings.port = port
-        # Use asyncio to run the async version
+        # Use asyncio to run the HTTP server
         asyncio.run(self.mcp.run_streamable_http_async())
 
-
-# Example usage with HTTP server support
-if __name__ == "__main__":
-    # Load config from file or use defaults
-    config = {
-        "hosted_software_process_name": "nginx",  # Change this to your specific hosting software
-        "restart_threshold": 60
-    }
-    
-    try:
-        with open('/home/tsai/src/cogniscient/PoC/plugins/sample_external/config.json', 'r') as f:
-            config.update(json.load(f))
-    except FileNotFoundError:
-        print("Config file not found, using defaults")
-    
-    agent = WebsiteHostManagerAgent(config)
-    
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "http":
-            port = 8080  # default port
-            if len(sys.argv) > 2:
-                try:
-                    port = int(sys.argv[2])
-                    print(f"Starting agent as HTTP server on http://127.0.0.1:{port}/mcp")
-                except ValueError:
-                    print(f"Invalid port: {sys.argv[2]}. Using default port 8080.")
-                    port = 8080
-            else:
-                print(f"Starting agent as HTTP server on http://127.0.0.1:{port}/mcp")
-            
-            import asyncio
-            asyncio.run(agent.run_http_server_async(host="127.0.0.1", port=port))
-        elif sys.argv[1] == "sse":
-            port = 8080  # default port
-            if len(sys.argv) > 2:
-                try:
-                    port = int(sys.argv[2])
-                    print(f"Starting agent as SSE server on http://127.0.0.1:{port}")
-                except ValueError:
-                    print(f"Invalid port: {sys.argv[2]}. Using default port 8080.")
-                    port = 8080
-            else:
-                print(f"Starting agent as SSE server on http://127.0.0.1:{port}")
-            
-            agent.run_http_server(host="127.0.0.1", port=port)  # Use HTTP server functionality for SSE as well
-        elif sys.argv[1] == "stdio":
-            print("Starting agent with stdio transport")
-            agent.run(transport="stdio")
-        else:
-            print(f"Unknown transport: {sys.argv[1]}")
-            print("Usage: python website_host_manager.py [http|sse|stdio] [port]")
-    else:
-        # Default to stdio transport for backward compatibility
-        print("Starting agent with stdio transport (default)")
-        agent.run(transport="stdio")
 
 # Example usage with HTTP server support
 if __name__ == "__main__":
@@ -325,32 +256,31 @@ if __name__ == "__main__":
     
     if len(sys.argv) > 1:
         if sys.argv[1] == "http":
-            port = 8080  # default port
+            port = 9100  # default port
             if len(sys.argv) > 2:
                 try:
                     port = int(sys.argv[2])
                     print(f"Starting agent as HTTP server on http://127.0.0.1:{port}/mcp")
                 except ValueError:
-                    print(f"Invalid port: {sys.argv[2]}. Using default port 8080.")
-                    port = 8080
+                    print(f"Invalid port: {sys.argv[2]}. Using default port 9100.")
+                    port = 9100
             else:
                 print(f"Starting agent as HTTP server on http://127.0.0.1:{port}/mcp")
             
-            import asyncio
-            asyncio.run(agent.run_http_server_async(host="127.0.0.1", port=port))
+            agent.run_http_server(host="127.0.0.1", port=port)
         elif sys.argv[1] == "sse":
-            port = 8080  # default port
+            port = 9100  # default port
             if len(sys.argv) > 2:
                 try:
                     port = int(sys.argv[2])
                     print(f"Starting agent as SSE server on http://127.0.0.1:{port}")
                 except ValueError:
-                    print(f"Invalid port: {sys.argv[2]}. Using default port 8080.")
-                    port = 8080
+                    print(f"Invalid port: {sys.argv[2]}. Using default port 9100.")
+                    port = 9100
             else:
                 print(f"Starting agent as SSE server on http://127.0.0.1:{port}")
             
-            agent.run_sse_server(host="127.0.0.1", port=port)
+            agent.run_http_server(host="127.0.0.1", port=port)  # Use HTTP server functionality for SSE as well
         elif sys.argv[1] == "stdio":
             print("Starting agent with stdio transport")
             agent.run(transport="stdio")

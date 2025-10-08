@@ -282,7 +282,7 @@ class MCPClientService:
         self.clients = self.connection_managers
         
         # Registry for tools from connected external agents with type information
-        self.connected_agent_tools: Dict[str, List[Dict[str, Any]]] = {}
+        self.tool_registry: Dict[str, List[Dict[str, Any]]] = {}
         # Registry to track if tools are system tools or dynamic agents
         self.tool_types: Dict[str, bool] = {}  # tool_name -> is_system_tool
         
@@ -347,7 +347,7 @@ class MCPClientService:
                 self.logger.warning(warning_msg)
 
             # Register the external agent's tools so they can be tracked
-            self.connected_agent_tools[agent_id] = capabilities
+            self.tool_registry[agent_id] = capabilities
 
             # On successful connection, save to registry
             connection_data = MCPConnectionData(
@@ -469,8 +469,8 @@ class MCPClientService:
                 del self.connection_managers[agent_id]
 
                 # Remove the registered tools for this agent
-                if agent_id in self.connected_agent_tools:
-                    del self.connected_agent_tools[agent_id]
+                if agent_id in self.tool_registry:
+                    del self.tool_registry[agent_id]
 
                 # Update registry to reflect disconnection
                 connection_data = self.mcp_registry.get_connection(agent_id)
@@ -546,8 +546,8 @@ class MCPClientService:
         """
         return {
             "success": True,
-            "external_agent_tools": self.connected_agent_tools,
-            "total_tools": sum(len(tools) for tools in self.connected_agent_tools.values())
+            "external_agent_tools": self.tool_registry,
+            "total_tools": sum(len(tools) for tools in self.tool_registry.values())
         }
     
     def get_tool_type(self, tool_name: str) -> bool:

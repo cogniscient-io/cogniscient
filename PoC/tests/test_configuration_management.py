@@ -81,53 +81,33 @@ async def test_config_manager_descriptions():
 
 @pytest.mark.asyncio
 async def test_llm_driven_config_management():
-    """Test LLM-driven configuration management."""
+    """Test LLM-driven configuration management via MCP services."""
     # Initialize system
     ucs_runtime = GCSRuntime(config_dir="plugins/sample_internal/config", agents_dir="plugins/sample_internal/agents")
     ucs_runtime.load_configuration("combined")
     
-    orchestrator = LLMOrchestrator(ucs_runtime)
-    chat_interface = ChatInterface(orchestrator, max_history_length=20, compression_threshold=15)
+    # Get the contextual LLM service which now handles MCP integration
+    contextual_llm_service = ucs_runtime.llm_service
     
-    # Mock send_stream_event function to collect events
-    events_collected = []
+    # Verify that the contextual LLM service has MCP capabilities properly configured
+    assert contextual_llm_service.mcp_client_service is not None
     
-    async def mock_send_stream_event(event_type: str, content: str = None, data: dict = None):
-        event = {
-            "type": event_type,
-            "content": content,
-            "data": data
-        }
-        events_collected.append(event)
+    # Test that we can format the system service capabilities
+    capabilities_str = contextual_llm_service._format_system_service_capabilities()
+    assert "MCP" in capabilities_str
+    assert "config.list_configurations" in capabilities_str
+    assert "config.load_configuration" in capabilities_str
     
-    # Test listing configurations (should use ConfigManager agent)
-    conversation_history = []
-    result = await chat_interface.process_user_input_streaming(
-        "What configurations are available?",
-        conversation_history,
-        mock_send_stream_event
-    )
-    assert "response" in result
-    # The response should mention the configurations or the ConfigManager agent
+    # Test that we can get all available tools including MCP tools
+    all_tools = contextual_llm_service.get_all_available_tools()
+    assert "mcp_tools" in all_tools
     
-    # Test listing loaded agents
-    result = await chat_interface.process_user_input_streaming(
-        "What agents are currently loaded?",
-        conversation_history,
-        mock_send_stream_event
-    )
-    assert "response" in result
-    # Confirm that actual agents (not system services) are mentioned in the response
-    # Note: We might not get "SampleAgentA" or "SampleAgentB" directly in the response, so we'll just check for a valid response
-    assert result["response"]  # Just ensure we got a response
-    
-    # Test loading a specific configuration
-    result = await chat_interface.process_user_input_streaming(
-        "Please load the website only configuration",
-        conversation_history,
-        mock_send_stream_event
-    )
-    assert "response" in result
+    # Verify that MCP tools for configuration management are available
+    mcp_tools = all_tools["mcp_tools"]
+    assert "mcp.connect_external_agent" in mcp_tools
+    assert "mcp.list_connected_agents" in mcp_tools
+    assert "mcp.list_external_agent_capabilities" in mcp_tools
+    assert "mcp.call_external_agent_tool" in mcp_tools
 
 
 def test_agents_dir_system_parameter():

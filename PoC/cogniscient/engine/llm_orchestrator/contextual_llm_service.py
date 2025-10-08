@@ -252,82 +252,9 @@ class ContextualLLMService:
             "connected_external_agent_tools": {}
         }
         
-        # 1. System services from the default and additional system services
-        default_system_services = {
-            "ConfigManager": {
-                "name": "ConfigService",
-                "version": "1.0.0",
-                "methods": {
-                    "list_configurations": {
-                        "description": "List all available system configurations",
-                        "parameters": {}
-                    },
-                    "load_configuration": {
-                        "description": "Load a specific system configuration by name",
-                        "parameters": {
-                            "config_name": {
-                                "type": "string", 
-                                "description": "Name of the configuration to load", 
-                                "required": True
-                            }
-                        }
-                    },
-                    "get_configuration": {
-                        "description": "Get a specific system configuration from cache or file",
-                        "parameters": {
-                            "config_name": {
-                                "type": "string", 
-                                "description": "Name of the configuration to get", 
-                                "required": True
-                            }
-                        }
-                    },
-                    "get_all_cached_configs": {
-                        "description": "Get all currently cached configurations",
-                        "parameters": {}
-                    },
-                    "clear_config_cache": {
-                        "description": "Clear the configuration cache",
-                        "parameters": {}
-                    }
-                },
-                "description": "Service for managing system configurations"
-            },
-            "SystemParametersManager": {
-                "name": "SystemParametersService", 
-                "version": "1.0.0",
-                "methods": {
-                    "get_system_parameters": {
-                        "description": "Get current system parameter values",
-                        "parameters": {}
-                    },
-                    "set_system_parameter": {
-                        "description": "Set a system parameter value",
-                        "parameters": {
-                            "parameter_name": {
-                                "type": "string", 
-                                "description": "Name of the parameter to set", 
-                                "required": True
-                            },
-                            "parameter_value": {
-                                "type": "string", 
-                                "description": "New value for the parameter", 
-                                "required": True
-                            }
-                        }
-                    },
-                    "get_parameter_descriptions": {
-                        "description": "Get descriptions of all system parameters",
-                        "parameters": {}
-                    }
-                },
-                "description": "Service for managing system parameters dynamically"
-            }
-        }
-        
-        # Include any additional system services passed during initialization
-        all_system_services = {**default_system_services, **self.system_services}
-        tools_info["system_services"] = all_system_services
+        # 1. System services - now available via MCP, so we'll keep an empty dict
+        # The actual tools are available through the MCP client service
+        tools_info["system_services"] = {}
         
         # 2. MCP client tools for LLM control (using internal mcp. namespace, not system. namespace)
         if self.mcp_client_service:
@@ -392,105 +319,30 @@ class ContextualLLMService:
         
         return tools_info
 
+    async def close(self):
+        """Close any resources held by the contextual service."""
+        if self.provider_manager and hasattr(self.provider_manager, 'close'):
+            await self.provider_manager.close()
+
     def _format_system_service_capabilities(self) -> str:
         """Format system service capabilities for inclusion in system prompt.
         
         Returns:
             str: Formatted system service capabilities string.
         """
-        # Define system service capabilities as a static structure for now
-        default_system_services = {
-            "ConfigManager": {
-                "name": "ConfigService",
-                "version": "1.0.0",
-                "methods": {
-                    "list_configurations": {
-                        "description": "List all available system configurations",
-                        "parameters": {}
-                    },
-                    "load_configuration": {
-                        "description": "Load a specific system configuration by name",
-                        "parameters": {
-                            "config_name": {
-                                "type": "string", 
-                                "description": "Name of the configuration to load", 
-                                "required": True
-                            }
-                        }
-                    },
-                    "get_configuration": {
-                        "description": "Get a specific system configuration from cache or file",
-                        "parameters": {
-                            "config_name": {
-                                "type": "string", 
-                                "description": "Name of the configuration to get", 
-                                "required": True
-                            }
-                        }
-                    },
-                    "get_all_cached_configs": {
-                        "description": "Get all currently cached configurations",
-                        "parameters": {}
-                    },
-                    "clear_config_cache": {
-                        "description": "Clear the configuration cache",
-                        "parameters": {}
-                    }
-                },
-                "description": "Service for managing system configurations"
-            },
-            "SystemParametersManager": {
-                "name": "SystemParametersService", 
-                "version": "1.0.0",
-                "methods": {
-                    "get_system_parameters": {
-                        "description": "Get current system parameter values",
-                        "parameters": {}
-                    },
-                    "set_system_parameter": {
-                        "description": "Set a system parameter value",
-                        "parameters": {
-                            "parameter_name": {
-                                "type": "string", 
-                                "description": "Name of the parameter to set", 
-                                "required": True
-                            },
-                            "parameter_value": {
-                                "type": "string", 
-                                "description": "New value for the parameter", 
-                                "required": True
-                            }
-                        }
-                    },
-                    "get_parameter_descriptions": {
-                        "description": "Get descriptions of all system parameters",
-                        "parameters": {}
-                    }
-                },
-                "description": "Service for managing system parameters dynamically"
-            }
-        }
-        
-        # Include any additional system services passed during initialization
-        all_system_services = {**default_system_services, **self.system_services}
+        # With MCP integration, system service capabilities should be discovered dynamically
+        # through the MCP client instead of having them statically provided here
         capabilities_str = "\\n[SYSTEM_SERVICES]\\n"
-        for name, service_info in all_system_services.items():
-            capabilities_str += f"- {name}: {service_info.get('description', f'System service {name}')}\\n"
-            
-            methods = service_info.get("methods", {})
-            if methods:
-                capabilities_str += "  Available methods:\\n"
-                for method_name, method_info in methods.items():
-                    method_desc = method_info.get("description", "")
-                    capabilities_str += f"  - {method_name}: {method_desc}\\n"
-                    parameters = method_info.get("parameters", {})
-                    if parameters:
-                        capabilities_str += "    Parameters:\\n"
-                        for param_name, param_info in parameters.items():
-                            param_type = param_info.get("type", "any")
-                            param_desc = param_info.get("description", "")
-                            required = " (required)" if param_info.get("required", False) else ""
-                            capabilities_str += f"    - {param_name}: {param_type} - {param_desc}{required}\\n"
+        capabilities_str += "Note: System services are available via MCP (Model Context Protocol).\n"
+        capabilities_str += "Use MCP client tools to discover and invoke system service capabilities dynamically:\n"
+        capabilities_str += "- config.list_configurations: List all available system configurations\n"
+        capabilities_str += "- config.load_configuration: Load a specific system configuration by name\n"
+        capabilities_str += "- config.get_configuration: Get a specific system configuration\n"
+        capabilities_str += "- config.get_all_cached_configs: Get all cached configurations\n"
+        capabilities_str += "- config.clear_config_cache: Clear the configuration cache\n"
+        capabilities_str += "- system.get_parameters: Get current system parameter values\n"
+        capabilities_str += "- system.set_parameter: Set a system parameter value\n"
+        capabilities_str += "- system.get_parameter_descriptions: Get descriptions of all system parameters\n"
                     
         capabilities_str += "[/SYSTEM_SERVICES]\\n"
         

@@ -43,6 +43,14 @@ class LiteLLMAdapter:
                 # Default to OpenAI key if we can't determine the provider
                 litellm.openai_key = self.api_key
 
+    async def close(self):
+        """Close any resources held by the adapter, particularly async HTTP clients."""
+        try:
+            # Close all cached async HTTP clients to prevent resource leaks
+            await litellm.close_litellm_async_clients()
+        except Exception as e:
+            logger.warning(f"Error while closing LiteLLM async clients: {e}")
+
     async def generate_response(
         self, 
         messages: List[Dict[str, str]], 

@@ -156,3 +156,8 @@ class LLMService:
         """Close any resources held by providers."""
         if self.qwen_client:
             await self.qwen_client.close()
+        
+        # Close LiteLLM adapter to properly clean up async clients
+        litellm_adapter = self.providers.get("litellm")
+        if litellm_adapter and hasattr(litellm_adapter, 'close'):
+            await litellm_adapter.close()

@@ -39,7 +39,7 @@ async def test_mcp_client_service_initialization(sample_gcs_runtime):
     
     assert client_service.gcs_runtime == sample_gcs_runtime
     assert client_service.connection_managers == {}
-    assert client_service.connected_agent_tools == {}
+    assert client_service.tool_registry == {}
     assert client_service.mcp_registry is not None
 
 

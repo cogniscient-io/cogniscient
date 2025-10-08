@@ -58,9 +58,9 @@ async def test_mcp_service_integration():
     capabilities_str = contextual_service._format_system_service_capabilities()
     
     # Check that MCP service is included in the system capabilities
-    assert "MCPManager" in capabilities_str
-    assert "Model Context Protocol service" in capabilities_str
-    assert "connect_to_external_agent" in capabilities_str
+    assert "MCP" in capabilities_str
+    assert "Model Context Protocol" in capabilities_str
+    assert "config.list_configurations" in capabilities_str
     
     print("✓ MCP service is properly integrated with ContextualLLMService")
     

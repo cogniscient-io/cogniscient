@@ -397,16 +397,47 @@ class MCPClientService:
             self.logger.info(f"Retrieving capabilities from external agent {agent_id}")
             # Get the list of available tools from the external agent
             tools_result = await connection_manager.list_tools()
-            tools = tools_result.get('tools', [])
+            
+            # Handle the tools result which might be a structured object or dictionary
+            tools = []
+            if hasattr(tools_result, 'tools'):
+                # It's an object with a tools attribute
+                tools = tools_result.tools
+            elif isinstance(tools_result, dict) and 'tools' in tools_result:
+                # It's a dictionary with a tools key
+                tools = tools_result.get('tools', [])
+            else:
+                # Try to access with get method as fallback
+                tools = tools_result.get('tools', []) if hasattr(tools_result, 'get') else []
 
             # Format tools to match the expected structure
             formatted_tools = []
             for tool in tools:
-                tool_name = tool.get("name", "")
+                # Handle tool which might be a structured object or dictionary
+                tool_name = ""
+                if hasattr(tool, 'name'):
+                    tool_name = tool.name
+                elif isinstance(tool, dict):
+                    tool_name = tool.get("name", "")
+                
+                tool_desc = ""
+                if hasattr(tool, 'description'):
+                    tool_desc = tool.description
+                elif isinstance(tool, dict):
+                    tool_desc = tool.get("description", "")
+                
+                tool_input_schema = {}
+                if hasattr(tool, 'inputSchema'):
+                    tool_input_schema = tool.inputSchema
+                elif hasattr(tool, 'input_schema'):
+                    tool_input_schema = tool.input_schema
+                elif isinstance(tool, dict):
+                    tool_input_schema = tool.get("inputSchema", {})
+                
                 tool_info = {
                     "name": tool_name,
-                    "description": tool.get("description", ""),
-                    "input_schema": tool.get("inputSchema", {})
+                    "description": tool_desc,
+                    "input_schema": tool_input_schema
                 }
                 
                 # Determine if this is a system tool based on naming convention
@@ -568,3 +599,24 @@ class MCPClientService:
             Dict mapping tool names to whether they are system tools
         """
         return self.tool_types.copy()
+    
+    async def shutdown(self) -> None:
+        """Shutdown all connections and clean up resources."""
+        self.logger.info("Shutting down MCP client service")
+        
+        # Disconnect from all external agents
+        agent_ids = list(self.connection_managers.keys())
+        for agent_id in agent_ids:
+            try:
+                self.logger.info(f"Disconnecting from external agent {agent_id}")
+                await self.disconnect_from_external_agent(agent_id)
+            except Exception as e:
+                self.logger.error(f"Error disconnecting from external agent {agent_id} during shutdown: {str(e)}")
+                # Continue with other disconnections even if one fails
+        
+        # Clear registries
+        self.tool_registry.clear()
+        self.tool_types.clear()
+        self.connection_managers.clear()
+        
+        self.logger.info("MCP client service shutdown complete")

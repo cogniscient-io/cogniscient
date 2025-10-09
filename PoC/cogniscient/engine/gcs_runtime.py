@@ -1,5 +1,6 @@
 """Generic Control System (GCS) Runtime for PoC.
-For backward compatibility, this is still named ucs_runtime.py and exports UCSRuntime.
+For backward compatibility, this is still named ucs_runtime.py.
+The UCSRuntime alias has been removed as it's no longer needed.
 """
 
 import importlib.util
@@ -490,8 +491,8 @@ class GCSRuntime:
         method = getattr(self.system_parameters_service, method_name)
         return method(*args, **kwargs)
 
-    def shutdown(self) -> None:
-        """Shutdown all agents."""
+    async def shutdown(self) -> None:
+        """Shutdown all agents and services."""
         # Unload all components managed by the unified agent manager
         for name in list(self.unified_agent_manager.components.keys()):
             # Skip system services during shutdown since they're singleton instances
@@ -500,10 +501,32 @@ class GCSRuntime:
         
         # Also delegate to the local agent manager's unload functionality
         self.local_agent_manager.unload_all_agents()
+        
+        # Shutdown MCP services to properly close connections
+        if hasattr(self, 'mcp_service') and self.mcp_service:
+            try:
+                await self.mcp_service.mcp_client.shutdown()
+            except Exception as e:
+                print(f"Warning: Error during MCP service shutdown: {e}")
+        
+        # Ensure proper cleanup of any remaining async resources, especially LiteLLM's resources
+        try:
+            # Try to close the LLM service which should handle LiteLLM adapter cleanup
+            if hasattr(self, 'llm_service') and self.llm_service and hasattr(self.llm_service, 'close'):
+                await self.llm_service.close()
+        except Exception as e:
+            print(f"Warning: Error during LLM service cleanup: {e}")
+            # If the above fails, try a different approach
+            try:
+                import gc
+                # Force garbage collection to clean up any remaining resources
+                gc.collect()
+            except:
+                pass  # If all else fails, just continue
 
 
 # For backward compatibility
-UCSRuntime = GCSRuntime
+# UCSRuntime = GCSRuntime
 
 
 async def main():

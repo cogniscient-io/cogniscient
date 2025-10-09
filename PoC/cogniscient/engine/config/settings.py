@@ -59,9 +59,9 @@ class Settings(BaseSettings):
             self.config_dir = "."
         
         # Validate agents_dir after loading from env
-        if self.agents_dir and self.agents_dir != "cogniscient/agentSDK" and not os.path.exists(self.agents_dir):
-            print(f"Warning: Agents directory '{self.agents_dir}' from .env does not exist. Using default: 'cogniscient/agentSDK'")
-            self.agents_dir = "cogniscient/agentSDK"
+        if self.agents_dir and self.agents_dir != "plugins/sample_internal/agents" and not os.path.exists(self.agents_dir):
+            print(f"Warning: Agents directory '{self.agents_dir}' from .env does not exist. Using default: 'plugins/sample_internal/agents'")
+            self.agents_dir = "plugins/sample_internal/agents"
 
 # Create a global settings instance
 settings = Settings()

@@ -2,9 +2,8 @@
 Main LLM Service for switching between different LLM providers.
 """
 import asyncio
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, AsyncGenerator
 from cogniscient.llm.providers.litellm_adapter import LiteLLMAdapter
-from .qwen_client import QwenClient
 from cogniscient.auth.token_manager import TokenManager
 
 
@@ -16,19 +15,17 @@ class LLMService:
         Initialize the LLM Service.
         
         Args:
-            token_manager: Token manager for Qwen provider (optional)
+            token_manager: Token manager that may be used for authenticated providers (optional)
         """
         self.current_provider = "litellm"  # Default provider
+        # Initialize LiteLLM adapter with token manager for potential authenticated requests
+        self.litellm_adapter = LiteLLMAdapter(token_manager=token_manager)
         self.providers = {
-            "litellm": LiteLLMAdapter(),  # Current implementation
+            "litellm": self.litellm_adapter,  # Current implementation
         }
         
-        # Set up Qwen provider if token_manager is provided
-        if token_manager:
-            self.qwen_client = QwenClient(token_manager)
-            self.providers["qwen"] = self.qwen_client
-        else:
-            self.qwen_client = None
+        # Store token manager for potential use in authenticated requests
+        self.token_manager = token_manager
 
     def add_provider(self, name: str, provider: Any):
         """
@@ -50,19 +47,22 @@ class LLMService:
         Returns:
             True if provider exists and was set, False otherwise
         """
-        if provider_name not in self.providers:
+        if provider_name not in self.providers and provider_name != "qwen":
             print(f"Provider '{provider_name}' not available. Available providers: {list(self.providers.keys())}")
+            # Add "qwen" to the list if token manager is available
+            available_providers = list(self.providers.keys())
+            if self.token_manager:
+                available_providers.append("qwen")
+            print(f"Available providers: {available_providers}")
             return False
 
         # Check if provider requires authentication
         if provider_name == "qwen":
-            if self.qwen_client:
-                # Verify credentials are valid before switching
-                # In a real implementation, we'd check this properly
-                pass
-            else:
-                print("Qwen provider not initialized - token manager required")
+            if not self.token_manager:
+                print("Qwen provider not available - token manager required")
                 return False
+            # Verify credentials are valid before switching
+            # In a real implementation, we'd check this properly
 
         self.current_provider = provider_name
         print(f"Provider set to: {provider_name}")
@@ -70,14 +70,19 @@ class LLMService:
 
     def get_provider(self):
         """Get the currently active provider."""
-        return self.providers.get(self.current_provider)
+        # For Qwen, use the same LiteLLM adapter but with authentication
+        if self.current_provider == "qwen":
+            return self.providers.get("litellm")
+        else:
+            return self.providers.get(self.current_provider)
 
     async def generate_response(
         self,
         messages: List[Dict[str, str]],
         model: str = None,  # Changed to None so we can set provider-specific defaults
+        stream: bool = False,  # Add stream parameter
         **kwargs
-    ) -> Optional[str]:
+    ) -> Optional[str] | AsyncGenerator[Dict[str, Any], None]:
         """
         Generate a response using the current provider.
         
@@ -92,37 +97,22 @@ class LLMService:
         # Set provider-specific default model if none provided
         if model is None:
             from cogniscient.engine.config.settings import settings
+            # Use settings model based on current provider
             if self.current_provider == "qwen":
-                model = settings.qwen_model  # Default model for Qwen API from settings
+                model = settings.qwen_model  # Default model for Qwen/DashScope API from settings
             else:
-                model = settings.llm_model  # Default model for litellm/Ollama from settings
+                model = settings.llm_model  # Default model for other providers from settings
         
         provider = self.get_provider()
         if not provider:
             print(f"Provider '{self.current_provider}' not found")
             return None
 
-        # Generate response using the current provider
-        # The interface might be different for different providers
-        if self.current_provider == "litellm":
-            # For LiteLLM service, use its generate_response method
-            try:
-                return await provider.generate_response(messages, model, **kwargs)
-            except Exception as e:
-                print(f"Error with LiteLLM provider: {e}")
-                return None
-        elif self.current_provider == "qwen":
-            # For Qwen client, use its generate_response method
-            try:
-                # Adjust model name for Qwen API if needed
-                qwen_model = model.replace("ollama_chat/", "") if "ollama_chat/" in model else model
-                return await self.qwen_client.generate_response(messages, qwen_model, **kwargs)
-            except Exception as e:
-                print(f"Error with Qwen provider: {e}")
-                return None
-        else:
-            # Handle other providers if added in the future
-            print(f"Unknown provider: {self.current_provider}")
+        # Use the LiteLLM adapter with provider-specific logic
+        try:
+            return await provider.generate_response(messages, model, stream=stream, provider=self.current_provider, **kwargs)
+        except Exception as e:
+            print(f"Error with {self.current_provider} provider: {e}")
             return None
 
     async def check_provider_credentials(self, provider_name: str) -> bool:
@@ -135,8 +125,12 @@ class LLMService:
         Returns:
             True if credentials are valid, False otherwise
         """
-        if provider_name == "qwen" and self.qwen_client:
-            return await self.qwen_client.check_credentials()
+        if provider_name == "qwen":
+            if self.token_manager:
+                # Check if we can get a valid access token
+                token = await self.token_manager.get_valid_access_token()
+                return token is not None
+            return False
         elif provider_name == "litellm":
             # LiteLLM typically doesn't require special credentials for local models
             return True
@@ -154,9 +148,6 @@ class LLMService:
 
     async def close(self):
         """Close any resources held by providers."""
-        if self.qwen_client:
-            await self.qwen_client.close()
-        
         # Close LiteLLM adapter to properly clean up async clients
         litellm_adapter = self.providers.get("litellm")
         if litellm_adapter and hasattr(litellm_adapter, 'close'):

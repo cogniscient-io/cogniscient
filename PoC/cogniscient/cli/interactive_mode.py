@@ -125,6 +125,16 @@ class InteractiveCLI:
             # Check authentication status
             try:
                 auth_status = asyncio.run(self._get_auth_status())
+            except RuntimeError:
+                # Handle case where we're already in a running event loop
+                try:
+                    loop = asyncio.get_running_loop()
+                    # If we're in a running loop, we need to use a different approach
+                    # For now, we'll just return a temporary status
+                    auth_status = "Unable to check authentication status - event loop issue"
+                except RuntimeError:
+                    # No event loop running
+                    auth_status = "Unable to check authentication status"
             except:
                 auth_status = "Unable to check authentication status"
             
@@ -138,7 +148,10 @@ class InteractiveCLI:
             )
             
         elif user_input.lower() in ['exit', 'quit', 'bye']:
-            self.session_manager.close_session()
+            try:
+                self.session_manager.close_session()
+            except Exception as e:
+                print(f"Warning: Error during session cleanup: {e}")
             return "Goodbye! Exiting interactive session."
         
         elif user_input.lower() == 'history':
@@ -183,14 +196,30 @@ class InteractiveCLI:
         # Authentication-related commands
         elif user_input.lower().startswith('auth login') or user_input.lower() == 'auth':
             try:
-                return asyncio.run(self._perform_auth_login())
+                # Check if we're already in an event loop
+                try:
+                    loop = asyncio.get_running_loop()
+                    # If we're in a running loop, we can't use asyncio.run
+                    # Instead, we'll need to handle this differently
+                    return "Authentication not available in interactive session - event loop issue"
+                except RuntimeError:
+                    # No event loop running, we can use asyncio.run
+                    return asyncio.run(self._perform_auth_login())
             except Exception as e:
                 return f"Error in auth command: {str(e)}"
         
         elif user_input.lower() == 'auth-status' or user_input.lower().startswith('auth status'):
             try:
-                auth_status = asyncio.run(self._get_auth_status())
-                return f"Authentication status: {auth_status}"
+                # Check if we're already in an event loop
+                try:
+                    loop = asyncio.get_running_loop()
+                    # If we're in a running loop, we can't use asyncio.run
+                    # Instead, we'll need to handle this differently
+                    return "Authentication status not available - event loop issue"
+                except RuntimeError:
+                    # No event loop running, we can use asyncio.run
+                    auth_status = asyncio.run(self._get_auth_status())
+                    return f"Authentication status: {auth_status}"
             except Exception as e:
                 return f"Error in auth-status command: {str(e)}"
         
@@ -206,7 +235,14 @@ class InteractiveCLI:
                 parts = normalized.split(' ', 1)
                 if len(parts) == 2:
                     provider_name = parts[1].strip()
-                    return asyncio.run(self._switch_provider(provider_name))
+                    # Check if we're already in an event loop
+                    try:
+                        loop = asyncio.get_running_loop()
+                        # If we're in a running loop, use run_until_complete
+                        return loop.run_until_complete(self._switch_provider(provider_name))
+                    except RuntimeError:
+                        # No event loop running, we can use asyncio.run
+                        return asyncio.run(self._switch_provider(provider_name))
                 else:
                     return "Please specify a provider. Usage: switch-provider <provider_name>"
             except Exception as e:
@@ -214,8 +250,16 @@ class InteractiveCLI:
         
         elif user_input.lower() == 'list-providers' or user_input.lower() == 'list providers':
             try:
-                providers = asyncio.run(self.gcs_runtime.llm_service_internal.get_available_providers())
-                return f"Available providers: {', '.join(providers)}"
+                # Check if we're already in an event loop
+                try:
+                    loop = asyncio.get_running_loop()
+                    # If we're in a running loop, we can't use asyncio.run
+                    providers = loop.run_until_complete(self.gcs_runtime.llm_service_internal.get_available_providers())
+                    return f"Available providers: {', '.join(providers)}"
+                except RuntimeError:
+                    # No event loop running, we can use asyncio.run
+                    providers = asyncio.run(self.gcs_runtime.llm_service_internal.get_available_providers())
+                    return f"Available providers: {', '.join(providers)}"
             except Exception as e:
                 return f"Error in list-providers command: {str(e)}"
         

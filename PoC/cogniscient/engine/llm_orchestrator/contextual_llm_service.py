@@ -35,6 +35,7 @@ class ContextualLLMService:
         max_tokens: Optional[int] = None,
         include_agent_capabilities: bool = True,
         return_token_counts: bool = False,  # New parameter to return token counts
+        stream: bool = False,  # Add stream parameter
         **kwargs
     ) -> str | Dict[str, Any]:
         """Generate a response from the LLM API with contextual information.
@@ -112,10 +113,11 @@ class ContextualLLMService:
                 model=model,  # Pass the provided model directly (will use provider defaults if None)
                 temperature=temperature,
                 max_tokens=max_tokens,
+                stream=stream,  # Pass the stream parameter through
                 **kwargs
             )
             
-            # Handle the result based on whether it contains token counts
+            # Handle the result based on whether it contains token counts or is a streaming generator
             if isinstance(result, dict) and "token_counts" in result and "response" in result:
                 # The provider already returned token counts, so use them
                 if return_token_counts:
@@ -124,8 +126,11 @@ class ContextualLLMService:
                     # Caller doesn't want return_token_counts format, just return response
                     return result["response"]
             else:
+                # Check if it's an async generator (streaming case)
+                if hasattr(result, '__aiter__'):  # Check if it's an async generator
+                    return result  # Return the async generator as-is
                 # The provider returned a string or a non-token-count-aware result
-                if return_token_counts:
+                elif return_token_counts:
                     # Return in token count format with zeros for token counts
                     return {
                         "response": result,
@@ -143,22 +148,41 @@ class ContextualLLMService:
             logger.error(f"Error calling LLM API: {str(e)}")
             error_response = f"Error: Unable to generate response ({str(e)})"
             
-            # Return error response with token counts if requested
-            if return_token_counts:
-                import litellm
-                # Use a default model for token counting in case of error
-                default_model = model or "gpt-3.5-turbo"
-                error_tokens = litellm.token_counter(model=default_model, text=error_response)
-                return {
-                    "response": error_response,
-                    "token_counts": {
-                        "input_tokens": 0,  # No input tokens for an error response
-                        "output_tokens": error_tokens,
-                        "total_tokens": error_tokens
+            # For streaming errors, we'd return a different kind of generator
+            if stream:
+                async def error_generator():
+                    yield {
+                        "content": error_response,
+                        "type": "error"
                     }
-                }
-            
-            return error_response
+                    if return_token_counts:
+                        yield {
+                            "type": "token_counts",
+                            "token_counts": {
+                                "input_tokens": 0,
+                                "output_tokens": 0,
+                                "total_tokens": 0
+                            }
+                        }
+                
+                return error_generator()
+            else:
+                # Return error response with token counts if requested
+                if return_token_counts:
+                    import litellm
+                    # Use a default model for token counting in case of error
+                    default_model = model or "gpt-3.5-turbo"
+                    error_tokens = litellm.token_counter(model=default_model, text=error_response)
+                    return {
+                        "response": error_response,
+                        "token_counts": {
+                            "input_tokens": 0,  # No input tokens for an error response
+                            "output_tokens": error_tokens,
+                            "total_tokens": error_tokens
+                        }
+                    }
+                
+                return error_response
 
     def _format_agent_capabilities(self, agent_registry: Dict[str, Any]) -> str:
         """Format agent capabilities for inclusion in system prompt.
@@ -323,6 +347,90 @@ class ContextualLLMService:
         """Close any resources held by the contextual service."""
         if self.provider_manager and hasattr(self.provider_manager, 'close'):
             await self.provider_manager.close()
+        
+        # Additional cleanup to ensure all async resources are closed
+        # especially the LiteLLM async success handler tasks
+        try:
+            import litellm
+            import asyncio
+            import gc
+            
+            # Process any pending logs to prevent the async_success_handler warning
+            if hasattr(litellm, 'batch_logging'):
+                await litellm.batch_logging()
+
+            # Try to properly close module-level clients
+            if hasattr(litellm, 'module_level_aclient'):
+                try:
+                    close_method = litellm.module_level_aclient.close
+                    # Check if the close method is async (coroutine)
+                    if asyncio.iscoroutinefunction(close_method):
+                        await close_method()
+                    else:
+                        # If it's not a coroutine, call it directly
+                        close_method()
+                except Exception:
+                    pass  # Ignore errors during close attempt
+
+            if hasattr(litellm, 'module_level_client'):
+                try:
+                    litellm.module_level_client.close()
+                except Exception:
+                    pass  # Ignore errors during close attempt
+
+            # Try to properly close cached clients in LLMClientCache
+            if hasattr(litellm, 'in_memory_llm_clients_cache'):
+                try:
+                    # Get the cached clients and close them
+                    cache = litellm.in_memory_llm_clients_cache
+                    if hasattr(cache, 'cache_dict'):
+                        for key, cached_client in list(cache.cache_dict.items()):
+                            if hasattr(cached_client, 'close'):
+                                try:
+                                    close_method = cached_client.close
+                                    if asyncio.iscoroutinefunction(close_method):
+                                        await close_method()
+                                    else:
+                                        close_method()
+                                except Exception:
+                                    pass  # Ignore errors during close attempt
+                        # Clear the cache after closing
+                        cache.cache_dict.clear()
+                except Exception:
+                    pass  # Ignore errors during cache cleanup
+
+            # Try to properly close any async clients
+            if hasattr(litellm, 'aclient_session') and litellm.aclient_session:
+                try:
+                    loop = asyncio.get_running_loop()
+                    # If we're in a running loop, schedule the closure
+                    task = loop.create_task(litellm.aclient_session.aclose())
+                    await task  # Wait for the task to complete
+                except RuntimeError:
+                    # No event loop running, we can create a new one
+                    await litellm.aclient_session.aclose()
+
+            # Clear callback lists to prevent async handlers from running
+            if hasattr(litellm, 'success_callback'):
+                litellm.success_callback = []
+            if hasattr(litellm, 'failure_callback'):
+                litellm.failure_callback = []
+            if hasattr(litellm, '_async_success_callback'):
+                litellm._async_success_callback = []
+            if hasattr(litellm, '_async_failure_callback'):
+                litellm._async_failure_callback = []
+
+            # Force garbage collection to clean up any remaining resources
+            gc.collect()
+
+        except Exception as e:
+            # If the above fails, try a different approach
+            try:
+                import gc
+                # Force garbage collection to clean up any remaining resources
+                gc.collect()
+            except:
+                pass  # If all else fails, just continue
 
     def _format_system_service_capabilities(self) -> str:
         """Format system service capabilities for inclusion in system prompt.

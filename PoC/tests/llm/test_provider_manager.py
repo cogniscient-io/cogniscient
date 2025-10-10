@@ -3,7 +3,7 @@ Tests for the provider manager.
 """
 import pytest
 from unittest.mock import AsyncMock, MagicMock
-from cogniscient.llm.llm_service import LLMService
+from cogniscient.llm.llm_provider_service import LLMService
 
 
 @pytest.fixture

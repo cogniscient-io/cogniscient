@@ -4,7 +4,7 @@ import logging
 from typing import Callable, Dict, Any, List
 from cogniscient.engine.gcs_runtime import GCSRuntime
 from cogniscient.engine.llm_orchestrator.contextual_llm_service import ContextualLLMService
-from cogniscient.llm.llm_service import LLMService
+from cogniscient.llm.llm_provider_service import LLMService
 from cogniscient.engine.llm_orchestrator.base_user_request_handler import BaseUserRequestHandler
 
 logger = logging.getLogger(__name__)

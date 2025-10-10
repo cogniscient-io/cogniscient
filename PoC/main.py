@@ -5,6 +5,40 @@ the frontend server, CLI, or to access different system components programmatica
 """
 
 import sys
+import warnings
+from cogniscient.utils.shutdown_handler import graceful_shutdown
+
+
+def _suppress_aiohttp_warnings():
+    """
+    Suppress specific aiohttp warnings that occur during shutdown.
+    This addresses the common issue where aiohttp ClientSession objects
+    throw warnings during garbage collection after the event loop is closed.
+    """
+    # Filter specific warnings related to aiohttp ClientSession cleanup
+    warnings.filterwarnings("ignore", 
+                           message=".*aiohttp.*", 
+                           category=ResourceWarning,
+                           module=".*aiohttp.*")
+    
+    # Also temporarily patch warnings.showwarning to suppress specific messages
+    original_showwarning = warnings.showwarning
+    
+    def custom_showwarning(message, category, filename, lineno, file=None, line=None):
+        # Check if this is the specific aiohttp warning we want to suppress
+        msg_str = str(message)
+        if ("ResourceWarning" in msg_str or 
+            "ClientSession.__del__" in msg_str or 
+            "BaseConnector.__del__" in msg_str or
+            ("aiohttp" in msg_str and "AttributeError" in msg_str and "from_exception" in msg_str)):
+            return  # Suppress this warning
+        # Call the original function for other warnings
+        original_showwarning(message, category, filename, lineno, file, line)
+    
+    warnings.showwarning = custom_showwarning
+
+# Apply the warning suppression early
+_suppress_aiohttp_warnings()
 
 
 def main():

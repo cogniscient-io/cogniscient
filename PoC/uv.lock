@@ -248,9 +248,10 @@ wheels = [
 
 [[package]]
 name = "cogniscient"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
+    { name = "aiohttp" },
     { name = "dnspython" },
     { name = "fastapi" },
     { name = "litellm" },
@@ -267,6 +268,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiohttp", specifier = ">=3.9.0" },
     { name = "dnspython", specifier = ">=2.0.0" },
     { name = "fastapi", specifier = ">=0.104.0" },
     { name = "litellm", specifier = ">=1.40.0" },

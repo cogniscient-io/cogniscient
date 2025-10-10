@@ -53,7 +53,7 @@ async def test_gcs_runtime_with_mock_agents():
     assert hasattr(gcs.mcp_service, 'mcp_server')
     
     # Basic unload test using the agent service
-    gcs.agent_service.unload_agent("test")
+    await gcs.agent_service.unload_agent("test")
     # Note: In the new architecture, we don't directly access gcs.agents
     # The agents are managed through the agent service
 

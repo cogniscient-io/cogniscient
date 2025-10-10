@@ -170,6 +170,8 @@ class StreamableHttpConnectionManager(ConnectionManager):
         
         # We don't maintain long-lived connections for streamable HTTP
         # Instead, each operation establishes its own connection
+        # But we'll track any active session for proper cleanup if needed
+        self.active_session = None
     
     async def initialize(self) -> None:
         """For streamable HTTP, we verify we can connect by doing a quick test."""
@@ -188,7 +190,20 @@ class StreamableHttpConnectionManager(ConnectionManager):
     
     async def close(self) -> None:
         """Close any resources if needed."""
-        self.logger.info(f"Streamable HTTP connection to {self.url} closed (no persistent resources to close)")
+        # Close any active session if it exists
+        if self.active_session:
+            try:
+                # For streamable HTTP, the session should be closed properly
+                # The session is typically managed within the async context manager,
+                # so we ensure no lingering references
+                self.active_session = None
+                self.logger.info(f"Streamable HTTP connection to {self.url} closed (active session cleared)")
+            except Exception as e:
+                # During system shutdown, logging might fail, so we catch any errors
+                # and don't log them to prevent the logging system exceptions
+                pass
+        else:
+            self.logger.info(f"Streamable HTTP connection to {self.url} closed (no active session)")
     
     async def _execute_with_session(self, operation_func):
         """Execute an operation within the proper SDK context."""
@@ -208,13 +223,19 @@ class StreamableHttpConnectionManager(ConnectionManager):
                 write_stream,
                 client_info={"name": "cogniscient-mcp-client", "version": "1.0.0"}
             ) as session:
-                # Initialize the session
-                init_result = await session.initialize()
-                server_info = getattr(init_result, 'serverInfo', getattr(init_result, 'server_info', None))
-                self.logger.debug(f"Connected to server! Server info: {server_info}")
-                
-                # Execute the operation
-                return await operation_func(session)
+                # Store reference to active session (though it's in a context manager)
+                self.active_session = session
+                try:
+                    # Initialize the session
+                    init_result = await session.initialize()
+                    server_info = getattr(init_result, 'serverInfo', getattr(init_result, 'server_info', None))
+                    self.logger.debug(f"Connected to server! Server info: {server_info}")
+                    
+                    # Execute the operation
+                    return await operation_func(session)
+                finally:
+                    # Clear the active session reference after operation completes
+                    self.active_session = None
     
     async def list_tools(self) -> Dict[str, Any]:
         """List available tools using the official SDK."""
@@ -602,16 +623,28 @@ class MCPClientService:
     
     async def shutdown(self) -> None:
         """Shutdown all connections and clean up resources."""
-        self.logger.info("Shutting down MCP client service")
+        try:
+            self.logger.info("Shutting down MCP client service")
+        except:
+            # If logging system is already shutting down, skip logging
+            pass
         
         # Disconnect from all external agents
         agent_ids = list(self.connection_managers.keys())
         for agent_id in agent_ids:
             try:
-                self.logger.info(f"Disconnecting from external agent {agent_id}")
+                try:
+                    self.logger.info(f"Disconnecting from external agent {agent_id}")
+                except:
+                    # If logging system is already shutting down, skip logging
+                    pass
                 await self.disconnect_from_external_agent(agent_id)
             except Exception as e:
-                self.logger.error(f"Error disconnecting from external agent {agent_id} during shutdown: {str(e)}")
+                try:
+                    self.logger.error(f"Error disconnecting from external agent {agent_id} during shutdown: {str(e)}")
+                except:
+                    # If logging system is already shutting down, skip logging
+                    pass
                 # Continue with other disconnections even if one fails
         
         # Clear registries
@@ -619,4 +652,8 @@ class MCPClientService:
         self.tool_types.clear()
         self.connection_managers.clear()
         
-        self.logger.info("MCP client service shutdown complete")
+        try:
+            self.logger.info("MCP client service shutdown complete")
+        except:
+            # If logging system is already shutting down, skip logging
+            pass

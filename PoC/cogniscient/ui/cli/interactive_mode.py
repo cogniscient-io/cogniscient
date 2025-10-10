@@ -5,6 +5,7 @@ This module provides the REPL-style interactive interface.
 """
 import os
 import asyncio
+import warnings
 from typing import Dict, Any
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
@@ -16,6 +17,38 @@ from .session_manager import SessionManager
 from cogniscient.auth.oauth_manager import OAuthManager
 from cogniscient.auth.token_manager import TokenManager
 from cogniscient.engine.config.settings import settings
+
+
+def _suppress_aiohttp_warnings():
+    """
+    Suppress specific aiohttp warnings that occur during shutdown.
+    This addresses the common issue where aiohttp ClientSession objects
+    throw warnings during garbage collection after the event loop is closed.
+    """
+    # Filter specific warnings related to aiohttp ClientSession cleanup
+    warnings.filterwarnings("ignore", 
+                           message=".*aiohttp.*", 
+                           category=ResourceWarning,
+                           module=".*aiohttp.*")
+    
+    # Also temporarily patch warnings.showwarning to suppress specific messages
+    original_showwarning = warnings.showwarning
+    
+    def custom_showwarning(message, category, filename, lineno, file=None, line=None):
+        # Check if this is the specific aiohttp warning we want to suppress
+        msg_str = str(message)
+        if ("ResourceWarning" in msg_str or 
+            "ClientSession.__del__" in msg_str or 
+            "BaseConnector.__del__" in msg_str or
+            ("aiohttp" in msg_str and "AttributeError" in msg_str and "from_exception" in msg_str)):
+            return  # Suppress this warning
+        # Call the original function for other warnings
+        original_showwarning(message, category, filename, lineno, file, line)
+    
+    warnings.showwarning = custom_showwarning
+
+# Apply the warning suppression early
+_suppress_aiohttp_warnings()
 
 class InteractiveCLI:
     """
@@ -206,6 +239,12 @@ class InteractiveCLI:
                 self.session_manager.close_session()
             except Exception as e:
                 print(f"Warning: Error during session cleanup: {e}")
+            finally:
+                # Ensure the kernel system is stopped properly
+                try:
+                    self.gcs_runtime.kernel.stop_system()
+                except Exception as e:
+                    print(f"Warning: Error during kernel shutdown: {e}")
             return "Goodbye! Exiting interactive session."
         
         elif user_input.lower() == 'history':

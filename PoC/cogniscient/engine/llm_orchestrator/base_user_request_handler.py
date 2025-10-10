@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 from typing import Dict, Any, List, Optional, Callable
-from cogniscient.llm.llm_service import LLMService
+from cogniscient.llm.llm_provider_service import LLMService
 from cogniscient.engine.gcs_runtime import GCSRuntime
 from cogniscient.engine.config.settings import settings
 

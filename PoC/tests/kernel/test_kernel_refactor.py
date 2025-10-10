@@ -10,7 +10,7 @@ from cogniscient.engine.kernel import Kernel
 from cogniscient.engine.gcs_runtime import GCSRuntime
 from cogniscient.engine.services.config_service import ConfigServiceImpl
 from cogniscient.engine.services.agent_service import AgentServiceImpl
-from cogniscient.engine.services.llm_service import LLMServiceImpl
+from cogniscient.engine.services.llm_kernel_service import LLMServiceImpl
 from cogniscient.engine.services.auth_service import AuthServiceImpl
 from cogniscient.engine.services.storage_service import StorageServiceImpl
 from cogniscient.engine.services.service_interface import (

@@ -41,21 +41,28 @@ class MCPService:
     async def shutdown(self) -> None:
         """Shutdown both client and server MCP services."""
         import logging
-        logger = logging.getLogger(__name__)
+        try:
+            logger = logging.getLogger(__name__)
+        except:
+            # If logging system is already shutting down, skip logging
+            logger = None
         
         # Shutdown client service
         if hasattr(self, 'mcp_client') and self.mcp_client:
             try:
                 await self.mcp_client.shutdown()
-                logger.info("MCP client service shutdown completed")
+                if logger:
+                    logger.info("MCP client service shutdown completed")
             except Exception as e:
-                logger.warning(f"Error during MCP client service shutdown: {e}")
+                if logger:
+                    logger.warning(f"Error during MCP client service shutdown: {e}")
         
         # Shutdown server service
         # Note: MCPServerService doesn't currently have a shutdown method
         # as FastMCP doesn't expose one in the current implementation
         # In the future, this could be extended if FastMCP provides a shutdown mechanism
-        logger.info("MCP server service shutdown completed (no explicit shutdown required)")
+        if logger:
+            logger.info("MCP server service shutdown completed (no explicit shutdown required)")
     
     # Client functionality methods - delegate to MCPClientService
     async def connect_to_external_agent(self, agent_id: str, connection_params: Dict[str, Any]) -> Dict[str, Any]:

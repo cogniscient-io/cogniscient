@@ -129,12 +129,16 @@ class Kernel:
         self._running = False
         
         # Close the event loop
-        if hasattr(self, 'kernel_loop') and self.kernel_loop:
-            self.kernel_loop.call_soon_threadsafe(self.kernel_loop.stop)
+        if hasattr(self, 'kernel_loop') and self.kernel_loop and self.kernel_loop.is_running():
+            try:
+                self.kernel_loop.call_soon_threadsafe(self.kernel_loop.stop)
+            except RuntimeError:
+                # Loop might already be closed or in the process of closing
+                pass
         
         # Wait for the thread to finish
-        if hasattr(self, 'kernel_thread') and self.kernel_thread:
-            self.kernel_thread.join()
+        if hasattr(self, 'kernel_thread') and self.kernel_thread and self.kernel_thread.is_alive():
+            self.kernel_thread.join(timeout=2)  # Add timeout to prevent hanging
         
         print("Kernel stopped")
         return True
@@ -174,6 +178,10 @@ class Kernel:
         """Add a callback for streaming events."""
         self.streaming_callbacks.append(callback)
     
+    def set_llm_control_service(self, llm_control_service):
+        """Set the LLM control service for the kernel."""
+        self.llm_control_service = llm_control_service
+
     async def process_user_input_streaming(self, user_input: str) -> Dict[str, Any]:
         """Process user input with streaming support through the kernel.
         

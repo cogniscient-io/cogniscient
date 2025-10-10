@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Dict, Any
 from cogniscient.engine.llm_orchestrator.contextual_llm_service import ContextualLLMService
-from cogniscient.llm.llm_service import LLMService
+from cogniscient.llm.llm_provider_service import LLMService
 
 logger = logging.getLogger(__name__)
 

@@ -3,9 +3,10 @@
 import os
 from cogniscient.engine.config.settings import settings
 from typing import Dict, Any
+from cogniscient.engine.services.service_interface import Service
 
 
-class SystemParametersService:
+class SystemParametersService(Service):
     """Singleton service for managing system parameters dynamically."""
 
     _instance = None
@@ -25,6 +26,24 @@ class SystemParametersService:
         self._initialized = True
         # Store optional reference to runtime for updating runtime objects
         self.gcs_runtime = None
+
+    async def initialize(self) -> bool:
+        """Initialize the system parameters service.
+        
+        Returns:
+            True if initialization was successful, False otherwise
+        """
+        # For now, initialization is just confirming the service is ready
+        return True
+
+    async def shutdown(self) -> bool:
+        """Shutdown the system parameters service.
+        
+        Returns:
+            True if shutdown was successful, False otherwise
+        """
+        # For now, there's nothing specific to do on shutdown
+        return True
 
     def set_runtime(self, runtime):
         """Set the GCS runtime reference.
@@ -266,3 +285,71 @@ class SystemParametersService:
             return int(parameter_value)
         else:
             return parameter_value
+
+    def register_mcp_tools(self):
+        """
+        Register tools with the MCP tool registry.
+        This is the MCP-compatible registration method for the system parameters service.
+        """
+        if not self.gcs_runtime or not hasattr(self.gcs_runtime, 'mcp_service') or not self.gcs_runtime.mcp_service:
+            print(f"Warning: No runtime reference for {self.__class__.__name__}, skipping tool registration")
+            return
+
+        # Register tools in MCP format to the tool registry
+        mcp_client = self.gcs_runtime.mcp_service.mcp_client
+
+        # Register get system parameters tool
+        get_params_tool = {
+            "name": "system_get_parameters",
+            "description": "Get current system parameter values",
+            "input_schema": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            },
+            "type": "function"
+        }
+
+        # Register set system parameter tool
+        set_param_tool = {
+            "name": "system_set_parameter",
+            "description": "Set a system parameter value",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "parameter_name": {"type": "string", "description": "Name of the parameter to set"},
+                    "parameter_value": {"type": "string", "description": "New value for the parameter"}
+                },
+                "required": ["parameter_name", "parameter_value"]
+            },
+            "type": "function"
+        }
+
+        # Register get parameter descriptions tool
+        get_param_descs_tool = {
+            "name": "system_get_parameter_descriptions",
+            "description": "Get descriptions of all system parameters",
+            "input_schema": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            },
+            "type": "function"
+        }
+
+        # Add tools to the registry
+        agent_tools = mcp_client.tool_registry.get(self.__class__.__name__, [])
+        agent_tools.extend([
+            get_params_tool, 
+            set_param_tool, 
+            get_param_descs_tool
+        ])
+        mcp_client.tool_registry[self.__class__.__name__] = agent_tools
+
+        # Also register individual tool types
+        for tool_desc in [
+            get_params_tool, 
+            set_param_tool, 
+            get_param_descs_tool
+        ]:
+            mcp_client.tool_types[tool_desc["name"]] = True  # Is a system tool

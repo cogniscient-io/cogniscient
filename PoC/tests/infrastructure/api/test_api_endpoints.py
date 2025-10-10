@@ -28,33 +28,27 @@ async def test_system_parameters_api_functionality():
     ucs_runtime = GCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
     ucs_runtime.load_configuration("combined")
     
-    # Test getting system parameters
-    result = ucs_runtime.run_agent("SystemParametersManager", "get_system_parameters")
-    assert result["status"] == "success"
-    assert "parameters" in result
-    assert isinstance(result["parameters"], dict)
-    assert len(result["parameters"]) > 0
+    # Test getting system parameters using the service directly
+    # In the new architecture, system parameters are managed through the service
+    system_params_service = ucs_runtime.system_parameters_service
+    params = system_params_service.get_parameters()
+    assert isinstance(params, dict)
+    assert len(params) > 0
     
     # Save original parameter value for cleanup
-    original_max_history_length = result["parameters"].get("max_history_length")
+    original_max_history_length = params.get("max_history_length")
     
     # Test setting a parameter
-    result = ucs_runtime.run_agent("SystemParametersManager", "set_system_parameter",
-                                 parameter_name="max_history_length", parameter_value="10")
-    assert result["status"] == "success"
+    result = system_params_service.set_parameter("max_history_length", 10)
+    assert result is True
     
     # Verify the parameter was set by getting parameters again
-    result = ucs_runtime.run_agent("SystemParametersManager", "get_system_parameters")
-    assert result["status"] == "success"
-    params = result["parameters"]
-    
-    # Verify the parameter was set in the settings
+    params = system_params_service.get_parameters()
     assert params["max_history_length"] == 10
     
     # Reset the parameter back to its original value to avoid affecting other tests
     if original_max_history_length is not None:
-        ucs_runtime.run_agent("SystemParametersManager", "set_system_parameter", 
-                             parameter_name="max_history_length", parameter_value=str(original_max_history_length))
+        system_params_service.set_parameter("max_history_length", original_max_history_length)
 
 
 if __name__ == "__main__":

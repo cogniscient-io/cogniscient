@@ -95,7 +95,7 @@ class SessionManager:
         return {
             "start_time": self.session_start_time,
             "interaction_count": len(self.conversation_history),
-            "active_config": self.gcs_runtime.config_service.get_current_config_name(),
+            "active_config": self.gcs_runtime.get_current_config_name(),
             "active_agents": list(self.gcs_runtime.agents.keys()),
             "session_context": self.session_context
         }

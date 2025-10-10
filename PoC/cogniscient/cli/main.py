@@ -48,18 +48,17 @@ def main():
         interactive_cli = InteractiveCLI(gcs)
         interactive_cli.start_session()
         
-        # Shutdown the system when exiting
+        # Shutdown the system when exiting (only if not already initiated)
         import asyncio
-        try:
-            # Try to get the current running loop
-            loop = asyncio.get_running_loop()
-            # If we're in a running loop, schedule the shutdown as a task
-            task = loop.create_task(gcs.shutdown())
-            # Await the task completion to ensure proper shutdown
-            loop.run_until_complete(task)
-        except RuntimeError:
-            # No event loop running, we can create a new one
-            asyncio.run(gcs.shutdown())
+        if not hasattr(gcs, 'shutdown_initiated') or not gcs.shutdown_initiated:
+            try:
+                # Try to get the current running loop
+                loop = asyncio.get_running_loop()
+                # If we're in a running loop, schedule the shutdown as a task
+                task = loop.create_task(gcs.shutdown())
+            except RuntimeError:
+                # No event loop running, we can create a new one
+                asyncio.run(gcs.shutdown())
     else:
         # Process as traditional command mode
         # Reconstruct sys.argv to pass to command mode

@@ -1,385 +1,90 @@
 """
-Unified Agent Manager - Handles loading and management of both local agents and internal services.
+Simplified unified agent manager - Handles MCP-compliant agents and services.
 """
 
-import asyncio
 import os
 import re
 from typing import Any, Dict
-from .base_agent_manager import BaseUnifiedAgentManager, UnifiedComponent, ComponentType
-from cogniscient.engine.agent_utils.loader import load_agent_module
-from cogniscient.engine.agent_utils.agent_config_manager import AgentConfigManager
-from cogniscient.engine.services.config_service import ConfigService
-from cogniscient.engine.services.system_parameters_service import SystemParametersService
+from .base_agent_manager import BaseAgentManager
+from .loader import load_agent_module
 
 
-class UnifiedAgentManager(BaseUnifiedAgentManager):
-    """Handles loading and managing both agent and service components with unified interfaces."""
-
-    def __init__(self, config_dir: str = ".", agents_dir: str = "cogniscient/agentSDK", system_parameters_service=None):
-        """Initialize the unified agent manager.
+class UnifiedAgentManager(BaseAgentManager):
+    """
+    Simplified unified manager for MCP-compliant agents and services.
+    """
+    
+    def __init__(self, agents_dir: str = "custom/agents", runtime_ref=None):
+        """
+        Initialize the unified agent manager.
         
         Args:
-            config_dir: Directory containing agent configuration files
             agents_dir: Directory where agent modules are located
-            system_parameters_service: Optional reference to system parameters service
+            runtime_ref: Reference to the runtime
         """
-        # Validate config_dir and set to default if invalid
-        if config_dir and not os.path.exists(config_dir):
-            print(f"Warning: Config directory '{config_dir}' does not exist. Using default: '.'")
-            self.config_dir = "."
-        else:
-            self.config_dir = config_dir or "."
+        self.agents_dir = agents_dir
+        self.runtime_ref = runtime_ref
+        self.agents: Dict[str, Any] = {}  # Maps agent names to agent instances
 
-        # Validate agents_dir and set to default if invalid
-        if agents_dir and not os.path.exists(agents_dir):
-            print(f"Warning: Agents directory '{agents_dir}' does not exist. Using default: 'cogniscient/agentSDK'")
-            self.agents_dir = "cogniscient/agentSDK"
-        else:
-            self.agents_dir = agents_dir or "cogniscient/agentSDK"
+    def get_agent(self, name: str) -> Any:
+        """Get a specific agent by name."""
+        return self.agents.get(name)
+
+    def get_all_agents(self) -> Dict[str, Any]:
+        """Get all loaded agents."""
+        return self.agents.copy()
+
+    def run_agent(self, agent_name: str, method_name: str, *args, **kwargs) -> Any:
+        """Run a specific method on an agent."""
+        agent = self.get_agent(agent_name)
+        if agent is None:
+            raise ValueError(f"Agent {agent_name} not found")
         
-        self.system_parameters_service = system_parameters_service
-        # Pass the system_parameters_service to the config manager
-        self.config_manager = AgentConfigManager(
-            config_dir=self.config_dir,
-            agents_dir=self.agents_dir,
-            system_parameters_service=system_parameters_service
-        )
-        self.components: Dict[str, UnifiedComponent] = {}
-        self.runtime_ref = None
+        if not hasattr(agent, method_name):
+            raise ValueError(f"Agent {agent_name} does not have method {method_name}")
+        
+        method = getattr(agent, method_name)
+        return method(*args, **kwargs)
 
-    def register_component(self, component: UnifiedComponent) -> bool:
-        """Register a component (agent or service) in the system.
+    def load_agent(self, agent_name: str, config: Dict[str, Any] = None) -> bool:
+        """
+        Load an agent by name.
         
         Args:
-            component: The component to register
-            
-        Returns:
-            True if registration was successful, False otherwise
-        """
-        try:
-            self.components[component.name] = component
-            # If the component has static loading behavior, load it immediately
-            if component.load_behavior == "static":
-                self.load_component(component.name)
-            return True
-        except Exception as e:
-            print(f"Failed to register component {component.name}: {e}")
-            return False
-
-    def deregister_component(self, name: str) -> bool:
-        """Deregister a component from the system.
-        
-        Args:
-            name: Name of the component to deregister
-            
-        Returns:
-            True if deregistration was successful, False otherwise
-        """
-        if name not in self.components:
-            return False
-
-        # If the component is loaded, unload it first
-        if self.components[name].is_loaded:
-            self.unload_component(name)
-
-        # Remove the component
-        del self.components[name]
-        return True
-
-    def load_component(self, name: str) -> bool:
-        """Load a component based on its configuration.
-        
-        Args:
-            name: Name of the component to load
+            agent_name: Name of the agent to load
+            config: Configuration for the agent (optional)
             
         Returns:
             True if loading was successful, False otherwise
         """
-        if name not in self.components:
-            raise ValueError(f"Component {name} not registered")
-
-        component = self.components[name]
-
-        # Load based on component type
-        if component.component_type == ComponentType.LOCAL_AGENT:
-            # Load local agent using existing pattern
-            component.instance = self._load_local_agent(component.config)
-        elif component.component_type == ComponentType.EXTERNAL_AGENT:
-            # Load external agent using existing pattern
-            component.instance = self._load_external_agent(component.config)
-        elif component.component_type == ComponentType.INTERNAL_SERVICE:
-            # Load internal service using existing pattern
-            component.instance = self._load_internal_service(component.config)
-
-        component.is_loaded = True
-        return True
-
-    def unload_component(self, name: str) -> bool:
-        """Unload a component from memory.
+        # Convert PascalCase to snake_case for file naming convention
+        snake_case_name = re.sub('([a-z0-9])([A-Z])', r'\\1_\\2', agent_name).lower()
+        module_path = os.path.join(self.agents_dir, f"{snake_case_name}.py")
         
-        Args:
-            name: Name of the component to unload
-            
-        Returns:
-            True if unloading was successful, False otherwise
-        """
-        if name not in self.components:
-            raise ValueError(f"Component {name} not registered")
-
-        component = self.components[name]
-        if not component.is_loaded:
-            return True  # Already unloaded
-
-        # Call shutdown if available
-        if hasattr(component.instance, "shutdown"):
-            component.instance.shutdown()
-
-        # Clear the instance and mark as unloaded
-        component.instance = None
-        component.is_loaded = False
-        return True
-
-    def get_component(self, name: str) -> Any:
-        """Get a specific component by name.
-        
-        Args:
-            name: Name of the component
-            
-        Returns:
-            The component instance or None if not found
-        """
-        if name not in self.components:
-            # Check if we can get this from the runtime's MCP client service
-            if self.runtime_ref and hasattr(self.runtime_ref, 'mcp_client_service'):
-                # Check if this is a connected external agent via MCP
-                connected_agents = self.runtime_ref.mcp_client_service.get_connected_agents()
-                if name in connected_agents.get('connected_agents', []):
-                    # Return a special proxy object that can access MCP connected agents
-                    # This approach allows external agents to be accessed transparently
-                    # through the same interface as local agents
-                    class MCPAgentProxy:
-                        def __init__(self, runtime_ref, agent_name):
-                            self.runtime_ref = runtime_ref
-                            self.agent_name = agent_name
-                        
-                        def __getattr__(self, method_name):
-                            # Return a function that calls the MCP service to execute the method
-                            async def call_mcp_method(*args, **kwargs):
-                                return await self.runtime_ref.mcp_client_service.call_external_agent_tool(
-                                    self.agent_name, method_name, *args, **kwargs
-                                )
-                            return call_mcp_method
-                    
-                    # Create a component for the MCP agent to maintain consistency
-                    component = UnifiedComponent(
-                        name=name,
-                        component_type=ComponentType.EXTERNAL_AGENT,
-                        config={},
-                        load_behavior="dynamic"
-                    )
-                    component.instance = MCPAgentProxy(self.runtime_ref, name)
-                    component.is_loaded = True
-                    self.components[name] = component
-                    return component
-            
-            return None
-
-        component = self.components[name]
-        if not component.is_loaded:
-            # Load the component if it's not loaded
-            self.load_component(name)
-        return component
-
-    def get_all_components(self) -> Dict[str, Any]:
-        """Get all loaded components.
-        
-        Returns:
-            Dictionary mapping component names to component instances
-        """
-        # Ensure all dynamically loadable components are loaded before returning
-        for name, component in self.components.items():
-            if not component.is_loaded and component.load_behavior == "dynamic":
-                self.load_component(name)
-        return {name: comp for name, comp in self.components.items()}
-
-    def run_component_method(self, name: str, method_name: str, *args, **kwargs) -> Any:
-        """Run a specific method on a component.
-        
-        Args:
-            name: Name of the component to run.
-            method_name: Name of the method to execute.
-            *args: Positional arguments to pass to the method.
-            **kwargs: Keyword arguments to pass to the method.
-            
-        Returns:
-            The result of the method execution.
-        """
-        if name not in self.components:
-            # Try to get the component from the registry
-            component = self.get_component(name)
-            if component is None:
-                raise ValueError(f"Component {name} not registered")
-        else:
-            component = self.components[name]
-
-        if not component.is_loaded:
-            # Load the component if it's not loaded
-            self.load_component(name)
-
-        if not hasattr(component.instance, method_name):
-            raise ValueError(f"Component {name} does not have method {method_name}")
-
-        method = getattr(component.instance, method_name)
-
-        # Handle both sync and async methods
-        if asyncio.iscoroutinefunction(method):
-            # If we're inside an event loop, we need to handle the async call appropriately
-            try:
-                _ = asyncio.get_running_loop()
-                # If we're inside an event loop, we can't use asyncio.run
-                # We need to return the coroutine so the caller can await it
-                # But the caller (in base_user_request_handler) needs to handle this properly
-                return method(*args, **kwargs)
-            except RuntimeError:
-                # No event loop running, safe to use asyncio.run
-                return asyncio.run(method(*args, **kwargs))
-        else:
-            return method(*args, **kwargs)
-
-    def _load_local_agent(self, config: Dict[str, Any]) -> Any:
-        """Load a local agent based on its configuration."""
-        if not config.get("enabled", True):
-            return None
-
-        name = config["name"]
-        # Try to get the module path from the configuration first, then fall back to convention
-        module_path = config.get("module_path")
-
-        if module_path is None:
-            # Get the current agents_dir which might be dynamically updated
-            current_agents_dir = self._get_current_agents_dir()
-            # Convert PascalCase to snake_case for file naming convention
-            snake_case_name = re.sub('([a-z0-9])([A-Z])', r'\1_\2', name).lower()
-            module_path = os.path.join(current_agents_dir, f"{snake_case_name}.py")
-
         # Ensure the module path exists
         if not os.path.exists(module_path):
             raise FileNotFoundError(f"Agent module not found at {module_path}")
-
+        
         # Use the utility function from loader.py
-        module = load_agent_module(name, module_path)
+        module = load_agent_module(agent_name, module_path)
 
-        # For this PoC, we'll assume the agent class name matches the module name
-        class_name = config["name"]
-        agent_class = getattr(module, class_name)
-
+        # Get the agent class
+        agent_class = getattr(module, agent_name)
+        
         # Initialize the agent with the configuration
-        agent_instance = agent_class(config)
-
+        agent_instance = agent_class(config or {})
+        
         # If the agent has a method to set the runtime reference, use it
         if hasattr(agent_instance, "set_runtime") and self.runtime_ref:
             agent_instance.set_runtime(self.runtime_ref)
-
-        return agent_instance
-
-    def _load_external_agent(self, config: Dict[str, Any]) -> Any:
-        """Load an external agent based on its configuration."""
-        # This functionality has been replaced by the MCP service
-        # External agents are now managed through the MCP client service
-        print(f"External agent {config['name']} is handled by MCP service instead of legacy implementation")
-        return None
-
-    def _load_internal_service(self, config: Dict[str, Any]) -> Any:
-        """Load an internal service based on its configuration."""
-        service_type = config.get("service_type", "unknown")
-        if service_type == "config":
-            return ConfigService()
-        elif service_type == "system_parameters":
-            return SystemParametersService()
-        # Add more service types as needed
-        else:
-            raise ValueError(f"Unknown service type: {service_type}")
-
-    def _get_current_agents_dir(self) -> str:
-        """Get the current agents directory, potentially from system parameters service.
         
-        Returns:
-            Current agents directory path
-        """
-        if self.system_parameters_service:
-            try:
-                # Try to get the agents_dir from system parameters
-                params_result = self.system_parameters_service.get_system_parameters()
-                if params_result["status"] == "success" and "agents_dir" in params_result["parameters"]:
-                    return params_result["parameters"]["agents_dir"]
-            except Exception as e:
-                # If there's an error getting the parameter, fall back to the default
-                print(f"Error getting agents_dir from system parameters: {e}")
+        # Store the agent instance
+        self.agents[agent_name] = agent_instance
+        return True
 
-        return self.agents_dir
-
-    # Implementation of the BaseAgentManager abstract methods
-    def get_agent(self, name: str) -> Any:
-        """Get a specific agent by name.
-        
-        Args:
-            name: Name of the agent
-            
-        Returns:
-            The agent instance or None if not found
-        """
-        component = self.get_component(name)
-        if component:
-            return component.instance
-        return None
-
-    def get_all_agents(self) -> Dict[str, Any]:
-        """Get all loaded agents.
-        
-        Returns:
-            Dictionary mapping agent names to agent instances
-        """
-        all_components = self.get_all_components()
-        return {name: comp.instance for name, comp in all_components.items() if comp.instance is not None}
-
-    def run_agent(self, agent_name: str, method_name: str, *args, **kwargs) -> Any:
-        """Run a specific method on an agent.
-        
-        Args:
-            agent_name: Name of the agent to run.
-            method_name: Name of the method to execute.
-            *args: Positional arguments to pass to the method.
-            **kwargs: Keyword arguments to pass to the method.
-            
-        Returns:
-            The result of the method execution.
-        """
-        return self.run_component_method(agent_name, method_name, *args, **kwargs)
-
-    def _get_external_agent_from_registry(self, name: str) -> Any:
-        """Get an external agent from the registry by name.
-        
-        Args:
-            name: Name of the external agent to retrieve
-            
-        Returns:
-            The external agent instance or None if not found
-        """
-        # This method is expected by the get_component method
-        # but external agents connected via MCP are handled differently
-        # External agents are now managed through the MCP client service
-        # No longer using the legacy external agent manager
-        return None
-
-    def set_runtime_ref(self, runtime_ref) -> None:
-        """Set a reference to the runtime for all components that need it.
-        
-        Args:
-            runtime_ref: Reference to the runtime
-        """
-        self.runtime_ref = runtime_ref
-        # Set the runtime reference for all loaded components
-        for component in self.components.values():
-            if component.is_loaded and hasattr(component.instance, "set_runtime") and runtime_ref:
-                component.instance.set_runtime(runtime_ref)
+    def unload_agent(self, agent_name: str) -> bool:
+        """Unload an agent by name."""
+        if agent_name in self.agents:
+            del self.agents[agent_name]
+            return True
+        return False

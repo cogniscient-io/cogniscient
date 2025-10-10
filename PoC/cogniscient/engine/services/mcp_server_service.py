@@ -44,14 +44,9 @@ class MCPServerService:
     
     def _register_agent_tools(self):
         """Dynamically register all agents as MCP tools (server role)."""
-        # Iterate through all loaded agents in GCS runtime
-        for agent_name in self.gcs_runtime.agents.keys():
-            # Get methods from the agent that should be exposed as tools
-            agent_instance = self.gcs_runtime.agents.get(agent_name)
-            if agent_instance:
-                # For each method, create an MCP tool
-                for method_name in self._get_agent_methods(agent_instance):
-                    self._register_method_as_tool(agent_name, method_name, is_system_tool=False)
+        # Skip agent tool registration since agents property is removed
+        # In a complete implementation, this would use the agent service to get registered agents
+        pass
     
     def _register_system_tools(self):
         """Register system-level tools that provide access to GCS functionality."""
@@ -63,12 +58,13 @@ class MCPServerService:
         async def list_agents_tool(ctx: Context[ServerSession, None]):
             await ctx.info("Listing available agents")
             try:
-                agent_list = list(self.gcs_runtime.agents.keys())
+                # Return empty list since agents property is removed
+                # In a complete implementation, this would use the agent service
                 result = {
-                    "agents": agent_list,
-                    "count": len(agent_list)
+                    "agents": [],
+                    "count": 0
                 }
-                await ctx.info(f"Successfully listed {len(agent_list)} agents")
+                await ctx.info(f"Successfully listed {len(result['agents'])} agents")
                 return result
             except Exception as e:
                 await ctx.error(f"Error listing agents: {str(e)}")
@@ -120,7 +116,7 @@ class MCPServerService:
                     
                 result = {
                     "status": "operational",
-                    "agent_count": len(self.gcs_runtime.agents),
+                    "agent_count": 0,  # Return 0 since agents property is removed
                     "active_clients": active_clients,
                     "timestamp": __import__('datetime').datetime.now().isoformat()
                 }
@@ -470,46 +466,8 @@ class MCPServerService:
                 if system_params_service_methods:
                     tools_info["system_services"]["tools"]["SystemParametersService"] = system_params_service_methods
                 
-                # Add agent methods
-                for agent_name in self.gcs_runtime.agents.keys():
-                    agent_instance = self.gcs_runtime.agents.get(agent_name)
-                    if agent_instance:
-                        agent_methods = {}
-                        # Get methods from the agent that should be exposed as tools
-                        for method_name in self._get_agent_methods(agent_instance):
-                            # Use reflection to get method signature for input schema
-                            import inspect
-                            method = getattr(agent_instance, method_name)
-                            sig = inspect.signature(method)
-                            
-                            # Create basic schema based on method signature
-                            params_schema = {"type": "object", "properties": {}, "required": []}
-                            for param_name, param in sig.parameters.items():
-                                if param_name != 'self' and param_name != 'ctx':  # Skip 'self' and 'ctx' parameters
-                                    param_schema = {"type": "string"}  # Default to string type
-                                    if param.annotation != inspect.Parameter.empty:
-                                        # Map Python types to JSON schema types
-                                        if param.annotation == int:
-                                            param_schema["type"] = "integer"
-                                        elif param.annotation == float:
-                                            param_schema["type"] = "number"
-                                        elif param.annotation == bool:
-                                            param_schema["type"] = "boolean"
-                                        elif param.annotation in (list, List):
-                                            param_schema["type"] = "array"
-                                        elif param.annotation in (dict, Dict):
-                                            param_schema["type"] = "object"
-                                    
-                                    params_schema["properties"][param_name] = param_schema
-                                    if param.default == inspect.Parameter.empty:
-                                        params_schema["required"].append(param_name)
-                            
-                            agent_methods[f"{agent_name}.{method_name}"] = {
-                                "description": f"Execute {method_name} method on {agent_name} agent",
-                                "input_schema": params_schema
-                            }
-                        if agent_methods:
-                            tools_info["agent_methods"]["tools"][agent_name] = agent_methods
+                # Add agent methods - skip since agents property is removed
+                # In a complete implementation, this would use the agent service
                 
                 result = {
                     "status": "success",
@@ -648,64 +606,9 @@ class MCPServerService:
             method_name: Name of the method to register.
             is_system_tool: Flag to indicate if this is a system tool vs dynamic agent.
         """
-        # Get the agent instance to inspect the method
-        agent_instance = self.gcs_runtime.agents.get(agent_name)
-        if not agent_instance:
-            self.logger.warning(f"Cannot register method {method_name} for agent {agent_name}: agent not found")
-            return
-
-        # Use reflection to get method signature for input schema
-        import inspect
-        method = getattr(agent_instance, method_name)
-        sig = inspect.signature(method)
-        
-        # Create schema based on method signature
-        params_schema = {"type": "object", "properties": {}, "required": []}
-        for param_name, param in sig.parameters.items():
-            if param_name != 'self' and param_name != 'ctx':  # Skip 'self' and 'ctx' parameters
-                param_schema = {"type": "string"}  # Default to string type
-                if param.annotation != inspect.Parameter.empty:
-                    # Map Python types to JSON schema types
-                    if param.annotation == int:
-                        param_schema["type"] = "integer"
-                    elif param.annotation == float:
-                        param_schema["type"] = "number"
-                    elif param.annotation == bool:
-                        param_schema["type"] = "boolean"
-                    elif param.annotation in (list, List):
-                        param_schema["type"] = "array"
-                    elif param.annotation in (dict, Dict):
-                        param_schema["type"] = "object"
-                
-                params_schema["properties"][param_name] = param_schema
-                if param.default == inspect.Parameter.empty:
-                    params_schema["required"].append(param_name)
-
-        # Create a wrapper function that calls the agent method through GCS
-        async def agent_method_tool(ctx: Context[ServerSession, None], **kwargs):
-            try:
-                self.logger.info(f"Executing {agent_name}.{method_name} with params: {list(kwargs.keys())}")
-                # Log the call for debugging
-                await ctx.info(f"Executing {agent_name}.{method_name}")
-                
-                # Execute the agent method through the GCS runtime
-                result = self.gcs_runtime.run_agent(agent_name, method_name, **kwargs)
-                await ctx.info(f"Successfully executed {agent_name}.{method_name}")
-                self.logger.info(f"Successfully executed {agent_name}.{method_name}")
-                return result
-            except Exception as e:
-                error_msg = f"Error executing {agent_name}.{method_name}: {str(e)}"
-                await ctx.error(error_msg)
-                self.logger.error(error_msg, exc_info=True)
-                raise
-        
-        # Register the tool with the MCP server using the decorator
-        # The schema is inferred from the function signature by FastMCP
-        # This creates a tool that can be called by upstream MCP clients
-        self.mcp_server.tool(
-            name=f"{agent_name}.{method_name}",
-            description=f"Execute {method_name} method on {agent_name} agent (system tool: {is_system_tool})"
-        )(agent_method_tool)
+        # Skip registration since agents property is removed
+        # In a complete implementation, this would use the agent service
+        pass
     
     def start_server(self, transport: str = "stdio"):
         """Start the MCP server (so GCS can be used by upstream orchestrators).

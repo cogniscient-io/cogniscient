@@ -50,6 +50,7 @@ class InteractiveCLI:
     def start_session(self):
         """
         Start the interactive session.
+        This is now just an interface to the kernel - the actual control loop runs in the kernel.
         """
         print("Cogniscient Interactive CLI v0.1.0")
         
@@ -57,35 +58,84 @@ class InteractiveCLI:
         agents = list(self.gcs_runtime.agents.keys())
         print("System status: Ready")
         print(f"Active agents: {', '.join(agents) if agents else 'None'}")
-        print("Type 'help' for available commands or just start typing.\\n")
+        print("Type 'help' for available commands or just start typing.\n")
         
         # Add special session start message to history
         self.session_manager.add_interaction("SYSTEM", "Interactive session started")
         
-        while True:
-            try:
-                # Get user input with custom prompt
-                user_input = self.session.prompt('Cogniscient> ', completer=self.completer)
-                
-                # Process the input
-                response = self.process_input(user_input)
-                
-                # Output the response
-                print(response)
-                
-                # Add interaction to history
-                self.session_manager.add_interaction(user_input, response)
-                
-                # Check if user wants to exit
-                if user_input.lower().strip() in ['exit', 'quit', 'bye']:
-                    break
+        # Inform the user that the kernel is running its control loop
+        print("Kernel control loop is running in the background. CLI provides interface to interact with it.\n")
+        
+        # Register this CLI as an input/output handler with the kernel
+        self.gcs_runtime.kernel.set_input_handler(self._handle_input)
+        self.gcs_runtime.kernel.set_output_handler(self._handle_output)
+        
+        try:
+            # Start the kernel's main control loop if it hasn't been started already
+            if not hasattr(self.gcs_runtime, 'kernel_started') or not self.gcs_runtime.kernel_started:
+                self.gcs_runtime.start_kernel_loop()
+                self.gcs_runtime.kernel_started = True
+            
+            # Main CLI input loop - this handles just the user input/output
+            while True:
+                try:
+                    # Get user input with custom prompt
+                    user_input = self.session.prompt('Cogniscient> ', completer=self.completer)
                     
-            except KeyboardInterrupt:
-                print("\\nUse 'exit' or 'quit' to leave the interactive session.")
-                continue
-            except EOFError:
-                print("\\nGoodbye!")
-                break
+                    # Process the input - this will go through the kernel
+                    response = self._handle_input(user_input)
+                    
+                    # Output the response
+                    self._handle_output(response)
+                    
+                    # Add interaction to history
+                    self.session_manager.add_interaction(user_input, response)
+                    
+                    # Check if user wants to exit
+                    if user_input.lower().strip() in ['exit', 'quit', 'bye']:
+                        break
+                        
+                except KeyboardInterrupt:
+                    print("\nUse 'exit' or 'quit' to leave the interactive session.")
+                    continue
+                except EOFError:
+                    print("\nGoodbye!")
+                    break
+        finally:
+            # Clean up by removing this CLI as the handler from the kernel
+            self.gcs_runtime.kernel.set_input_handler(None)
+            self.gcs_runtime.kernel.set_output_handler(None)
+            
+            # Stop the kernel system to properly terminate all background threads
+            try:
+                self.gcs_runtime.kernel.stop_system()
+            except Exception as e:
+                print(f"\nWarning: Error during kernel shutdown: {e}")
+            
+            # Mark that shutdown has been initiated to prevent double shutdown in main
+            self.gcs_runtime.shutdown_initiated = True
+    
+    def _handle_input(self, user_input: str) -> str:
+        """
+        Handle input through the kernel by processing it in this CLI.
+        
+        Args:
+            user_input: Raw user input string
+            
+        Returns:
+            String response to user
+        """
+        # Process the input the same way as before
+        return self.process_input(user_input)
+    
+    def _handle_output(self, output_data: str):
+        """
+        Handle output through the kernel by displaying it in this CLI.
+        
+        Args:
+            output_data: The output data to display
+        """
+        print(output_data)
     
     def process_input(self, user_input: str) -> str:
         """
@@ -144,7 +194,7 @@ class InteractiveCLI:
                 f"- Current config: {current_config}\n"
                 f"- Interactions in session: {interaction_count}\n"
                 f"- Authentication: {auth_status}\n"
-                f"- Current provider: {self.gcs_runtime.llm_service_internal.current_provider}"
+                f"- Current provider: {self.gcs_runtime.llm_service.provider_manager.current_provider if hasattr(self.gcs_runtime.llm_service, 'provider_manager') else 'Unknown'}"
             )
             
         elif user_input.lower() in ['exit', 'quit', 'bye']:
@@ -254,11 +304,11 @@ class InteractiveCLI:
                 try:
                     loop = asyncio.get_running_loop()
                     # If we're in a running loop, we can't use asyncio.run
-                    providers = loop.run_until_complete(self.gcs_runtime.llm_service_internal.get_available_providers())
+                    providers = loop.run_until_complete(self.gcs_runtime.llm_service.provider_manager.get_available_providers())
                     return f"Available providers: {', '.join(providers)}"
                 except RuntimeError:
                     # No event loop running, we can use asyncio.run
-                    providers = asyncio.run(self.gcs_runtime.llm_service_internal.get_available_providers())
+                    providers = asyncio.run(self.gcs_runtime.llm_service.provider_manager.get_available_providers())
                     return f"Available providers: {', '.join(providers)}"
             except Exception as e:
                 return f"Error in list-providers command: {str(e)}"
@@ -325,41 +375,30 @@ class InteractiveCLI:
                     elif event_type == 'assistant_response':
                         print(f"💬 Assistant: {content}")
                 
-                # Run the async process_user_input_streaming properly
-                # Check if we're in an existing event loop
+                # Check if we're in an existing event loop and handle accordingly
                 try:
-                    # This will raise RuntimeError if no loop is running
-                    asyncio.get_running_loop()
-                    # If we reach this line, we're in an event loop
-                    # We need to handle this differently - for now, we'll try a different approach
-                    import concurrent.futures
-                    import threading
-                    
-                    # Create a separate thread with a new event loop
-                    def run_async_in_new_thread():
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                        try:
-                            return loop.run_until_complete(
-                                self.chat_interface.process_user_input_streaming(user_input, self.chat_interface.conversation_history, mock_send_stream_event)
-                            )
-                        finally:
-                            loop.close()
-                    
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        future = executor.submit(run_async_in_new_thread)
-                        result = future.result()
-                        
+                    loop = asyncio.get_running_loop()
+                    # We're already in a running loop, so we use run_coroutine_threadsafe to
+                    # run the coroutine in the existing loop and get a Future
+                    future = asyncio.run_coroutine_threadsafe(
+                        self.chat_interface.process_user_input_streaming(
+                            user_input, 
+                            self.chat_interface.conversation_history, 
+                            mock_send_stream_event
+                        ),
+                        loop
+                    )
+                    # Wait for the result
+                    result = future.result()
                 except RuntimeError:
                     # No event loop running, run normally
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        result = loop.run_until_complete(
-                            self.chat_interface.process_user_input_streaming(user_input, self.chat_interface.conversation_history, mock_send_stream_event)
+                    result = asyncio.run(
+                        self.chat_interface.process_user_input_streaming(
+                            user_input, 
+                            self.chat_interface.conversation_history, 
+                            mock_send_stream_event
                         )
-                    finally:
-                        loop.close()
+                    )
                 
                 # Process the collected events to build a response
                 # For CLI, we're mainly interested in the final response
@@ -491,11 +530,11 @@ class InteractiveCLI:
             String response to user
         """
         try:
-            success = self.gcs_runtime.llm_service_internal.set_provider(provider_name)
+            success = self.gcs_runtime.llm_service.provider_manager.set_provider(provider_name)
             if success:
                 return f"Provider switched to: {provider_name}"
             else:
-                available = await self.gcs_runtime.llm_service_internal.get_available_providers()
+                available = await self.gcs_runtime.llm_service.provider_manager.get_available_providers()
                 return f"Failed to switch to provider: {provider_name}. Available providers: {', '.join(available)}"
         except Exception as e:
             return f"Error switching provider: {str(e)}"

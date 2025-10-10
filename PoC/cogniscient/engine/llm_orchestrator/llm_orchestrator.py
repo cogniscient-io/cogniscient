@@ -50,19 +50,15 @@ class LLMOrchestrator:
     
     def _load_parameter_ranges(self) -> Dict[str, Any]:
         """Load parameter ranges from agent configurations."""
-        ranges = {}
-        for agent_name, config in self.gcs_runtime.agent_configs.items():
-            if "parameter_ranges" in config:
-                ranges[agent_name] = config["parameter_ranges"]
-        return ranges
+        # For now, return empty ranges since agent_configs is removed
+        # In a complete implementation, this would get ranges from a service
+        return {}
     
     def _load_approval_thresholds(self) -> Dict[str, Any]:
         """Load approval thresholds from agent configurations."""
-        thresholds = {}
-        for agent_name, config in self.gcs_runtime.agent_configs.items():
-            if "approval_thresholds" in config:
-                thresholds[agent_name] = config["approval_thresholds"]
-        return thresholds
+        # For now, return empty thresholds since agent_configs is removed
+        # In a complete implementation, this would get thresholds from a service
+        return {}
 
     async def evaluate_agent_output(self, agent_name: str, output: Dict[str, Any]) -> Dict[str, Any]:
         """Evaluate agent output using LLM and determine next actions.

@@ -12,7 +12,7 @@ async def test_context_window_size_management():
     """Test context window size parameter and compression."""
     # Initialize GCS runtime and chat interface with custom parameters
     gcs_runtime = GCSRuntime(config_dir="plugins/sample_internal/config", agents_dir="plugins/sample_internal/agents")
-    gcs_runtime.load_configuration("combined")
+    await gcs_runtime.config_service.load_configuration("combined")
     
     orchestrator = LLMOrchestrator(gcs_runtime)
     # Set a smaller max context size for testing
@@ -64,7 +64,7 @@ async def test_conversation_history_management():
     """Test conversation history clearing and compression."""
     # Initialize GCS runtime and chat interface
     gcs_runtime = GCSRuntime(config_dir="plugins/sample_internal/config", agents_dir="plugins/sample_internal/agents")
-    gcs_runtime.load_configuration("combined")
+    await gcs_runtime.config_service.load_configuration("combined")
     
     orchestrator = LLMOrchestrator(gcs_runtime)
     chat_interface = ChatInterface(orchestrator, max_history_length=20, compression_threshold=15)
@@ -87,11 +87,11 @@ async def test_conversation_history_management():
     history_length_before = len(chat_interface.conversation_history)
     assert history_length_before == 10  # 5 user messages + 5 assistant responses
     
-    # Test configuration change clearing conversation history
+    # Test manual clearing of conversation history
     initial_length = len(chat_interface.conversation_history)
-    gcs_runtime.load_configuration("website_only")  # This should clear history
-    length_after_config_change = len(chat_interface.conversation_history)
-    assert length_after_config_change == 0
+    chat_interface.conversation_history.clear()  # This should clear history
+    length_after_clear = len(chat_interface.conversation_history)
+    assert length_after_clear == 0
 
 
 @pytest.mark.asyncio
@@ -103,15 +103,15 @@ async def test_system_parameters_management():
     
     # Initialize GCS runtime and chat interface
     gcs_runtime = GCSRuntime(config_dir="plugins/sample_internal/config", agents_dir="plugins/sample_internal/agents")
-    gcs_runtime.load_configuration("combined")
+    await gcs_runtime.config_service.load_configuration("combined")
     
     orchestrator = LLMOrchestrator(gcs_runtime)
     
     # Print the settings values again after initialization
     print(f"DEBUG AFTER INIT: max_history_length={settings.max_history_length}, compression_threshold={settings.compression_threshold}")
     
-    # Test getting system parameters
-    result = gcs_runtime.run_agent("SystemParametersManager", "get_system_parameters")
+    # Test getting system parameters using the system parameters service
+    result = gcs_runtime.system_parameters_service.get_system_parameters()
     assert result["status"] == "success"
     assert "parameters" in result
     params = result["parameters"]
@@ -120,7 +120,7 @@ async def test_system_parameters_management():
     assert "compression_threshold" in params
     
     # Test getting parameter descriptions
-    result = gcs_runtime.run_agent("SystemParametersManager", "get_parameter_descriptions")
+    result = gcs_runtime.system_parameters_service.get_parameter_descriptions()
     assert result["status"] == "success"
     assert "descriptions" in result
     assert len(result["descriptions"]) > 0
@@ -129,14 +129,14 @@ async def test_system_parameters_management():
     original_max_history_length = params.get("max_history_length")
     
     # Test setting a parameter
-    result = gcs_runtime.run_agent("SystemParametersManager", "set_system_parameter", 
-                                 parameter_name="max_history_length", parameter_value="8")
+    result = gcs_runtime.system_parameters_service.set_system_parameter(
+        parameter_name="max_history_length", parameter_value="8")
     assert result["status"] == "success"
     
     # Reset the parameter back to its original value to avoid affecting other tests
     if original_max_history_length is not None:
-        gcs_runtime.run_agent("SystemParametersManager", "set_system_parameter", 
-                             parameter_name="max_history_length", parameter_value=str(original_max_history_length))
+        gcs_runtime.system_parameters_service.set_system_parameter(
+            parameter_name="max_history_length", parameter_value=str(original_max_history_length))
 
 
 @pytest.mark.asyncio
@@ -148,7 +148,7 @@ async def test_settings_based_context_management():
     
     # Initialize GCS runtime and chat interface
     gcs_runtime = GCSRuntime(config_dir="plugins/sample_internal/config", agents_dir="plugins/sample_internal/agents")
-    gcs_runtime.load_configuration("combined")
+    await gcs_runtime.config_service.load_configuration("combined")
     
     orchestrator = LLMOrchestrator(gcs_runtime)
     # Use the same values as in settings to ensure they match

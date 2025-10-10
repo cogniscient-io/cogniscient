@@ -1,112 +1,111 @@
-"""Sample agent A implementation."""
+"""Sample agent A implementation - MCP-compliant version."""
 
 import socket
 import time
 import random
 import dns.resolver
-from cogniscient.engine.agent_utils.base_agent import Agent
+from typing import Any, Dict, List
 
 
-class SampleAgentA(Agent):
-    """Sample agent A implementation with DNS lookup capabilities."""
+class SampleAgentA:
+    """Sample agent A implementation with DNS lookup capabilities, MCP-compliant."""
 
-    def __init__(self, config=None):
-        """Initialize the agent with a configuration.
+    def __init__(self, config: Dict[str, Any] = None):
+        """Initialize the agent with configuration.
         
         Args:
-            config (dict, optional): Configuration for the agent.
+            config: Agent configuration dictionary
         """
-        # Start with the self-describe definition as the base
-        base_config = self.self_describe()
-        
-        # Merge with provided config, allowing config file to override defaults
-        if config:
-            # Update the base config with values from the config file
-            for key, value in config.items():
-                if isinstance(value, dict) and key in base_config and isinstance(base_config[key], dict):
-                    # If both are dictionaries, merge them
-                    base_config[key].update(value)
-                else:
-                    # Otherwise, replace the value
-                    base_config[key] = value
-        
-        self.config = base_config
+        self.config = config or {}
+        self.name = self.__class__.__name__
+        self.runtime_ref = None
+        self._tools_registered = False
 
-    def self_describe(self) -> dict:
-        """Return a dictionary describing the agent's capabilities.
-        
-        Returns:
-            dict: A dictionary containing the agent's configuration and methods.
-        """
-        return {
-            "name": "SampleAgentA",
-            "version": "1.0",
-            "enabled": True,
-            "methods": {
-                "perform_dns_lookup": {
-                    "description": "Perform a DNS lookup for a domain",
-                    "parameters": {
-                        "domain": {
-                            "type": "string",
-                            "description": "The domain to lookup",
-                            "required": False
-                        },
-                        "dns_server": {
-                            "type": "string",
-                            "description": "The DNS server to use for the lookup",
-                            "required": False
-                        }
+    def register_mcp_tools(self):
+        """Register tools with the MCP tool registry."""
+        if not self.runtime_ref or not hasattr(self.runtime_ref, 'mcp_client_service'):
+            print(f"Warning: No runtime reference for {self.name}, skipping tool registration")
+            return
+
+        # Register tools in MCP format to the tool registry
+        mcp_client = self.runtime_ref.mcp_client_service
+
+        # Register perform_dns_lookup tool
+        dns_tool_desc = {
+            "name": "sample_agent_a_perform_dns_lookup",
+            "description": "Perform a DNS lookup for a domain",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "The domain to lookup"
+                    },
+                    "dns_server": {
+                        "type": "string",
+                        "description": "The DNS server to use for the lookup"
                     }
-                }
+                },
+                "required": []
             },
-            "dns_settings": {
-                "target_domain": "example.com",
-                "dns_server": "8.8.8.8",
-                "timeout": 5
-            },
-            "response_controls": {
-                "delay_ms": 0,
-                "error_rate": 0.0
-            },
-            "settings": {
-                "timeout": 30,
-                "retries": 3
-            }
+            "type": "function"
         }
 
-    def perform_dns_lookup(self, domain=None, dns_server=None) -> dict:
+        # Add to agent's tools in the registry
+        agent_tools = mcp_client.tool_registry.get(self.name, [])
+        agent_tools.append(dns_tool_desc)
+        mcp_client.tool_registry[self.name] = agent_tools
+
+        # Register individual tool type
+        mcp_client.tool_types[dns_tool_desc["name"]] = False  # Not a system tool
+
+        self._tools_registered = True
+
+    def set_runtime(self, runtime_ref):
+        """Set a reference to the runtime for this agent.
+        
+        Args:
+            runtime_ref: Reference to the runtime
+        """
+        self.runtime_ref = runtime_ref
+        # Register tools immediately if runtime is set
+        if not self._tools_registered:
+            self.register_mcp_tools()
+
+    def perform_dns_lookup(self, domain: str = None, dns_server: str = None) -> Dict[str, Any]:
         """Perform a DNS lookup with configurable behavior.
         
         Args:
-            domain (str, optional): Domain to lookup. Defaults to dns_settings.target_domain.
-            dns_server (str, optional): DNS server to use. Defaults to dns_settings.dns_server.
+            domain: Domain to lookup. Defaults to dns_settings.target_domain.
+            dns_server: DNS server to use. Defaults to dns_settings.dns_server.
             
         Returns:
-            dict: Result of the DNS lookup with status and relevant information.
+            Result of the DNS lookup with status and relevant information.
         """
         # Apply response time delay if configured
         delay_ms = self.config.get("response_controls", {}).get("delay_ms", 0)
         if delay_ms > 0:
             time.sleep(delay_ms / 1000.0)
-            
+
         # Possibly inject error based on error rate
         error_rate = self.config.get("response_controls", {}).get("error_rate", 0.0)
         if error_rate > 0 and random.random() < error_rate:
             raise socket.gaierror("Simulated DNS error")
-            
-        # Perform actual DNS lookup using specified DNS server
-        domain = domain or self.config["dns_settings"]["target_domain"]
-        dns_server = dns_server or self.config["dns_settings"]["dns_server"]
-        
+
+        # Use default settings if none provided
+        domain = domain or self.config.get("dns_settings", {}).get("target_domain", "example.com")
+        dns_server = dns_server or self.config.get("dns_settings", {}).get("dns_server", "8.8.8.8")
+        timeout = self.config.get("dns_settings", {}).get("timeout", 5)
+
         try:
             # Create a resolver and set the nameserver
             resolver = dns.resolver.Resolver()
             resolver.nameservers = [dns_server]
-            
+
             # Set timeout
-            resolver.timeout = self.config["dns_settings"]["timeout"]
-            resolver.lifetime = self.config["dns_settings"]["timeout"]
-            
+            resolver.timeout = timeout
+            resolver.lifetime = timeout
+
             # Perform the DNS query
             result = resolver.resolve(domain, 'A')
             addresses = [str(ip) for ip in result]

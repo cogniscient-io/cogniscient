@@ -1,35 +1,53 @@
-"""Configuration Service for handling configuration loading and management."""
+"""Configuration Service implementation following the ringed architecture."""
 
 import os
 import json
 from typing import Dict, Any, List
-from cogniscient.engine.config.settings import settings
+from cogniscient.engine.services.service_interface import ConfigServiceInterface
 
 
-class ConfigService:
-    """Singleton service for managing system configurations."""
+class ConfigServiceImpl(ConfigServiceInterface):
+    """Implementation of ConfigService following the ringed architecture."""
 
-    _instance = None
-
-    def __new__(cls):
-        """Create or return the singleton instance of the ConfigService."""
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
-        return cls._instance
-
-    def __init__(self):
-        """Initialize the configuration service."""
-        if self._initialized:
-            return
+    def __init__(self, config_dir: str = "."):
+        """Initialize the configuration service.
         
-        self._initialized = True
-        self.config_dir = settings.config_dir if hasattr(settings, 'config_dir') else "."
+        Args:
+            config_dir: Directory to look for configuration files
+        """
+        self.config_dir = config_dir
         self._config_cache = {}
         # Store optional reference to runtime for accessing runtime functionality
-        self.ucs_runtime = None
+        self.gcs_runtime = None
+        
+    async def initialize(self) -> bool:
+        """Initialize the config service.
+        
+        Returns:
+            True if initialization was successful, False otherwise
+        """
+        # Load configurations from config_dir
+        try:
+            # Just validate that the directory exists and is accessible
+            if not os.path.exists(self.config_dir):
+                print(f"Warning: Config directory '{self.config_dir}' does not exist.")
+            
+            return True
+        except Exception as e:
+            print(f"Error initializing config service: {e}")
+            return False
+    
+    async def shutdown(self) -> bool:
+        """Shutdown the config service.
+        
+        Returns:
+            True if shutdown was successful, False otherwise
+        """
+        # Clear the cache on shutdown
+        self._config_cache.clear()
+        return True
 
-    def update_config_dir(self, config_dir: str):
+    def update_config_dir(self, config_dir: str) -> None:
         """Update the config directory."""
         # Validate config_dir exists before updating
         if config_dir and not os.path.exists(config_dir):
@@ -38,35 +56,27 @@ class ConfigService:
         self.config_dir = config_dir
 
     def set_runtime(self, runtime):
-        """Set the UCS runtime reference.
+        """Set the GCS runtime reference.
         
         Args:
-            runtime: The UCS runtime instance.
+            runtime: The GCS runtime instance.
         """
-        self.ucs_runtime = runtime
+        self.gcs_runtime = runtime
 
-    def list_configurations(self) -> Dict[str, Any]:
+    def list_configurations(self) -> List[str]:
         """List all available system configurations.
 
         Returns:
-            dict: Result with list of available configurations.
+            list: List of available configuration names.
         """
         try:
             configurations = self._get_available_configurations()
-            config_list = [{"name": config, "description": self._get_config_description(config)} 
-                          for config in configurations]
-            return {
-                "status": "success",
-                "configurations": config_list,
-                "message": f"Available configurations: {', '.join(configurations)}"
-            }
+            return configurations
         except Exception as e:
-            return {
-                "status": "error",
-                "message": f"Failed to list configurations: {str(e)}"
-            }
+            print(f"Error listing configurations: {e}")
+            return []
 
-    def load_configuration(self, config_name: str) -> Dict[str, Any]:
+    async def load_configuration(self, config_name: str) -> Dict[str, Any]:
         """Load a specific system configuration.
 
         Args:
@@ -117,7 +127,41 @@ class ConfigService:
         if config_name in self._config_cache:
             return self._config_cache[config_name]
         
-        return self.load_configuration(config_name).get("configuration", {})
+        # Return the configuration part of the load_configuration result
+        result = self.load_configuration_sync(config_name)
+        return result.get("configuration", {})
+
+    def load_configuration_sync(self, config_name: str) -> Dict[str, Any]:
+        """Synchronous version of load_configuration for internal use."""
+        try:
+            # First try the 'configs' subdirectory (existing behavior)
+            config_path = os.path.join(self.config_dir, "configs", f"{config_name}.json")
+            if not os.path.exists(config_path):
+                # If not found in 'configs' subdirectory, try the config_dir directly
+                config_path = os.path.join(self.config_dir, f"{config_name}.json")
+                
+            if not os.path.exists(config_path):
+                return {
+                    "status": "error",
+                    "message": f"Configuration '{config_name}' not found at {config_path}"
+                }
+            
+            with open(config_path, "r") as f:
+                config_data = json.load(f)
+            
+            # Cache the loaded configuration
+            self._config_cache[config_name] = config_data
+            
+            return {
+                "status": "success",
+                "configuration": config_data,
+                "message": f"Configuration '{config_name}' loaded successfully."
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Failed to load configuration '{config_name}': {str(e)}"
+            }
 
     def _get_available_configurations(self) -> List[str]:
         """Get list of available configuration files.
@@ -187,3 +231,100 @@ class ConfigService:
     def clear_config_cache(self) -> None:
         """Clear the configuration cache."""
         self._config_cache.clear()
+
+    def register_mcp_tools(self):
+        """
+        Register tools with the MCP tool registry.
+        This is the MCP-compatible registration method for the config service.
+        """
+        if not self.gcs_runtime or not hasattr(self.gcs_runtime, 'mcp_service') or not self.gcs_runtime.mcp_service:
+            print(f"Warning: No runtime reference for {self.__class__.__name__}, skipping tool registration")
+            return
+
+        # Register tools in MCP format to the tool registry
+        mcp_client = self.gcs_runtime.mcp_service.mcp_client
+
+        # Register list configurations tool
+        list_configs_tool = {
+            "name": "config_list_configurations",
+            "description": "List all available system configurations",
+            "input_schema": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            },
+            "type": "function"
+        }
+
+        # Register load configuration tool
+        load_config_tool = {
+            "name": "config_load_configuration",
+            "description": "Load a specific system configuration by name",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "config_name": {"type": "string", "description": "Name of the configuration to load"}
+                },
+                "required": ["config_name"]
+            },
+            "type": "function"
+        }
+
+        # Register get configuration tool
+        get_config_tool = {
+            "name": "config_get_configuration",
+            "description": "Get a specific system configuration from cache or file",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "config_name": {"type": "string", "description": "Name of the configuration to get"}
+                },
+                "required": ["config_name"]
+            },
+            "type": "function"
+        }
+
+        # Register get all cached configs tool
+        get_all_cached_configs_tool = {
+            "name": "config_get_all_cached_configs",
+            "description": "Get all currently cached configurations",
+            "input_schema": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            },
+            "type": "function"
+        }
+
+        # Register clear config cache tool
+        clear_config_cache_tool = {
+            "name": "config_clear_config_cache",
+            "description": "Clear the configuration cache",
+            "input_schema": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            },
+            "type": "function"
+        }
+
+        # Add tools to the registry
+        agent_tools = mcp_client.tool_registry.get(self.__class__.__name__, [])
+        agent_tools.extend([
+            list_configs_tool, 
+            load_config_tool, 
+            get_config_tool, 
+            get_all_cached_configs_tool, 
+            clear_config_cache_tool
+        ])
+        mcp_client.tool_registry[self.__class__.__name__] = agent_tools
+
+        # Also register individual tool types
+        for tool_desc in [
+            list_configs_tool, 
+            load_config_tool, 
+            get_config_tool, 
+            get_all_cached_configs_tool, 
+            clear_config_cache_tool
+        ]:
+            mcp_client.tool_types[tool_desc["name"]] = True  # Is a system tool

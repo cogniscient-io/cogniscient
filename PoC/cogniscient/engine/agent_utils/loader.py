@@ -1,18 +1,21 @@
-"""Loader component for the dynamic control system."""
+"""
+Simplified loader component for MCP-compliant system.
+"""
 
 import importlib.util
 from typing import Any
 
 
 def load_agent_module(name: str, path: str) -> Any:
-    """Dynamically load an agent module from a file path.
+    """
+    Dynamically load an agent module from a file path.
     
     Args:
-        name (str): The name to give the module.
-        path (str): The file path to the module.
+        name: The name to give the module.
+        path: The file path to the module.
         
     Returns:
-        module: The loaded module.
+        The loaded module.
         
     Raises:
         ImportError: If the module cannot be loaded.

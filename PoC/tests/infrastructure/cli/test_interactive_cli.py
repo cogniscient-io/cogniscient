@@ -7,7 +7,7 @@ import pytest
 import sys
 from unittest.mock import MagicMock, patch
 
-from cogniscient.cli.interactive_mode import InteractiveCLI
+from cogniscient.ui.cli.interactive_mode import InteractiveCLI
 from cogniscient.engine.gcs_runtime import GCSRuntime
 from cogniscient.engine.config.settings import settings
 

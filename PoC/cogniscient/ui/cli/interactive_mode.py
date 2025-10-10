@@ -36,6 +36,10 @@ class InteractiveCLI:
         self.orchestrator = LLMOrchestrator(gcs_runtime)
         self.chat_interface = ChatInterface(self.orchestrator)
         
+        # Register orchestrator and chat interface with the kernel
+        gcs_runtime.set_llm_orchestrator(self.orchestrator)
+        gcs_runtime.register_chat_interface(self.chat_interface)
+        
         # Create a prompt session with history
         history_file = os.path.expanduser("~/.cogniscient_history")
         self.session = PromptSession(history=FileHistory(history_file))
@@ -344,13 +348,13 @@ class InteractiveCLI:
                 return "Please specify a configuration name. Available configs: " + \
                        ", ".join(self.gcs_runtime.list_available_configurations())
         
-        # For all other inputs, use the ChatInterface which connects to the LLM
+        # For all other inputs, use the kernel for processing
         else:
             try:
                 # Create a simple callback to collect events for CLI output
                 events_collected = []
                 
-                async def mock_send_stream_event(event_type: str, content: str = None, data: Dict[str, Any] = None):
+                def mock_send_stream_event(event_type: str, content: str = None, data: Dict[str, Any] = None):
                     event = {
                         "type": event_type,
                     }
@@ -375,30 +379,23 @@ class InteractiveCLI:
                     elif event_type == 'assistant_response':
                         print(f"💬 Assistant: {content}")
                 
+                # Add the callback to the kernel
+                self.gcs_runtime.kernel.add_streaming_callback(mock_send_stream_event)
+                
                 # Check if we're in an existing event loop and handle accordingly
                 try:
                     loop = asyncio.get_running_loop()
                     # We're already in a running loop, so we use run_coroutine_threadsafe to
                     # run the coroutine in the existing loop and get a Future
                     future = asyncio.run_coroutine_threadsafe(
-                        self.chat_interface.process_user_input_streaming(
-                            user_input, 
-                            self.chat_interface.conversation_history, 
-                            mock_send_stream_event
-                        ),
+                        self.gcs_runtime.kernel.process_user_input_streaming(user_input),
                         loop
                     )
                     # Wait for the result
                     result = future.result()
                 except RuntimeError:
                     # No event loop running, run normally
-                    result = asyncio.run(
-                        self.chat_interface.process_user_input_streaming(
-                            user_input, 
-                            self.chat_interface.conversation_history, 
-                            mock_send_stream_event
-                        )
-                    )
+                    result = asyncio.run(self.gcs_runtime.kernel.process_user_input_streaming(user_input))
                 
                 # Process the collected events to build a response
                 # For CLI, we're mainly interested in the final response
@@ -428,7 +425,7 @@ class InteractiveCLI:
                     response = tool_call_info + "\n" + response
             except Exception as e:
                 # If async processing fails, provide an error message
-                response = f"Error processing with LLM: {str(e)}"
+                response = f"Error processing with LLM via kernel: {str(e)}"
             
             # Add intelligent context or suggestions based on the response
             return self._add_intelligent_context(user_input, response)

@@ -2,7 +2,7 @@
 
 import asyncio
 import threading
-from typing import Dict, Optional
+from typing import Dict, Optional, Callable, Any, List
 from cogniscient.engine.services.service_interface import Service
 
 
@@ -13,6 +13,15 @@ class Kernel:
         """Initialize the kernel with minimal public interface."""
         self.service_registry: Dict[str, Service] = {}
         self._initialized = False
+        self._running = False
+        
+        # Add LLM interaction management
+        self.llm_orchestrator = None
+        self.chat_interface = None
+        self.conversation_history: List[Dict[str, str]] = []
+        
+        # Callbacks for streaming events
+        self.streaming_callbacks = []
         
     async def initialize(self):
         """Initialize the kernel and registered services."""
@@ -151,7 +160,57 @@ class Kernel:
             return self.output_handler(output_data)
         else:
             print(output_data)  # fallback to standard output
+    
+    # LLM Interaction Management - NEW METHODS
+    def set_llm_orchestrator(self, orchestrator):
+        """Set the LLM orchestrator for the kernel."""
+        self.llm_orchestrator = orchestrator
+    
+    def set_chat_interface(self, chat_interface):
+        """Set the chat interface for the kernel."""
+        self.chat_interface = chat_interface
+    
+    def add_streaming_callback(self, callback: Callable[[str, str, Dict[str, Any]], Any]):
+        """Add a callback for streaming events."""
+        self.streaming_callbacks.append(callback)
+    
+    async def process_user_input_streaming(self, user_input: str) -> Dict[str, Any]:
+        """Process user input with streaming support through the kernel.
         
+        Args:
+            user_input: The user's input message
+            
+        Returns:
+            dict: A dictionary containing the response and tool call information.
+        """
+        if not self.chat_interface:
+            return {"response": "No chat interface configured in kernel."}
+        
+        # Create a streaming event handler that calls all registered callbacks
+        async def send_stream_event(event_type: str, content: str = None, data: Dict[str, Any] = None):
+            for callback in self.streaming_callbacks:
+                if asyncio.iscoroutinefunction(callback):
+                    await callback(event_type, content, data)
+                else:
+                    callback(event_type, content, data)
+        
+        # Process user input through the chat interface with streaming
+        result = await self.chat_interface.process_user_input_streaming(
+            user_input,
+            self.conversation_history,  # Use the conversation history maintained in the kernel
+            send_stream_event
+        )
+        
+        return result
+    
+    def clear_conversation_history(self):
+        """Clear the conversation history."""
+        self.conversation_history.clear()
+    
+    def get_conversation_history(self) -> List[Dict[str, str]]:
+        """Get the current conversation history."""
+        return self.conversation_history[:]
+    
     # Resource coordination methods
     def allocate_resource(self, resource_type: str, amount: int):
         """Allocate system resources - kernel-only responsibility."""

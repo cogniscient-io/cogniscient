@@ -385,15 +385,26 @@ class ContextualLLMService:
                     cache = litellm.in_memory_llm_clients_cache
                     if hasattr(cache, 'cache_dict'):
                         for key, cached_client in list(cache.cache_dict.items()):
-                            if hasattr(cached_client, 'close'):
+                            if hasattr(cached_client, 'aclose'):
+                                # Async close method
                                 try:
-                                    close_method = cached_client.close
-                                    if asyncio.iscoroutinefunction(close_method):
-                                        await close_method()
-                                    else:
-                                        close_method()
+                                    await cached_client.aclose()
                                 except Exception:
                                     pass  # Ignore errors during close attempt
+                            elif hasattr(cached_client, 'close'):
+                                # Check if close method is async (coroutine)
+                                close_method = cached_client.close
+                                if asyncio.iscoroutinefunction(close_method):
+                                    try:
+                                        await close_method()
+                                    except Exception:
+                                        pass  # Ignore errors during close attempt
+                                else:
+                                    # Sync close method
+                                    try:
+                                        close_method()
+                                    except Exception:
+                                        pass  # Ignore errors during close attempt
                         # Clear the cache after closing
                         cache.cache_dict.clear()
                 except Exception:
@@ -409,6 +420,18 @@ class ContextualLLMService:
                 except RuntimeError:
                     # No event loop running, we can create a new one
                     await litellm.aclient_session.aclose()
+
+            # Additional aiohttp-specific cleanup - try to close any lingering aiohttp resources
+            try:
+                # Access aiohttp connector connections and close them
+                if hasattr(litellm, 'aclient_session') and litellm.aclient_session:
+                    if hasattr(litellm.aclient_session, '_connector'):
+                        try:
+                            await litellm.aclient_session._connector.close()
+                        except Exception:
+                            pass  # Connector might already be closed
+            except Exception:
+                pass  # Safe to ignore if these attributes don't exist
 
             # Clear callback lists to prevent async handlers from running
             if hasattr(litellm, 'success_callback'):

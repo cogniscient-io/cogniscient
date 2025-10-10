@@ -1,0 +1,12 @@
+{
+  "test_integration_agent": {
+    "agent_id": "test_integration_agent",
+    "connection_params": {
+      "type": "stdio",
+      "command": "test_command"
+    },
+    "timestamp": "2025-10-10T10:29:43.020672",
+    "status": "connected",
+    "last_validated": "2025-10-10T10:29:43.020677"
+  },
+  "TestAgent": 

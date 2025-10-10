@@ -12,11 +12,11 @@ def main():
     if len(sys.argv) > 1:
         if sys.argv[1] == "frontend":
             # Start the frontend server
-            from frontend.main import run_frontend
+            from cogniscient.ui.webui.main import run_frontend
             run_frontend()
         elif sys.argv[1] == "cli":
             # Start the CLI
-            from cogniscient.cli.main import main as cli_main
+            from cogniscient.ui.cli.main import main as cli_main
             cli_main()
         else:
             print(f"Unknown command: {sys.argv[1]}")

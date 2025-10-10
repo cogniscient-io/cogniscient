@@ -182,16 +182,32 @@ class MCPConnectionRegistry:
     
     def save_registry(self):
         """Save the current registry to the registry file."""
+        import tempfile
+        import shutil
         try:
             # Prepare data for serialization
             serializable_data = {}
             for agent_id, connection_data in self.connections.items():
                 serializable_data[agent_id] = connection_data.to_dict()
             
-            # Write to registry file
-            with open(self.registry_file, "w") as f:
-                json.dump(serializable_data, f, indent=2)
+            # Write to a temporary file first, then atomically move it to the target location
+            # This prevents corruption if the process is terminated during write
+            temp_file = None
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, dir=os.path.dirname(self.registry_file)) as temp_file:
+                json.dump(serializable_data, temp_file, indent=2)
+                temp_file.flush()  # Ensure all data is written to disk
+                temp_path = temp_file.name
+            
+            # Atomically move the temporary file to the final location
+            # This ensures the file is never left in a corrupted state
+            shutil.move(temp_path, self.registry_file)
         except Exception as e:
+            # If the temporary file was created but there was an error, try to clean it up
+            if temp_file and os.path.exists(temp_path):
+                try:
+                    os.unlink(temp_path)
+                except:
+                    pass  # Ignore errors during cleanup
             print(f"Failed to save registry to {self.registry_file}: {e}")
     
     def load_registry(self):
@@ -199,8 +215,13 @@ class MCPConnectionRegistry:
         registry_path = Path(self.registry_file)
         if not registry_path.exists():
             # Create an empty registry file if it doesn't exist
-            with open(self.registry_file, "w") as f:
-                json.dump({}, f)
+            try:
+                # Ensure parent directory exists
+                registry_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(self.registry_file, "w") as f:
+                    json.dump({}, f)
+            except Exception as e:
+                print(f"Failed to create empty registry file at {self.registry_file}: {e}")
             return
         
         try:
@@ -215,8 +236,29 @@ class MCPConnectionRegistry:
                     self.connections[agent_id] = connection_data
                 except Exception as e:
                     print(f"Failed to reconstruct connection for agent {agent_id}: {e}")
+        except json.JSONDecodeError as e:
+            print(f"Invalid JSON in registry file {self.registry_file}: {e}")
+            print(f"Creating a new empty registry file...")
+            # Create a new empty registry file to replace the corrupted one
+            try:
+                # Ensure parent directory exists
+                registry_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(self.registry_file, "w") as f:
+                    json.dump({}, f)
+                self.connections = {}
+            except Exception as create_error:
+                print(f"Failed to create new registry file after corruption: {create_error}")
         except Exception as e:
             print(f"Failed to load registry from {self.registry_file}: {e}")
+            # Create a new empty registry file
+            try:
+                # Ensure parent directory exists
+                registry_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(self.registry_file, "w") as f:
+                    json.dump({}, f)
+                self.connections = {}
+            except Exception as create_error:
+                print(f"Failed to create new registry file after error: {create_error}")
     
     def get_all_connections(self) -> Dict[str, MCPConnectionData]:
         """Get all connections in the registry.

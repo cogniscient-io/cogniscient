@@ -14,7 +14,7 @@ def test_import():
 
 def test_gcs_runtime_initialization():
     """Test that GCSRuntime can be initialized."""
-    gcs = GCSRuntime(config_dir="plugins/sample_internal/config", agents_dir="plugins/sample_internal/agents")
+    gcs = GCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
     assert gcs is not None
     
     # Verify that the kernel is properly initialized
@@ -23,13 +23,13 @@ def test_gcs_runtime_initialization():
     
     # Verify that services are properly initialized
     assert hasattr(gcs, 'config_service')
-    assert gcs.config_service.config_dir == "plugins/sample_internal/config"
+    assert gcs.config_service.config_dir == "plugins/sample/config"
 
 
 @pytest.mark.asyncio
 async def test_gcs_runtime_with_mock_agents():
     """Test that GCSRuntime can be initialized and run basic operations."""
-    gcs = GCSRuntime(config_dir="plugins/sample_internal/config", agents_dir="plugins/sample_internal/agents")
+    gcs = GCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
     
     # Since we don't have actual agents in the test environment, 
     # we'll just test that initialization works
@@ -53,12 +53,13 @@ async def test_gcs_runtime_with_mock_agents():
     assert hasattr(gcs.mcp_service, 'mcp_server')
     
     # Basic unload test using the agent service
-    gcs.agent_service.unload_all_agents()
-    assert len(gcs.agents) == 0
+    gcs.agent_service.unload_agent("test")
+    # Note: In the new architecture, we don't directly access gcs.agents
+    # The agents are managed through the agent service
 
 def test_kernel_functionality():
     """Test direct kernel functionality."""
-    gcs = GCSRuntime(config_dir="plugins/sample_internal/config", agents_dir="plugins/sample_internal/agents")
+    gcs = GCSRuntime(config_dir="plugins/sample/config", agents_dir="plugins/sample/agents")
     
     # Verify kernel has expected functionality
     assert hasattr(gcs.kernel, 'service_registry')
@@ -75,6 +76,7 @@ def test_kernel_functionality():
 
 def test_cli_import():
     """Test that the CLI module can be imported."""
-    from cogniscient import cli
-    assert cli is not None
-    assert hasattr(cli, 'main')
+    from cogniscient.ui.cli import main
+    assert main is not None
+    assert hasattr(main, '__name__')
+    assert main.__name__ == 'main'

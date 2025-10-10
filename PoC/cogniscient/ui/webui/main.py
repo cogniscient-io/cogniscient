@@ -18,7 +18,7 @@ def run_frontend():
     """Run the frontend server."""
     # Add static file serving
     from fastapi.staticfiles import StaticFiles
-    from frontend.api import app
+    from cogniscient.ui.webui.api import app
     import os
     
     # Serve static files at /static route to ensure CSS is accessible at /static/css/style.css

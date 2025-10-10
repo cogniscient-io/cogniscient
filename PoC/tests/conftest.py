@@ -12,7 +12,7 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     Called after whole test run finished, right before returning the exit status to the system.
     This is where we can perform cleanup tasks.
     """
-    print("Running cleanup after test session...")
+    print("\nRunning cleanup after test session...")
     # Import and run the comprehensive cleanup for LiteLLM clients
     try:
         import litellm

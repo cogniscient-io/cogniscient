@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cogniscient"
-version = "0.1.0"
+version = "0.1.1"
 description = "A generic control system engine for managing AI agents and services"
 readme = "README.md"
 authors = [
@@ -43,7 +43,7 @@ Repository = "https://github.com/cogniscient/cogniscient"
 Documentation = "https://github.com/cogniscient/cogniscient#readme"
 
 [project.scripts]
-cogniscient = "cogniscient.cli.main:main"
+cogniscient = "cogniscient.ui.cli.main:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

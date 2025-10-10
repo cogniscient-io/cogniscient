@@ -118,7 +118,11 @@ class GCSRuntime:
     
     def register_chat_interface(self, chat_interface):
         """Register a chat interface with the runtime."""
+        # Register with the kernel instead of the runtime
         self.chat_interfaces.append(chat_interface)
+        # Also register the chat interface with the kernel for central management
+        if hasattr(self.kernel, 'set_chat_interface'):
+            self.kernel.set_chat_interface(chat_interface)
     
     def unregister_chat_interface(self, chat_interface):
         """Unregister a chat interface from the runtime."""
@@ -128,6 +132,18 @@ class GCSRuntime:
     def get_current_config_name(self):
         """Get the name of the current configuration."""
         return self.current_config_name
+
+    async def load_all_agents(self, config: dict = None) -> bool:
+        """Load all available agents."""
+        return await self.agent_service.load_all_agents(config)
+
+    def set_llm_orchestrator(self, orchestrator):
+        """Set the LLM orchestrator in the kernel."""
+        if hasattr(self.kernel, 'set_llm_orchestrator'):
+            self.kernel.set_llm_orchestrator(orchestrator)
+            
+        # Also register orchestrator in the runtime for backward compatibility
+        self.llm_orchestrator = orchestrator
 
 
 
@@ -165,27 +181,45 @@ class GCSRuntime:
 
     async def shutdown(self) -> None:
         """Shutdown all services."""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         # Shutdown services through the kernel
         await self.kernel.shutdown()
+        
+        # Shutdown LLM service to properly clean up LiteLLM resources first
+        if hasattr(self, 'llm_service') and self.llm_service and hasattr(self.llm_service, 'close'):
+            try:
+                await self.llm_service.close()
+                logger.info("LLM service shutdown completed")
+            except Exception as e:
+                logger.warning(f"Error during LLM service cleanup: {e}")
         
         # Shutdown MCP services to properly close connections
         if hasattr(self, 'mcp_service') and self.mcp_service:
             try:
-                await self.mcp_service.mcp_client.shutdown()
+                # Use the new unified shutdown method in MCPService
+                await self.mcp_service.shutdown()
+                logger.info("MCP service shutdown completed")
             except Exception as e:
-                print(f"Warning: Error during MCP service shutdown: {e}")
+                logger.warning(f"Error during MCP service shutdown: {e}")
         
-        # Ensure proper cleanup of any remaining async resources, especially LiteLLM's resources
+        # Stop the kernel's control loop and thread
         try:
-            # Try to close the LLM service which should handle LiteLLM adapter cleanup
-            if hasattr(self, 'llm_service') and self.llm_service and hasattr(self.llm_service, 'close'):
-                await self.llm_service.close()
+            if hasattr(self.kernel, 'stop_system'):
+                self.kernel.stop_system()
+                logger.info("Kernel system stopped")
         except Exception as e:
-            print(f"Warning: Error during LLM service cleanup: {e}")
-            # If the above fails, try a different approach
-            try:
-                import gc
-                # Force garbage collection to clean up any remaining resources
-                gc.collect()
-            except Exception:
-                pass  # If all else fails, just continue
+            logger.warning(f"Error during kernel system stop: {e}")
+        
+        # Additional cleanup for any remaining async resources
+        try:
+            import gc
+            import asyncio
+            # Force garbage collection to clean up any remaining resources
+            gc.collect()
+            
+            # Small delay to allow any remaining async operations to complete
+            await asyncio.sleep(0.1)
+        except Exception as e:
+            logger.warning(f"Error during final cleanup: {e}")

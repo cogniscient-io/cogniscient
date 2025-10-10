@@ -5,8 +5,21 @@
       "type": "stdio",
       "command": "test_command"
     },
-    "timestamp": "2025-10-08T17:46:49.134007",
+    "timestamp": "2025-10-10T10:29:43.020672",
     "status": "connected",
-    "last_validated": "2025-10-08T17:46:49.134014"
+    "last_validated": "2025-10-10T10:29:43.020677"
+  },
+  "TestAgent": {
+    "agent_id": "TestAgent",
+    "connection_params": {
+      "type": "stdio",
+      "command": "echo",
+      "args": [
+        "hello"
+      ]
+    },
+    "timestamp": "2025-10-10T10:29:43.197998",
+    "status": "disconnected",
+    "last_validated": "2025-10-10T10:29:43.198006"
   }
 }

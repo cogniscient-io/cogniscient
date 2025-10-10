@@ -105,6 +105,10 @@ async def lifespan(app: FastAPI):
     orchestrator = LLMOrchestrator(gcs_runtime)
     chat_interface = ChatInterface(orchestrator)
     
+    # Register orchestrator and chat interface with the kernel for central management
+    gcs_runtime.set_llm_orchestrator(orchestrator)
+    gcs_runtime.register_chat_interface(chat_interface)
+    
     # Start health monitoring for external agents via MCP service
     await gcs_runtime.mcp_service.mcp_client.mcp_registry.start_health_checks()
     
@@ -230,8 +234,8 @@ async def set_system_parameter(parameter_update: SystemParameterUpdate):
 
 @app.post("/api/stream_chat")
 async def stream_chat(request: ChatRequest):
-    """Process chat messages with streaming response."""
-    if chat_interface is None:
+    """Process chat messages with streaming response via the kernel."""
+    if gcs_runtime is None or not hasattr(gcs_runtime, 'kernel'):
         def error_generator():
             event = {"type": "assistant_response", "content": "System is still initializing. Please try again in a moment."}
             yield f"data: {json.dumps(event)}\n\n"
@@ -241,7 +245,7 @@ async def stream_chat(request: ChatRequest):
     # Create an asyncio queue to handle communication between the processing task and the response generator
     event_queue = asyncio.Queue()
     
-    async def send_stream_event(event_type: str, content: str = None, data: Dict[str, Any] = None):
+    def send_stream_event(event_type: str, content: str = None, data: Dict[str, Any] = None):
         event = {
             "type": event_type,
         }
@@ -250,26 +254,24 @@ async def stream_chat(request: ChatRequest):
         if data is not None:
             event["data"] = data
         
-        await event_queue.put(event)
+        # Put the event in the queue (we need to ensure this runs in the event loop)
+        asyncio.create_task(event_queue.put(event))
+    
+    # Add the streaming callback to the kernel
+    gcs_runtime.kernel.add_streaming_callback(send_stream_event)
     
     async def process_request():
-        """Background task to process the request and send events to the queue."""
+        """Background task to process the request through the kernel and send events to the queue."""
         try:
-            # Add user input to conversation history
-            chat_interface.conversation_history.append({"role": "user", "content": request.message})
+            # Process user input through the kernel with streaming
+            result = await gcs_runtime.kernel.process_user_input_streaming(request.message)
             
-            # Process user input through chat interface with streaming
-            await chat_interface.process_user_input_streaming(
-                request.message, 
-                chat_interface.conversation_history, 
-                send_stream_event
-            )
-            
-            # Send final response with updated conversation history
+            # Send final response with updated conversation history from the kernel
             final_event = {
                 "type": "final_response",
                 "data": {
-                    "conversation_history": chat_interface.conversation_history
+                    "conversation_history": gcs_runtime.kernel.get_conversation_history(),
+                    "result": result
                 }
             }
             await event_queue.put(final_event)
@@ -299,7 +301,7 @@ async def stream_chat(request: ChatRequest):
         # Wait for the processing task to complete
         await task
     
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(event_generator(), media_type="text-event-stream")
 
 # External Agent Registration Endpoints
 @app.post("/api/agents/external/register", response_model=ExternalAgentResponse)

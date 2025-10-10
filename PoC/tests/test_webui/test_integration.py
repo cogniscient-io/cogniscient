@@ -1,4 +1,6 @@
-from frontend.api import app
+"""Tests for the webui integration."""
+
+from cogniscient.ui.webui.api import app
 from fastapi.testclient import TestClient
 import os
 
@@ -6,15 +8,15 @@ client = TestClient(app)
 
 def test_html_file_exists():
     """Should have the main HTML file."""
-    assert os.path.exists('frontend/static/index.html')
+    assert os.path.exists('cogniscient/ui/webui/static/index.html')
 
 def test_css_file_exists():
     """Should have the CSS file."""
-    assert os.path.exists('frontend/static/css/style.css')
+    assert os.path.exists('cogniscient/ui/webui/static/css/style.css')
 
 def test_js_file_exists():
     """Should have the JavaScript file."""
-    assert os.path.exists('frontend/static/js/main.js')
+    assert os.path.exists('cogniscient/ui/webui/static/js/main.js')
 
 def test_frontend_serves_html():
     """Should serve the main HTML page."""

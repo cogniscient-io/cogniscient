@@ -1,7 +1,7 @@
-"""Tests for the frontend API endpoints."""
+"""Tests for the webui API endpoints."""
 
 from fastapi.testclient import TestClient
-from frontend.api import app
+from cogniscient.ui.webui.api import app
 
 client = TestClient(app)
 

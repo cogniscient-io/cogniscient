@@ -6,7 +6,7 @@ and the CLI functions as a thin client.
 """
 
 from cogniscient.engine.gcs_runtime import GCSRuntime
-from cogniscient.cli.interactive_mode import InteractiveCLI
+from cogniscient.ui.cli.interactive_mode import InteractiveCLI
 
 
 def test_kernel_independence():

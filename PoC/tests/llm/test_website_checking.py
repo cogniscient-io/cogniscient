@@ -10,13 +10,13 @@ from cogniscient.engine.llm_orchestrator.llm_orchestrator import LLMOrchestrator
 async def test_llm_agent_selection():
     """Should use LLM to select appropriate agents."""
     # Setup
-    ucs_runtime = Mock()
+    gcs_runtime = Mock()
     # Adding the required attributes to avoid AttributeError
-    ucs_runtime.llm_service = Mock()
-    ucs_runtime.agents = {}
-    ucs_runtime.agent_configs = {}
+    gcs_runtime.llm_service = Mock()
+    gcs_runtime.agents = {}
+    gcs_runtime.agent_configs = {}
     
-    orchestrator = LLMOrchestrator(ucs_runtime)
+    orchestrator = LLMOrchestrator(gcs_runtime)
     chat_interface = ChatInterface(orchestrator, max_history_length=20, compression_threshold=15)
     
     # Test that LLM is used for agent selection
@@ -54,13 +54,13 @@ async def test_website_check_success_response():
 async def test_website_checking_command_recognition():
     """Test that website checking commands are properly recognized."""
     # Setup
-    ucs_runtime = Mock()  # Using Mock instead of actual GCSRuntime for testing
+    gcs_runtime = Mock()  # Using Mock instead of actual GCSRuntime for testing
     # Adding the required attributes to avoid AttributeError
-    ucs_runtime.llm_service = Mock()
-    ucs_runtime.agents = {}
-    ucs_runtime.agent_configs = {}
+    gcs_runtime.llm_service = Mock()
+    gcs_runtime.agents = {}
+    gcs_runtime.agent_configs = {}
     
-    orchestrator = LLMOrchestrator(ucs_runtime)
+    orchestrator = LLMOrchestrator(gcs_runtime)
     chat_interface = ChatInterface(orchestrator, max_history_length=20, compression_threshold=15)
     
     # Test various website checking command formats

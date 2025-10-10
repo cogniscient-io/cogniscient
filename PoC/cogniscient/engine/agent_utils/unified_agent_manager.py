@@ -58,7 +58,7 @@ class UnifiedAgentManager(BaseAgentManager):
             True if loading was successful, False otherwise
         """
         # Convert PascalCase to snake_case for file naming convention
-        snake_case_name = re.sub('([a-z0-9])([A-Z])', r'\\1_\\2', agent_name).lower()
+        snake_case_name = re.sub('([a-z0-9])([A-Z])', r'\1_\2', agent_name).lower()
         module_path = os.path.join(self.agents_dir, f"{snake_case_name}.py")
         
         # Ensure the module path exists
@@ -88,3 +88,41 @@ class UnifiedAgentManager(BaseAgentManager):
             del self.agents[agent_name]
             return True
         return False
+
+    def load_all_agents(self, config: Dict[str, Any] = None) -> bool:
+        """
+        Load all agents from the agents directory.
+        
+        Args:
+            config: Configuration for the agents (optional)
+            
+        Returns:
+            True if loading was successful, False otherwise
+        """
+        import glob
+        import re
+        
+        success = True
+        agent_files = glob.glob(os.path.join(self.agents_dir, "*.py"))
+        
+        for agent_file in agent_files:
+            # Extract agent name from filename
+            filename = os.path.basename(agent_file)
+            if filename.startswith("__") or not filename.endswith(".py"):
+                continue
+                
+            # Convert snake_case to PascalCase for class name
+            agent_module_name = filename[:-3]  # Remove .py
+            agent_class_name = ''.join(word.capitalize() for word in agent_module_name.split('_'))
+            
+            try:
+                # Skip if already loaded
+                if agent_class_name in self.agents:
+                    continue
+                    
+                self.load_agent(agent_class_name, config)
+            except Exception as e:
+                print(f"Failed to load agent {agent_class_name} from {agent_file}: {e}")
+                success = False
+                
+        return success

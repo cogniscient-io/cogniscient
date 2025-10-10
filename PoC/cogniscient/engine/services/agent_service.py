@@ -90,6 +90,18 @@ class AgentServiceImpl(AgentServiceInterface):
         if hasattr(self.unified_agent_manager, 'set_runtime') and self.unified_agent_manager:
             self.unified_agent_manager.set_runtime(runtime)
 
+    async def load_all_agents(self, config: dict = None) -> bool:
+        """
+        Load all agents from the agents directory.
+        
+        Args:
+            config: Configuration for the agents (optional)
+            
+        Returns:
+            True if loading was successful, False otherwise
+        """
+        return self.unified_agent_manager.load_all_agents(config)
+
     def register_mcp_tools(self):
         """
         Register tools with the MCP tool registry.
@@ -112,6 +124,19 @@ class AgentServiceImpl(AgentServiceInterface):
                     "agent_name": {"type": "string", "description": "Name of the agent to load"}
                 },
                 "required": ["agent_name"]
+            },
+            "type": "function"
+        }
+
+        # Register load all agents tool
+        load_all_agents_tool = {
+            "name": "agent_load_all_agents",
+            "description": "Load all available agents",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "config": {"type": "object", "description": "Configuration to apply to all agents (optional)"}
+                }
             },
             "type": "function"
         }
@@ -151,6 +176,7 @@ class AgentServiceImpl(AgentServiceInterface):
         agent_tools = mcp_client.tool_registry.get(self.__class__.__name__, [])
         agent_tools.extend([
             load_agent_tool,
+            load_all_agents_tool,
             unload_agent_tool,
             run_agent_method_tool
         ])
@@ -159,6 +185,7 @@ class AgentServiceImpl(AgentServiceInterface):
         # Also register individual tool types
         for tool_desc in [
             load_agent_tool,
+            load_all_agents_tool,
             unload_agent_tool,
             run_agent_method_tool
         ]:

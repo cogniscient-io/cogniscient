@@ -174,6 +174,18 @@ class LiteLLMAdapter:
             except Exception:
                 pass  # Ignore if this attribute doesn't exist
 
+            # Additional aiohttp-specific cleanup - try to close any lingering aiohttp resources
+            try:
+                # Access aiohttp connector connections and close them
+                if hasattr(litellm, 'aclient_session') and litellm.aclient_session:
+                    if hasattr(litellm.aclient_session, '_connector'):
+                        try:
+                            await litellm.aclient_session._connector.close()
+                        except Exception:
+                            pass  # Connector might already be closed
+            except Exception:
+                pass  # Safe to ignore if these attributes don't exist
+
             # Force garbage collection to clean up any remaining resources
             gc.collect()
         except Exception as e:

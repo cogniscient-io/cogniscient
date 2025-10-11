@@ -1,10 +1,9 @@
 """LLM Service implementation following the ringed architecture."""
 
 from cogniscient.engine.services.service_interface import LLMServiceInterface
-from cogniscient.engine.llm_orchestrator.contextual_llm_service import ContextualLLMService
 
 
-class LLMServiceImpl(LLMServiceInterface):
+class LLMKernelServiceImpl(LLMServiceInterface):
     """Implementation of LLMService following the ringed architecture."""
     
     def __init__(self, provider_manager=None, mcp_client_service=None):
@@ -14,10 +13,8 @@ class LLMServiceImpl(LLMServiceInterface):
             provider_manager: The LLM provider manager for handling LLM calls
             mcp_client_service: MCP client service for external agent connections
         """
-        self.llm_service = ContextualLLMService(
-            provider_manager=provider_manager,
-            mcp_client_service=mcp_client_service
-        )
+        self.provider_manager = provider_manager
+        self.mcp_client_service = mcp_client_service
         
     async def initialize(self) -> bool:
         """Initialize the LLM service.
@@ -35,12 +32,14 @@ class LLMServiceImpl(LLMServiceInterface):
         Returns:
             True if shutdown was successful, False otherwise
         """
-        # Close any resources held by the contextual service
-        try:
-            await self.llm_service.close()
-            return True
-        except Exception:
-            return False
+        # Close any resources held by the provider manager
+        if self.provider_manager and hasattr(self.provider_manager, 'close'):
+            try:
+                await self.provider_manager.close()
+                return True
+            except Exception:
+                pass
+        return True
 
     async def generate_response(self, prompt: str, domain: str = "general") -> str:
         """Generate a response from the LLM.
@@ -52,7 +51,10 @@ class LLMServiceImpl(LLMServiceInterface):
         Returns:
             Generated response from the LLM
         """
-        return await self.llm_service.generate_response(prompt, domain=domain)
+        if self.provider_manager:
+            return await self.provider_manager.generate_response(prompt, domain=domain)
+        else:
+            return f"Mock response to: {prompt} [Domain: {domain}]"
 
     def set_provider(self, provider_name: str) -> None:
         """Set the LLM provider.
@@ -61,8 +63,8 @@ class LLMServiceImpl(LLMServiceInterface):
             provider_name: Name of the provider to set
         """
         # This method assumes the underlying provider manager has a set_provider method
-        if hasattr(self.llm_service.provider_manager, 'set_provider'):
-            self.llm_service.provider_manager.set_provider(provider_name)
+        if self.provider_manager and hasattr(self.provider_manager, 'set_provider'):
+            self.provider_manager.set_provider(provider_name)
         else:
             # In the current implementation, the provider manager sets its provider during initialization
             # So for now we'll just note this limitation

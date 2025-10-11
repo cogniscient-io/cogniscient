@@ -6,7 +6,7 @@ import asyncio
 import logging
 from typing import Dict, Any, Optional, List, AsyncGenerator, Callable
 from cogniscient.engine.config.settings import settings
-from cogniscient.llm.llm_provider_service import LLMService
+from cogniscient.engine.services.llm.llm_provider_manager import LLMProviderManager
 from cogniscient.engine.services.service_interface import Service
 
 logger = logging.getLogger(__name__)
@@ -19,12 +19,12 @@ class LLMControlService(Service):
     the LLM provider implementation.
     """
     
-    def __init__(self, llm_service: LLMService, max_retries: int = 3, retry_delay: float = 1.0):
+    def __init__(self, llm_service: LLMProviderManager, max_retries: int = 3, retry_delay: float = 1.0):
         """
         Initialize the LLM control service.
         
         Args:
-            llm_service: The underlying LLM service to delegate to
+            llm_service: The underlying LLM provider manager to delegate to
             max_retries: Maximum number of retry attempts for failed requests
             retry_delay: Delay between retry attempts in seconds
         """

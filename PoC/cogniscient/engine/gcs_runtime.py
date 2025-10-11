@@ -1,19 +1,30 @@
 """Generic Control System (GCS) Runtime for PoC.
 Following the ringed architecture refactoring, this is now the kernel layer
 that manages services and coordinates system operations.
+
+This updated version integrates the new LLM architecture with kernel/ring services
+and MCP integration.
 """
 
 from cogniscient.engine.kernel import Kernel
 from cogniscient.engine.services.config_service import ConfigServiceImpl
 from cogniscient.engine.services.agent_service import AgentServiceImpl
-from cogniscient.engine.services.llm_kernel_service import LLMServiceImpl
 from cogniscient.engine.services.auth_service import AuthServiceImpl
 from cogniscient.engine.services.storage_service import StorageServiceImpl
 from cogniscient.engine.services.system_parameters_service import SystemParametersService
-from cogniscient.engine.services.mcp_service import MCPService
-from cogniscient.engine.services.llm_kernel_service import LLMServiceImpl
+from cogniscient.engine.services.llm_control_service import LLMControlService
 from cogniscient.auth.token_manager import TokenManager
 from cogniscient.engine.config.settings import settings
+
+# Import new LLM architecture services
+from cogniscient.engine.services.llm.llm_kernel_service import LLMKernelServiceImpl
+from cogniscient.engine.services.llm.llm_provider_manager import LLMProviderManager
+from cogniscient.engine.services.llm.prompt_construction_service import PromptConstructionService
+from cogniscient.engine.services.llm.response_evaluator_service import ResponseEvaluatorService
+from cogniscient.engine.services.mcp_service import create_mcp_service, MCPService
+from cogniscient.engine.services.llm.agent_orchestrator import AgentOrchestratorService
+from cogniscient.engine.services.llm.conversation_manager import ConversationManagerService
+from cogniscient.engine.services.llm.control_config_service import ControlConfigService
 
 
 class GCSRuntime:
@@ -29,14 +40,6 @@ class GCSRuntime:
         # Initialize the kernel
         self.kernel = Kernel()
         
-        # Initialize system services in dependency order
-        self.config_service = ConfigServiceImpl(config_dir=config_dir)
-        self.system_parameters_service = SystemParametersService()
-        self.agent_service = AgentServiceImpl(
-            agents_dir=agents_dir,
-            runtime_ref=self
-        )
-        
         # Initialize attributes needed by session manager
         self.agents = {}
         self.chat_interfaces = []
@@ -48,33 +51,66 @@ class GCSRuntime:
             credentials_dir=settings.qwen_credentials_dir
         )
         
-        # Initialize the LLM provider service with token manager
-        from cogniscient.llm.llm_provider_service import LLMService
-        llm_service = LLMService(self.token_manager)
-        llm_service.set_provider(settings.default_provider)
+        # Initialize MCP service first to make it available to other services
+        self.mcp_service: MCPService = None  # Will be initialized after other services
         
-        # Initialize the LLM control service that handles orchestration, retry logic, and error handling
-        from cogniscient.engine.services.llm_control_service import LLMControlService
-        self.llm_control_service = LLMControlService(llm_service)  # Using new LLMService class
+        # Initialize system services in dependency order
+        # Use the new Control & Configuration Service instead of the old one
+        self.config_service = ControlConfigService(config_dir=config_dir)
+        self.system_parameters_service = SystemParametersService()
+        self.agent_service = AgentServiceImpl(
+            agents_dir=agents_dir,
+            runtime_ref=self
+        )
         
-        # Initialize the prompt construction service that handles contextual formatting
-        from cogniscient.engine.services.prompt_construction_service import PromptConstructionService
+        # Initialize new LLM architecture services
+        
+        # 1. LLM Provider Manager (Ring 1 Service)
+        self.llm_provider_manager = LLMProviderManager(token_manager=self.token_manager)
+        self.llm_provider_manager.set_provider(settings.default_provider)
+        
+        # 2. Prompt Construction Service (Ring 1 Service) - with MCP integration
         self.prompt_construction_service = PromptConstructionService(
             agent_registry=None,
             system_services={},
-            mcp_client_service=None
+            mcp_client_service=None  # Will be set after MCP initialization
         )
         
-        # Initialize MCP service
-        self.mcp_service = None
-        
-        # Initialize the contextual LLM service with the LLM service (not the control service)
-        # The control service handles the orchestration outside of the contextual service
-        from cogniscient.engine.llm_orchestrator.contextual_llm_service import ContextualLLMService
-        self.llm_service = ContextualLLMService(
-            provider_manager=llm_service,  # Use LLM service, not control service
+        # 3. Response Evaluator Service (Ring 1 Service) - with error-as-signal
+        self.response_evaluator_service = ResponseEvaluatorService(
+            llm_provider_manager=self.llm_provider_manager,
             prompt_construction_service=self.prompt_construction_service
         )
+        
+        # 4. Conversation Manager Service (Ring 2 Service)
+        self.conversation_manager = ConversationManagerService(
+            mcp_service=None  # Will be set after MCP initialization
+        )
+        
+        # 5. Agent Orchestrator Service (Ring 2 Service)
+        self.agent_orchestrator = AgentOrchestratorService(
+            mcp_service=None  # Will be set after MCP initialization
+        )
+        
+        # Initialize LLM control service for backward compatibility and additional features
+        self.llm_control_service = LLMControlService(
+            llm_service=self.llm_provider_manager  # Connect to the new provider manager
+        )
+        
+        # Initialize MCP service with GCS runtime reference (async method)
+        # We'll initialize it asynchronously when needed, not in constructor
+        self.mcp_service = None
+        self._mcp_service_init_task = None
+        
+        # We'll set MCP references after async initialization
+        # These will be set in an async initialization method
+        self.prompt_construction_service.mcp_client_service = None
+        self.conversation_manager.mcp_service = None
+        self.agent_orchestrator.mcp_service = None
+        
+        # Initialize kernel-level LLM service
+        self.llm_kernel_service = LLMKernelServiceImpl(provider_manager=self.llm_provider_manager)
+        self.llm_kernel_service.set_runtime(self)
         
         # Initialize auth and storage services
         self.auth_service = AuthServiceImpl(
@@ -83,62 +119,63 @@ class GCSRuntime:
         )
         self.storage_service = StorageServiceImpl()
         
-        # Register services with the kernel
+        # Register services with the kernel following the new architecture
+        # Kernel services
+        self.kernel.register_service("llm_kernel", self.llm_kernel_service)
+        
+        # Ring 1 services (Core Services)
+        self.kernel.register_service("llm_provider_manager", self.llm_provider_manager)
+        self.kernel.register_service("prompt_construction", self.prompt_construction_service)
+        self.kernel.register_service("response_evaluator", self.response_evaluator_service)
+        
+        # Ring 2 services (Application Services)
+        self.kernel.register_service("conversation_manager", self.conversation_manager)
+        self.kernel.register_service("agent_orchestrator", self.agent_orchestrator)
+        self.kernel.register_service("control_config", self.config_service)
+        
+        # Other core services
         self.kernel.register_service("config", self.config_service)
         self.kernel.register_service("agent", self.agent_service)
-        self.kernel.register_service("llm", LLMServiceImpl(
-            provider_manager=llm_service,
-            mcp_client_service=None  # Will be updated after MCP initialization
-        ))
-        self.kernel.register_service("llm_control", self.llm_control_service)  # Register the control service
+        self.kernel.register_service("llm_control", self.llm_control_service)
         self.kernel.register_service("auth", self.auth_service)
         self.kernel.register_service("storage", self.storage_service)
         self.kernel.register_service("system_params", self.system_parameters_service)
+        self.kernel.register_service("mcp", self.mcp_service)
         
-        # Initialize the MCP service after all other components
-        # This prevents initialization order issues
-        self.mcp_service = MCPService(self)
-        
-        # Update the LLM service with MCP client service now that it's available
-        if hasattr(self.llm_service, 'prompt_construction_service') and self.llm_service.prompt_construction_service:
-            self.llm_service.prompt_construction_service.mcp_client_service = self.mcp_service.mcp_client
-        elif hasattr(self.llm_service, 'mcp_client_service'):
-            self.llm_service.mcp_client_service = self.mcp_service.mcp_client
-        
-        # Also update the prompt construction service if it exists
-        if hasattr(self, 'prompt_construction_service'):
-            self.prompt_construction_service.mcp_client_service = self.mcp_service.mcp_client
-        
-        # Also update the LLM service in the kernel
-        llm_service_impl_kernel = LLMServiceImpl(
-            provider_manager=llm_service,  # Use the new LLMService class
-            mcp_client_service=self.mcp_service.mcp_client
-        )
-        llm_service_impl_kernel.set_runtime(self)  # Set runtime for the kernel's LLM service instance
-        self.kernel.service_registry["llm"] = llm_service_impl_kernel
-        
-        # Set runtime reference in services that need access to MCP
+        # Set runtime reference in services that need access to other services
         self.config_service.set_runtime(self)
         self.system_parameters_service.set_runtime(self)
         self.agent_service.set_runtime(self)
         self.storage_service.set_runtime(self)
         self.auth_service.set_runtime(self)
-        # Note: self.llm_service is ContextualLLMService which doesn't have set_runtime method
-        # The LLMServiceImpl instance in kernel registry has runtime set separately
+        self.llm_kernel_service.set_runtime(self)
+        self.response_evaluator_service.set_runtime(self)
+        self.agent_orchestrator.set_runtime(self)
         
-        # Set the LLM control service in the kernel
-        self.kernel.set_llm_control_service(self.llm_control_service)
-        
-        # Register MCP tools for services that have them - now that MCP service is initialized
+        # Register MCP tools for services that have them
         self.config_service.register_mcp_tools()
         self.system_parameters_service.register_mcp_tools()
         self.agent_service.register_mcp_tools()
         self.storage_service.register_mcp_tools()
-        # Use the LLM service from the kernel's service registry
-        llm_service_impl = self.kernel.service_registry.get("llm")
-        if llm_service_impl and hasattr(llm_service_impl, "register_mcp_tools"):
-            llm_service_impl.register_mcp_tools()
         self.auth_service.register_mcp_tools()
+        self.llm_kernel_service.register_mcp_tools()
+        # Additional services that support MCP tool registration
+        if hasattr(self, 'response_evaluator_service') and hasattr(self.response_evaluator_service, 'register_mcp_tools'):
+            self.response_evaluator_service.register_mcp_tools()
+        if hasattr(self, 'conversation_manager') and hasattr(self.conversation_manager, 'register_mcp_tools'):
+            self.conversation_manager.register_mcp_tools()
+        if hasattr(self, 'agent_orchestrator') and hasattr(self.agent_orchestrator, 'register_mcp_tools'):
+            self.agent_orchestrator.register_mcp_tools()
+
+    async def async_init(self):
+        """Asynchronously initialize services that require async operations."""
+        import asyncio
+        self.mcp_service = await create_mcp_service(self)
+        
+        # Update services with MCP references after MCP service initialization
+        self.prompt_construction_service.mcp_client_service = self.mcp_service.mcp_client
+        self.conversation_manager.mcp_service = self.mcp_service
+        self.agent_orchestrator.mcp_service = self.mcp_service
     
     def register_chat_interface(self, chat_interface):
         """Register a chat interface with the runtime."""
@@ -169,33 +206,6 @@ class GCSRuntime:
         # Also register orchestrator in the runtime for backward compatibility
         self.llm_orchestrator = orchestrator
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     def start_kernel_loop(self):
         """
         Start the kernel's main control loop which manages system operations.
@@ -208,59 +218,53 @@ class GCSRuntime:
         import logging
         logger = logging.getLogger(__name__)
         
-        # Shutdown MCP services first to properly close connections before other services shut down
-        if hasattr(self, 'mcp_service') and self.mcp_service:
+        # Shutdown services in reverse dependency order
+        
+        # Shutdown MCP services first to properly close connections
+        if hasattr(self, 'mcp_service') and self.mcp_service and hasattr(self.mcp_service, 'shutdown'):
             try:
-                # Use the new unified shutdown method in MCPService
                 await self.mcp_service.shutdown()
                 logger.info("MCP service shutdown completed")
             except Exception as e:
                 logger.warning(f"Error during MCP service shutdown: {e}")
         
-        # Shutdown services through the kernel
-        await self.kernel.shutdown()
+        # Shutdown LLM-related services
+        if hasattr(self, 'response_evaluator_service') and hasattr(self.response_evaluator_service, 'shutdown'):
+            try:
+                await self.response_evaluator_service.shutdown()
+                logger.info("Response evaluator service shutdown completed")
+            except Exception as e:
+                logger.warning(f"Error during response evaluator service shutdown: {e}")
         
-        # Shutdown the LLM control service first
-        if hasattr(self, 'llm_control_service') and self.llm_control_service and hasattr(self.llm_control_service, 'shutdown'):
+        if hasattr(self, 'llm_control_service') and hasattr(self.llm_control_service, 'shutdown'):
             try:
                 await self.llm_control_service.shutdown()
                 logger.info("LLM control service shutdown completed")
             except Exception as e:
-                logger.warning(f"Error during LLM control service cleanup: {e}")
+                logger.warning(f"Error during LLM control service shutdown: {e}")
+        
+        if hasattr(self, 'llm_provider_manager') and hasattr(self.llm_provider_manager, 'shutdown'):
+            try:
+                await self.llm_provider_manager.shutdown()
+                logger.info("LLM provider manager service shutdown completed")
+            except Exception as e:
+                logger.warning(f"Error during LLM provider manager shutdown: {e}")
+        
+        # Shutdown kernel
+        if hasattr(self, 'kernel') and hasattr(self.kernel, 'shutdown'):
+            try:
+                await self.kernel.shutdown()
+                logger.info("Kernel shutdown completed")
+            except Exception as e:
+                logger.warning(f"Error during kernel shutdown: {e}")
         
         # Shutdown the prompt construction service if it exists
         if hasattr(self, 'prompt_construction_service') and hasattr(self.prompt_construction_service, 'close'):
             try:
-                # Prompt construction service uses sync close method
                 self.prompt_construction_service.close()
                 logger.info("Prompt construction service shutdown completed")
             except Exception as e:
                 logger.warning(f"Error during prompt construction service cleanup: {e}")
-        
-        # Shutdown the contextual LLM service
-        if hasattr(self, 'llm_service') and self.llm_service and hasattr(self.llm_service, 'close'):
-            try:
-                await self.llm_service.close()
-                logger.info("Contextual LLM service shutdown completed")
-            except Exception as e:
-                logger.warning(f"Error during contextual LLM service cleanup: {e}")
-        
-        # Also ensure the LLM service instance in the kernel's service registry is closed
-        kernel_llm_service = self.kernel.get_service("llm")
-        if kernel_llm_service and hasattr(kernel_llm_service, 'provider_manager') and hasattr(kernel_llm_service.provider_manager, 'close'):
-            try:
-                await kernel_llm_service.provider_manager.close()
-                logger.info("Kernel LLM service provider manager shutdown completed")
-            except Exception as e:
-                logger.warning(f"Error during kernel LLM service provider manager cleanup: {e}")
-        
-        # Stop the kernel's control loop and thread
-        try:
-            if hasattr(self.kernel, 'stop_system'):
-                self.kernel.stop_system()
-                logger.info("Kernel system stopped")
-        except Exception as e:
-            logger.warning(f"Error during kernel system stop: {e}")
         
         # Additional cleanup for any remaining async resources
         try:

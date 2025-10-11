@@ -5,9 +5,9 @@
       "type": "stdio",
       "command": "test_command"
     },
-    "timestamp": "2025-10-10T13:03:22.992680",
+    "timestamp": "2025-10-10T17:06:03.795616",
     "status": "connected",
-    "last_validated": "2025-10-10T13:03:22.992701"
+    "last_validated": "2025-10-10T17:06:03.795620"
   },
   "TestAgent": {
     "agent_id": "TestAgent",
@@ -18,8 +18,8 @@
         "hello"
       ]
     },
-    "timestamp": "2025-10-10T13:03:23.196398",
+    "timestamp": "2025-10-10T17:06:03.961614",
     "status": "disconnected",
-    "last_validated": "2025-10-10T13:03:23.196406"
+    "last_validated": "2025-10-10T17:06:03.961621"
   }
 }

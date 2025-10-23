@@ -1,4 +1,4 @@
-# LLM-Enhanced Orchestration Demo
+# LLM-Enhanced Orchestration - proof of concept
 
 This project demonstrates an LLM-enhanced orchestration system that can adaptively retry failed tasks and adjust parameters based on LLM evaluations. It also includes a chat interface that allows users to check website status through natural language commands.
 

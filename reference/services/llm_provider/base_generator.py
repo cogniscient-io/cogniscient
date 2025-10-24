@@ -6,22 +6,15 @@ the ai_orchestrator will depend on, providing proper abstraction.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, AsyncIterator
+from typing import Any, AsyncIterator
 
 
 class BaseContentGenerator(ABC):
     """
     Abstract base class for content generators that the ai_orchestrator will use.
     This provides proper abstraction between the orchestrator and specific implementations.
+    The actual initialization and configuration is up to each implementation.
     """
-    
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
-        self.api_key = config.get("api_key")
-        self.model = config.get("model", "default-model")
-        self.base_url = config.get("base_url", "https://api.openai.com/v1")
-        self.timeout = config.get("timeout", 60)
-        self.max_retries = config.get("max_retries", 3)
     
     @abstractmethod
     async def generate_response(self, prompt: str) -> Any:

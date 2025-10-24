@@ -38,15 +38,6 @@ class EventLoop:
     async def shutdown(self):
         """Gracefully shut down the event loop."""
         self.is_running = False
-        
-        # Cancel all running tasks
-        tasks = [t for t in asyncio.all_tasks() if not t.done()]
-        for task in tasks:
-            task.cancel()
-        
-        # Wait for tasks to complete cancellation
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _process_events(self):
         """Process kernel events in the main event loop."""

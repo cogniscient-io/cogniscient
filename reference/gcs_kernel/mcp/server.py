@@ -124,9 +124,37 @@ class MCPServer:
                 "capabilities": [
                     "tool-discovery",
                     "tool-execution",
-                    "execution-monitoring"
+                    "execution-monitoring",
+                    "ai-interaction"
                 ]
             }
+
+        @self.app.post("/ai/process")
+        async def process_ai_request(request_data: Dict[str, Any]):
+            """Process an AI request through the kernel."""
+            if self.kernel and hasattr(self.kernel, 'send_user_prompt'):
+                prompt = request_data.get("prompt", "")
+                response = await self.kernel.send_user_prompt(prompt)
+                return {"response": response}
+            else:
+                raise HTTPException(status_code=500, detail="Kernel AI processing not available")
+
+        @self.app.post("/ai/stream")
+        async def stream_ai_request(request_data: Dict[str, Any]):
+            """Stream an AI request through the kernel."""
+            if self.kernel and hasattr(self.kernel, 'stream_user_prompt'):
+                from fastapi.responses import StreamingResponse
+                import json
+                
+                prompt = request_data.get("prompt", "")
+                
+                async def generate_stream():
+                    async for chunk in self.kernel.stream_user_prompt(prompt):
+                        yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+                
+                return StreamingResponse(generate_stream(), media_type="text/plain")
+            else:
+                raise HTTPException(status_code=500, detail="Kernel AI streaming not available")
 
     async def start(self):
         """Start the MCP server."""

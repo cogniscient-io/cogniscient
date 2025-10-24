@@ -1,150 +1,92 @@
+#!/usr/bin/env python3
 """
 CLI Interface implementation for the GCS Kernel.
 
-This module implements the CLIInterface class which provides
-a simple command-line interface to control the kernel and manage tool execution.
+This module implements the CLI using new common UI components with proper async resource management.
 """
 
 import asyncio
-from typing import Any, Optional
+from gcs_kernel.kernel import GCSKernel
+from gcs_kernel.models import MCPConfig
 from gcs_kernel.mcp.client import MCPClient
+from ui.common.kernel_api import KernelAPIClient
+from ui.common.cli_ui import CLIUI
 
 
-class CLIInterface:
-    """
-    CLI Interface that provides commands to control kernel and manage tool execution.
-    Communicates with kernel MCP server via MCP client for tool execution.
-    """
+def main():
+    """Main entry point for the GCS CLI."""
+    import argparse
     
-    def __init__(self, kernel_api_client: Any, mcp_client: Optional[MCPClient] = None):
-        """
-        Initialize the CLI interface.
-        
-        Args:
-            kernel_api_client: Direct API client for user interactions with kernel
-            mcp_client: Optional MCP client for specific kernel services when needed
-        """
-        # Accept direct API client for user interactions with kernel
-        self.kernel_api_client = kernel_api_client
-        # Accept optional MCP client for specific kernel services when needed
-        self.mcp_client = mcp_client
-
-    def run(self):
-        """
-        Run the CLI interface.
-        """
-        print("GCS Kernel CLI - Type 'help' for commands or 'exit' to quit")
-        
+    parser = argparse.ArgumentParser(description="GCS Kernel - Generic Control System Kernel")
+    parser.add_argument("--config", type=str, help="Path to configuration file")
+    parser.add_argument("--mode", type=str, choices=["cli", "server", "api"], 
+                        default="cli", help="Operation mode")
+    args = parser.parse_args()
+    
+    # Initialize the kernel
+    kernel = GCSKernel()
+    
+    async def _async_main():
+        kernel_task = None
         try:
-            while True:
-                try:
-                    user_input = input("gcs> ").strip()
-                    if user_input.lower() in ['exit', 'quit']:
+            # Start the kernel
+            kernel_task = asyncio.create_task(kernel.run())
+            
+            if args.mode == "cli":
+                # Wait for kernel to initialize before starting CLI
+                max_wait = 10  # seconds to wait for kernel initialization
+                wait_interval = 0.1
+                elapsed = 0
+                while elapsed < max_wait:
+                    # Check if kernel has completed full initialization
+                    if getattr(kernel, '_fully_initialized', False):
                         break
-                    elif user_input.lower() == 'help':
-                        self.show_help()
-                    else:
-                        # Process user input using direct API to kernel
-                        result = self.process_user_input(user_input)
-                        print(result)
-                except KeyboardInterrupt:
-                    print("\nExiting...")
-                    break
-        except Exception as e:
-            print(f"Error in CLI: {e}")
-
-    def show_help(self):
-        """
-        Show help information for available commands.
-        """
-        help_text = """
-GCS Kernel CLI Commands:
-  help                    - Show this help message
-  status                  - Get kernel status
-  list-tools              - List available tools
-  run-tool <name> [args]  - Execute a tool with arguments
-  ai <prompt>             - Send a prompt to the AI orchestrator
-  exit/quit               - Exit the CLI
-
-Examples:
-  gcs> status
-  gcs> list-tools
-  gcs> run-tool read_file path=README.md
-  gcs> ai What files are in the current directory?
-        """
-        print(help_text)
-
-    def process_user_input(self, user_input: str):
-        """
-        Process user input using direct API to kernel.
-        
-        Args:
-            user_input: The raw user input string
-            
-        Returns:
-            The result of processing the user input
-        """
-        # Check if this is a special command or a prompt for AI
-        if user_input.startswith('!'):
-            # This is a system command
-            command = user_input[1:]  # Remove '!' prefix
-            return self.process_command(command)
-        elif user_input.startswith('ai '):
-            # This is a user prompt to send to AI orchestrator
-            prompt = user_input[3:]  # Remove 'ai ' prefix
-            return self.kernel_api_client.send_user_prompt(prompt)
-        else:
-            # This is a user prompt to send to AI orchestrator
-            return self.kernel_api_client.send_user_prompt(user_input)
-
-    def process_command(self, command: str):
-        """
-        Process a CLI command using direct API to kernel.
-        
-        Args:
-            command: The command string to process
-            
-        Returns:
-            The result of processing the command
-        """
-        # Parse the command and call appropriate kernel functions via direct API
-        parts = command.split()
-        if not parts:
-            return "No command provided"
-            
-        cmd = parts[0].lower()
-        args = parts[1:]
-        
-        if cmd == 'status':
-            # Get kernel status via direct API
-            return self.kernel_api_client.get_kernel_status()
-        elif cmd == 'list-tools':
-            # List available tools via direct API
-            return self.kernel_api_client.list_registered_tools()
-        elif cmd == 'run-tool':
-            # Execute a tool via direct API (which may use MCP internally)
-            if len(args) >= 1:
-                tool_name = args[0]
-                tool_args = args[1:]
-                # Parse arguments as key=value pairs
-                params = {}
-                for arg in tool_args:
-                    if '=' in arg:
-                        key, value = arg.split('=', 1)
-                        params[key] = value
-                    else:
-                        params[arg] = True  # For flag-like arguments
+                    await asyncio.sleep(wait_interval)  # Use async sleep to allow other tasks to run
+                    elapsed += wait_interval
                 
-                if self.mcp_client:
-                    # Use MCP client to submit tool execution to kernel
-                    return asyncio.run(self.mcp_client.submit_tool_execution(tool_name, params))
-                else:
-                    return "MCP client not available"
-        elif cmd == 'list-executions':
-            # List recent tool executions
-            if self.mcp_client:
-                return asyncio.run(self.mcp_client.list_executions())
-            else:
-                return "MCP client not available"
-        else:
-            return f"Unknown command: {cmd}. Type 'help' for available commands."
+                if elapsed >= max_wait:
+                    print(f"Warning: Kernel initialization took longer than {max_wait} seconds, proceeding anyway...")
+                
+                # Initialize MCP client for kernel communication
+                mcp_config = MCPConfig(server_url="http://localhost:8000")
+                mcp_client = MCPClient(mcp_config)
+                await mcp_client.initialize()
+                
+                # Create the new clean kernel API client
+                kernel_api_client = KernelAPIClient(kernel)
+                
+                # Create the new CLI UI with proper async resource management
+                cli_ui = CLIUI(kernel_api_client)
+                
+                # Run the interactive CLI loop
+                await cli_ui._interactive_loop()
+                
+            elif args.mode == "server":
+                # Just run the kernel as a server
+                print("GCS Kernel running in server mode...")
+                await kernel_task
+            elif args.mode == "api":
+                # In API mode, we might expose a REST API
+                print("GCS Kernel API mode not implemented yet")
+                await kernel_task
+        
+        except KeyboardInterrupt:
+            print("\nReceived interrupt signal...")
+        finally:
+            # Cancel the kernel task and wait for it to finish
+            if kernel_task and not kernel_task.done():
+                kernel_task.cancel()
+                try:
+                    await kernel_task
+                except asyncio.CancelledError:
+                    pass  # Expected when cancelling the task
+            
+            # Now shutdown the kernel
+            await kernel.shutdown()
+    
+    # Actually run the async function
+    asyncio.run(_async_main())
+
+
+if __name__ == "__main__":
+    main()

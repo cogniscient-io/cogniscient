@@ -6,13 +6,32 @@ This module implements the OpenAI provider following Qwen Code patterns.
 
 import httpx
 from typing import Dict, Any
-from services.llm_provider.providers.base_provider import BaseOpenAIProvider
+from services.llm_provider.providers.base_provider import BaseProvider
 
 
-class OpenAIProvider(BaseOpenAIProvider):
+class OpenAIProvider(BaseProvider):
     """
     OpenAI provider implementation following Qwen Code patterns.
     """
+    
+    def __init__(self, config: Dict[str, Any]):
+        """
+        Initialize the OpenAI provider with configuration.
+        Uses OpenAI-specific defaults when values are not provided in config.
+        
+        Args:
+            config: Dictionary containing provider configuration
+                   Expected keys: api_key, model, base_url, timeout, max_retries
+        """
+        # Set OpenAI-specific defaults if not provided in config
+        config = config.copy()  # Avoid modifying the original config
+        if "model" not in config:
+            config["model"] = "gpt-4-turbo"
+        if "base_url" not in config:
+            config["base_url"] = "https://api.openai.com/v1"
+        
+        # Call the parent constructor with the updated config
+        super().__init__(config)
     
     def build_headers(self) -> Dict[str, str]:
         """
@@ -44,7 +63,7 @@ class OpenAIProvider(BaseOpenAIProvider):
         Enhance the request with OpenAI-specific features.
         
         Args:
-            request: The base OpenAI-compatible request
+            request: The base request
             user_prompt_id: Unique identifier for the user prompt
             
         Returns:

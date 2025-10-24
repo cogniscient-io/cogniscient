@@ -7,28 +7,20 @@ This package contains all the services for the GCS Kernel, including:
 - Configuration Management
 """
 
-from .config import kernel_settings
+from .config import settings
 from .llm_provider import (
     BaseContentGenerator,
-    OpenAIContentGenerator,
-    LLMProviderSettings,
-    llm_settings,
+    LLMContentGenerator,
     ProviderFactory,
-    OpenAIProvider,
-    load_config_from_env,
-    validate_config
+    OpenAIProvider
 )
 from .ai_orchestrator import AIOrchestratorService
 
 __all__ = [
-    "kernel_settings",
+    "settings",
     "BaseContentGenerator",
-    "OpenAIContentGenerator",
-    "LLMProviderSettings",
-    "llm_settings",
+    "LLMContentGenerator",
     "ProviderFactory",
     "OpenAIProvider",
-    "load_config_from_env",
-    "validate_config",
     "AIOrchestratorService"
 ]

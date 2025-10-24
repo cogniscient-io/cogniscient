@@ -1,10 +1,9 @@
 """
-Entry point for the GCS Kernel.
+Entry point for the GCS Kernel when run as a module.
 
 This module provides the main entry point for starting the GCS Kernel
-and initializing all its components.
+and initializing all its components when run as `python -m gcs_kernel`.
 """
-
 import asyncio
 import argparse
 from gcs_kernel.kernel import GCSKernel
@@ -34,22 +33,38 @@ async def main():
             mcp_client = MCPClient(mcp_config)
             await mcp_client.initialize()
             
-            # Create a simple API client for CLI (in a real system this would be a proper API client)
-            class SimpleKernelAPIClient:
+            # Create a simple API client for CLI that communicates with the kernel via MCP
+            # The kernel handles everything else including LLM interaction
+            import threading
+            import queue
+            
+            class MCPKernelAPIClient:
+                def __init__(self, mcp_client, kernel):
+                    self.mcp_client = mcp_client  # Use the MCP client to communicate with kernel
+                    self.kernel = kernel
+                
                 def get_kernel_status(self):
-                    return f"Kernel running: {kernel.is_running()}"
+                    return f"Kernel running: {self.kernel.is_running()}"
                 
                 def list_registered_tools(self):
-                    if kernel.registry:
-                        tools = kernel.registry.get_all_tools()
+                    if self.kernel.registry:
+                        tools = self.kernel.registry.get_all_tools()
                         return list(tools.keys())
                     return []
                 
                 def send_user_prompt(self, prompt):
-                    # In a real system, this would send the prompt to the AI orchestrator
+                    # In a real system, this would send the prompt to the kernel via MCP
+                    # and wait for the response, but for now we'll return a placeholder
+                    # until the kernel properly implements the AI interface via MCP
                     return f"Processing prompt: {prompt}"
+                
+                def stream_user_prompt(self, prompt):
+                    # In a real streaming implementation, this would establish a streaming
+                    # connection via MCP and yield chunks as they arrive from the kernel
+                    # For now, return a single chunk as if it were streamed
+                    yield f"Processing prompt: {prompt}"
             
-            api_client = SimpleKernelAPIClient()
+            api_client = MCPKernelAPIClient(mcp_client, kernel)
             cli = CLIInterface(api_client, mcp_client)
             cli.run()
         elif args.mode == "server":

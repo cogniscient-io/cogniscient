@@ -100,12 +100,14 @@ ui/                         # User interface layer (separate from kernel and ser
 └── webui/                  # Web user interface (future implementation)
     ├── __init__.py
     └── app.py              # Web UI application
-tests/                      # Test suite
+tests/                      # Unit test suite
 ├── test_kernel.py
 ├── test_event_loop.py
 ├── test_scheduler.py
 ├── test_registry.py
 └── test_mcp.py
+tests/integration/          # Integration test suite
+└── test_kernel_llm_integration.py  # End-to-end kernel to LLM flow tests
 requirements.txt            # Python dependencies
 pyproject.toml              # Project configuration
 main.py                     # Entry point

@@ -8,16 +8,24 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any
 
 
-class BaseOpenAIProvider(ABC):
+class BaseProvider(ABC):
     """
-    Abstract base class for OpenAI-compatible providers following Qwen Code patterns.
+    Abstract base class for LLM providers following Qwen Code patterns.
+    Provides common configuration and properties for all LLM providers.
     """
     
     def __init__(self, config: Dict[str, Any]):
+        """
+        Initialize the base provider with configuration.
+        
+        Args:
+            config: Dictionary containing provider configuration
+                   Expected keys: api_key, model, base_url, timeout, max_retries
+        """
         self.config = config
         self.api_key = config.get("api_key")
-        self.model = config.get("model", "gpt-4-turbo")
-        self.base_url = config.get("base_url", "https://api.openai.com/v1")
+        self.model = config.get("model", "default-model")
+        self.base_url = config.get("base_url", "https://api.default-llm-provider.com/v1")
         self.timeout = config.get("timeout", 60)
         self.max_retries = config.get("max_retries", 3)
         
@@ -44,10 +52,10 @@ class BaseOpenAIProvider(ABC):
     @abstractmethod
     def build_request(self, request: Dict[str, Any], user_prompt_id: str) -> Dict[str, Any]:
         """
-        Enhance the OpenAI-compatible request with provider-specific features.
+        Build the request with provider-specific features.
         
         Args:
-            request: The base OpenAI-compatible request
+            request: The base request
             user_prompt_id: Unique identifier for the user prompt
             
         Returns:

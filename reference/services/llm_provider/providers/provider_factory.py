@@ -5,8 +5,9 @@ This module implements the provider factory following Qwen Code patterns.
 """
 
 from typing import Dict, Any, Type
-from services.llm_provider.providers.base_provider import BaseOpenAIProvider
+from services.llm_provider.providers.base_provider import BaseProvider
 from services.llm_provider.providers.openai_provider import OpenAIProvider
+from services.llm_provider.providers.mock_provider import MockProvider
 
 
 class ProviderFactory:
@@ -15,11 +16,12 @@ class ProviderFactory:
     """
     
     def __init__(self):
-        self.providers: Dict[str, Type[BaseOpenAIProvider]] = {
+        self.providers: Dict[str, Type[BaseProvider]] = {
             "openai": OpenAIProvider,
+            "mock": MockProvider,
         }
     
-    def register_provider(self, name: str, provider_class: Type[BaseOpenAIProvider]):
+    def register_provider(self, name: str, provider_class: Type[BaseProvider]):
         """
         Register a new provider type with the factory.
         
@@ -29,7 +31,7 @@ class ProviderFactory:
         """
         self.providers[name] = provider_class
     
-    def create_provider(self, provider_type: str, config: Dict[str, Any]) -> BaseOpenAIProvider:
+    def create_provider(self, provider_type: str, config: Dict[str, Any]) -> BaseProvider:
         """
         Create a provider instance of the specified type.
         

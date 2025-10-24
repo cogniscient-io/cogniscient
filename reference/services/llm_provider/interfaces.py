@@ -1,7 +1,7 @@
 """
 Content Generator Interface for GCS Kernel LLM Provider Backend.
 
-This module defines the core interfaces following Qwen Code's OpenAIContentGenerator patterns.
+This module defines the core interfaces following ContentGenerator patterns.
 """
 
 from abc import ABC, abstractmethod
@@ -11,12 +11,12 @@ import asyncio
 
 class ContentGenerator(Protocol):
     """
-    Protocol for AI content generation providers following Qwen Code patterns.
+    Protocol for AI content generation providers.
     """
     
     async def generate_content(self, request: Dict[str, Any], user_prompt_id: str) -> Any:
         """
-        Generate content based on the provided request following Qwen Code patterns.
+        Generate content based on the provided request.
         
         Args:
             request: The content generation request with prompt and context
@@ -29,7 +29,7 @@ class ContentGenerator(Protocol):
     
     async def generate_content_stream(self, request: Dict[str, Any], user_prompt_id: str) -> AsyncIterator[Any]:
         """
-        Generate content in streaming mode following Qwen Code patterns.
+        Generate content in streaming mode following.
         
         Args:
             request: The content generation request with prompt and context
@@ -42,7 +42,7 @@ class ContentGenerator(Protocol):
     
     async def count_tokens(self, request: Dict[str, Any]) -> Dict[str, int]:
         """
-        Count the number of tokens in the provided request following Qwen Code patterns.
+        Count the number of tokens in the provided request.
         
         Args:
             request: The request to count tokens for
@@ -54,7 +54,7 @@ class ContentGenerator(Protocol):
         
     async def embed_content(self, request: Dict[str, Any]) -> Any:
         """
-        Generate embeddings for the provided content following Qwen Code patterns.
+        Generate embeddings for the provided content following.
         
         Args:
             request: The embedding request with content
@@ -67,13 +67,13 @@ class ContentGenerator(Protocol):
 
 class OpenAICompatibleProvider(ABC):
     """
-    Abstract base class for OpenAI-compatible providers following Qwen Code patterns.
+    Abstract base class for OpenAI-compatible providers.
     """
     
     @abstractmethod
     def build_headers(self) -> Dict[str, str]:
         """
-        Build headers for API requests following Qwen Code patterns.
+        Build headers for API requests.
         
         Returns:
             Dictionary of headers to include in API requests
@@ -83,7 +83,7 @@ class OpenAICompatibleProvider(ABC):
     @abstractmethod
     def build_client(self):
         """
-        Build the API client following Qwen Code patterns.
+        Build the API client.
         
         Returns:
             Initialized API client instance

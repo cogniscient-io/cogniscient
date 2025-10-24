@@ -45,11 +45,21 @@ class GCSKernel:
         self.logger = EventLogger()
         self.mcp_client = MCPClient()
         
+        # Initialize AI orchestrator
+        from services.ai_orchestrator import AIOrchestratorService
+        from services.llm_provider.content_generator import LLMContentGenerator
+        from services.config import settings
+        # Create content generator using settings
+        content_generator = LLMContentGenerator()
+        self.ai_orchestrator = AIOrchestratorService(self.mcp_client, content_generator)
+        
         # Initialize with resource quotas
         self.resource_quota = ResourceQuota(**self.config.get('resource_quota', {}))
         
         # Set up shutdown flag
         self._running = False
+        # Set up initialization flag
+        self._fully_initialized = False
 
     async def run(self):
         """
@@ -105,6 +115,11 @@ class GCSKernel:
         
         # Initialize MCP client
         await self.mcp_client.initialize()
+        
+        # AI orchestrator is initialized with content generator in constructor
+        
+        # Set a readiness flag that works across async/sync boundaries
+        self._fully_initialized = True
 
     async def _cleanup_components(self):
         """
@@ -129,3 +144,28 @@ class GCSKernel:
             True if the kernel is running, False otherwise
         """
         return self._running
+
+    async def send_user_prompt(self, prompt: str) -> str:
+        """
+        Handle a user prompt through the AI orchestrator.
+        
+        Args:
+            prompt: The user's input prompt
+            
+        Returns:
+            The AI response string
+        """
+        return await self.ai_orchestrator.handle_ai_interaction(prompt)
+
+    async def stream_user_prompt(self, prompt: str):
+        """
+        Stream a user prompt through the AI orchestrator.
+        
+        Args:
+            prompt: The user's input prompt
+            
+        Yields:
+            Partial response strings as they become available
+        """
+        async for chunk in self.ai_orchestrator.stream_ai_interaction(prompt):
+            yield chunk

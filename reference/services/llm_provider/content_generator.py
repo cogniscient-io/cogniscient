@@ -1,47 +1,42 @@
 """
-OpenAI Content Generator for GCS Kernel LLM Provider Backend.
+LLM Content Generator for GCS Kernel LLM Provider Backend.
 
-This module implements the OpenAI content generator that extends the base generator
+This module implements the LLM content generator that extends the base generator
 and follows Qwen Code patterns for content generation, using Pydantic Settings.
+It supports multiple LLM providers through the provider factory.
 """
 
 from typing import Any, Dict, AsyncIterator
 from gcs_kernel.models import ToolResult
-from services.llm_provider.config import llm_settings
+from services.config import settings
 from services.llm_provider.base_generator import BaseContentGenerator
 from services.llm_provider.pipeline import ContentGenerationPipeline
 from services.llm_provider.providers.provider_factory import ProviderFactory
 
 
-class OpenAIContentGenerator(BaseContentGenerator):
+class LLMContentGenerator(BaseContentGenerator):
     """
-    OpenAI content generator that extends the base generator and follows 
+    LLM-specific content generator that extends the base generator and follows 
     Qwen Code patterns for content generation, using Pydantic Settings.
+    Supports multiple LLM providers through the provider factory.
     """
     
     def __init__(self):
-        # Use the Pydantic settings to access settings
-        self.api_key = llm_settings.api_key
+        # Get settings from config service
+        llm_config = settings
+        
+        # Use the settings to access settings
+        self.api_key = llm_config.llm_api_key
         if not self.api_key:
             raise ValueError("API key is required but not provided in environment variables")
-        self.model = llm_settings.model
-        self.base_url = llm_settings.base_url
-        self.timeout = llm_settings.timeout
-        self.max_retries = llm_settings.max_retries
-        
-        # Initialize base class with config values
-        config_for_base = {
-            "api_key": self.api_key,
-            "model": self.model,
-            "base_url": self.base_url,
-            "timeout": self.timeout,
-            "max_retries": self.max_retries
-        }
-        super().__init__(config_for_base)
+        self.model = llm_config.llm_model
+        self.base_url = llm_config.llm_base_url
+        self.timeout = llm_config.llm_timeout
+        self.max_retries = llm_config.llm_max_retries
         
         # Initialize provider components
         self.provider_factory = ProviderFactory()
-        provider_type = llm_settings.provider_type
+        provider_type = llm_config.llm_provider_type
         provider_config = {
             "api_key": self.api_key,
             "model": self.model,
@@ -64,11 +59,12 @@ class OpenAIContentGenerator(BaseContentGenerator):
             The generated response with potential tool calls
         """
         # Prepare the request in the format expected by the pipeline
+        llm_config = settings
         request = {
             "prompt": prompt,
             "model": self.model,
-            "temperature": llm_settings.temperature,
-            "max_tokens": llm_settings.max_tokens
+            "temperature": llm_config.llm_temperature,
+            "max_tokens": llm_config.llm_max_tokens
         }
         
         # Generate content using the pipeline
@@ -116,11 +112,12 @@ class OpenAIContentGenerator(BaseContentGenerator):
         Yields:
             Partial response strings as they become available
         """
+        llm_config = settings
         request = {
             "prompt": prompt,
             "model": self.model,
-            "temperature": llm_settings.temperature,
-            "max_tokens": llm_settings.max_tokens
+            "temperature": llm_config.llm_temperature,
+            "max_tokens": llm_config.llm_max_tokens
         }
         
         async for chunk in self.generate_content_stream(request, user_prompt_id=f"stream_{id(prompt)}"):

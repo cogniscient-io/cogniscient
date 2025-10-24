@@ -2,46 +2,38 @@
 AI Orchestrator Service implementation for the GCS Kernel.
 
 This module implements the AIOrchestratorService which manages AI interactions,
-session management, and provider abstraction. It now uses the abstract
-content generator backend following OpenAI-compatible patterns with Pydantic Settings.
+session management, and provider abstraction. The content generator must be
+provided separately to maintain clean separation of concerns.
 """
 
 from typing import Any
 from gcs_kernel.mcp.client import MCPClient
 from gcs_kernel.models import ToolResult
 from services.llm_provider.base_generator import BaseContentGenerator
-from services.llm_provider.content_generator import OpenAIContentGenerator
 
 
 class AIOrchestratorService:
     """
     AI Orchestrator Service that manages AI interactions and conversation session state.
-    Uses any content generator that extends BaseContentGenerator.
+    Requires a content generator that extends BaseContentGenerator to be provided externally.
     """
     
-    def __init__(self, kernel_client: MCPClient):
+    def __init__(self, kernel_client: MCPClient, content_generator: BaseContentGenerator = None):
         """
-        Initialize the AI orchestrator with a kernel client.
+        Initialize the AI orchestrator with a kernel client and optional content generator.
         
         Args:
             kernel_client: MCP client for communicating with the kernel server
+            content_generator: Optional content generator. If not provided, must be set 
+                              before using the orchestrator
         """
         # Accept MCP client to communicate with kernel server
         self.kernel_client = kernel_client
-        self.content_generator = None  # To be initialized with specific provider
+        self.content_generator = content_generator
 
-    async def initialize_with_config(self):
+    def set_content_generator(self, provider: BaseContentGenerator):
         """
-        Initialize the orchestrator with Pydantic settings.
-        Creates and configures the appropriate content generator using settings.
-        """
-        # Create the appropriate content generator based on Pydantic settings
-        # For now, we're using the OpenAI provider directly with its settings
-        self.content_generator = OpenAIContentGenerator()
-
-    async def initialize_with_provider(self, provider: BaseContentGenerator):
-        """
-        Initialize the orchestrator with a specific content generator provider.
+        Set the content generator for this orchestrator.
         The provider should extend BaseContentGenerator.
         
         Args:

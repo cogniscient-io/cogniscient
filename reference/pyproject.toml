@@ -48,4 +48,4 @@ where = ["."]
 include = ["gcs_kernel*", "services*", "ui*"]
 
 [project.scripts]
-gcs-kernel = "main:main"
+gcs = "ui.cli.cli:main"

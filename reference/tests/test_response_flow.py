@@ -3,6 +3,7 @@
 Test script to trace the complete response flow from kernel to CLI.
 """
 import asyncio
+import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from gcs_kernel.kernel import GCSKernel
 from gcs_kernel.models import ToolResult
@@ -10,6 +11,7 @@ from services.llm_provider.base_generator import BaseContentGenerator
 from services.llm_provider.tool_call_processor import ToolCall
 
 
+@pytest.mark.asyncio
 async def test_complete_flow_with_tracing():
     """Test the complete flow from kernel to CLI with detailed tracing."""
     print("Testing complete response flow with tracing...")
@@ -103,6 +105,7 @@ async def test_complete_flow_with_tracing():
         await kernel._cleanup_components()
 
 
+@pytest.mark.asyncio
 async def test_kernel_api_flow():
     """Test the flow through the kernel API to CLI."""
     print("\n" + "="*50)

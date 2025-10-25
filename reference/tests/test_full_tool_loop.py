@@ -3,11 +3,13 @@
 Test script to verify the full tool calling loop works with the orchestrator.
 """
 import asyncio
+import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from gcs_kernel.kernel import GCSKernel
 from gcs_kernel.models import ToolResult
 
 
+@pytest.mark.asyncio
 async def test_full_tool_calling_loop():
     """Test the full tool calling loop including validation and execution."""
     print("Testing full tool calling loop...")
@@ -88,6 +90,7 @@ async def test_full_tool_calling_loop():
         await kernel._cleanup_components()
 
 
+@pytest.mark.asyncio
 async def test_with_original_generator():
     """Test with the original content generator to see if the issue is elsewhere."""
     print("\nTesting with original LLM provider setup...")

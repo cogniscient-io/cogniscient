@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
-Test script to verify the AI orchestrator in the GCS Kernel.
+Test script to verify the AI orchestrator in the GCS Kernel with new architecture.
 """
 import asyncio
+import pytest
 from gcs_kernel.kernel import GCSKernel
 from gcs_kernel.mcp.client import MCPClient
-from gcs_kernel.models import MCPConfig
+from gcs_kernel.models import MCPConfig, ToolResult
 
 
+@pytest.mark.asyncio
 async def test_ai_orchestrator():
     """Test the AI orchestrator directly."""
     print("Testing AI orchestrator...")
@@ -37,6 +39,7 @@ async def test_ai_orchestrator():
         await kernel._cleanup_components()
 
 
+@pytest.mark.asyncio
 async def test_kernel_with_mocked_llm():
     """Test kernel with a mock LLM to isolate the issue."""
     print("\nTesting kernel with mocked LLM...")
@@ -44,30 +47,32 @@ async def test_kernel_with_mocked_llm():
     # Create kernel 
     kernel = GCSKernel()
     
-    # Temporarily replace the AI orchestrator with one that has a mock content generator
+    # Initialize components
+    await kernel._initialize_components()
+    
+    # Temporarily replace the content generator with a mock
     from unittest.mock import AsyncMock, MagicMock
     from services.llm_provider.base_generator import BaseContentGenerator
-    from services.ai_orchestrator.orchestrator_service import AIOrchestratorService
+    from services.llm_provider.tool_call_processor import ToolCall
     
     class MockContentGenerator(BaseContentGenerator):
         async def generate_response(self, prompt: str, system_context: str = None, tools: list = None):
-            from services.llm_provider.tool_call_processor import ToolCall
-            
             # For specific prompts, return tool calls
             if "system status" in prompt.lower() or "date" in prompt.lower():
                 # Create a mock tool call
+                
                 class MockResponse:
                     def __init__(self, content, tool_calls):
                         self.content = content
                         self.tool_calls = tool_calls
-                
+
                 class MockToolCall:
                     def __init__(self):
                         self.name = "shell_command"
                         self.arguments = {"command": "date"}
                         self.parameters = {"command": "date"}
                         self.id = "call_123"
-                
+
                 return MockResponse(
                     content="I'll get the system date for you.",
                     tool_calls=[MockToolCall()]
@@ -77,17 +82,18 @@ async def test_kernel_with_mocked_llm():
                     def __init__(self, content, tool_calls):
                         self.content = content
                         self.tool_calls = []
-                
+
                 return MockResponse(
                     content="Hello! How can I assist you today?",
                     tool_calls=[]
                 )
         
-        async def process_tool_result(self, tool_result):
+        async def process_tool_result(self, tool_result, conversation_history=None):
             class MockResponse:
-                def __init__(self, content):
+                def __init__(self, content, tool_calls=None):
                     self.content = content
-            
+                    self.tool_calls = tool_calls or []
+
             return MockResponse(content=f"Processed tool result: {tool_result.llm_content}")
         
         async def stream_response(self, prompt: str, system_context: str = None, tools: list = None):
@@ -102,15 +108,49 @@ async def test_kernel_with_mocked_llm():
         print("Sending 'what is the date?' with mocked LLM...")
         response = await kernel.send_user_prompt("What is the date?")
         print(f"Response with mocked LLM: {response}")
+        
+        print("Sending 'hello' with mocked LLM...")
+        response = await kernel.send_user_prompt("Hello")
+        print(f"Response with mocked LLM: {response}")
+        
+    finally:
+        await kernel._cleanup_components()
+
+
+@pytest.mark.asyncio
+async def test_turn_based_interaction():
+    """Test the new turn-based interaction pattern."""
+    print("\nTesting turn-based interaction...")
+    
+    # Create kernel 
+    kernel = GCSKernel()
+    
+    # Initialize components
+    await kernel._initialize_components()
+    
+    # Test with the turn-based approach
+    try:
+        print("Testing streaming interaction...")
+        response_chunks = []
+        
+        async for chunk in kernel.ai_orchestrator.stream_ai_interaction("Hello"):
+            response_chunks.append(chunk)
+            
+        full_response = "".join(response_chunks)
+        print(f"Streaming response: {full_response}")
+        
     finally:
         await kernel._cleanup_components()
 
 
 if __name__ == "__main__":
-    print("Testing GCS Kernel AI orchestrator...")
+    print("Testing GCS Kernel AI orchestrator with new architecture...")
     
     # Test with real components
     asyncio.run(test_ai_orchestrator())
     
     # Test with mocked LLM to isolate issues
     asyncio.run(test_kernel_with_mocked_llm())
+    
+    # Test turn-based interaction
+    asyncio.run(test_turn_based_interaction())

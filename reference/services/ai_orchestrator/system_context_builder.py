@@ -6,6 +6,7 @@ system-level context for AI interactions, including available tools,
 capabilities, and relevant context information.
 """
 
+import asyncio
 from typing import Dict, Any, List
 from gcs_kernel.mcp.client import MCPClient
 
@@ -86,42 +87,45 @@ class SystemContextBuilder:
         available_tools = await self.get_available_tools()
         
         # Start building the system context
-        system_context = "You are an AI assistant with specific capabilities in the GCS Kernel system.\n\n"
-        
         if available_tools:
-            system_context += "Available tools:\n\n"
+            # Include explicit tool names in the initial system message to make them prominent
+            tool_names = ', '.join([tool_name for tool_name in available_tools.keys()])
+            system_context = f"You are an AI assistant with specific capabilities in the GCS Kernel system. You have access to these tools: {tool_names}.\\n\\n"
+            
+            system_context += "Available tools:\\n\\n"
             
             for tool_name, tool_info in available_tools.items():
                 description = tool_info.get('description', 'No description')
                 schema = tool_info.get('parameter_schema', {})
-                system_context += f"- {tool_name}: {description}\n"
+                system_context += f"- {tool_name}: {description}\\n"
                 if schema:
-                    system_context += f"  Parameters: {schema}\n"
-                system_context += "\n"
+                    system_context += f"  Parameters: {schema}\\n"
+                system_context += "\\n"
         else:
-            system_context += "No tools are currently available.\n\n"
+            system_context = "You are an AI assistant with specific capabilities in the GCS Kernel system.\\n\\n"
+            system_context += "No tools are currently available.\\n\\n"
         
         # Add instructions for using tools
         system_context += (
-            "When you need to use a tool, respond in JSON format with a tool_call object:\n"
-            "{\n"
-            '  "name": "tool_name",\n'
-            '  "parameters": {\n'
-            '    "param1": "value1",\n'
-            '    "param2": "value2"\n'
-            "  }\n"
-            "}\n\n"
+            "When you need to use a tool, respond in JSON format with a tool_call object:\\n"
+            "{\\n"
+            '  "name": "tool_name",\\n'
+            '  "arguments": {\\n'
+            '    "param1": "value1",\\n'
+            '    "param2": "value2"\\n'
+            "  }\\n"
+            "}\\n\\n"
         )
         
         system_context += (
             "Only use tools when necessary to fulfill the user's request. "
             "If a tool can help answer the user's question or perform a task, "
-            "use it appropriately. Otherwise, respond directly to the user.\n\n"
+            "use it appropriately. Otherwise, respond directly to the user.\\n\\n"
         )
         
         # Add any additional context if provided
         if additional_context:
-            system_context += f"{additional_context}\n\n"
+            system_context += f"{additional_context}\\n\\n"
         
         # Add general guidance
         system_context += (

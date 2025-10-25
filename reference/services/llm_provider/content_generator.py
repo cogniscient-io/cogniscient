@@ -81,20 +81,28 @@ class LLMContentGenerator(BaseContentGenerator):
         response = await self.generate_content(request, user_prompt_id=f"prompt_{id(prompt)}")
         
         # Use the converter to properly format the response
-        try:
-            formatted_response = self.converter.convert_provider_response_to_kernel(response)
-        except Exception:
-            # If converter fails (e.g., in mock scenarios), use fallback format
-            # This handles cases where the response format doesn't match expected structure
-            formatted_response = {
-                "content": response.get("content", "") if isinstance(response, dict) else str(response),
-                "tool_calls": response.get("tool_calls", []) if isinstance(response, dict) else []
-            }
+        # But first check if the response is already in the expected kernel format (from pipeline)
+        if isinstance(response, dict) and "content" in response and "tool_calls" in response:
+            # The response is already in the expected format (likely from pipeline)
+            formatted_response = response
+        else:
+            try:
+                formatted_response = self.converter.convert_provider_response_to_kernel(response)
+            except Exception:
+                # If converter fails (e.g., in mock scenarios), use fallback format
+                # This handles cases where the response format doesn't match expected structure
+                formatted_response = {
+                    "content": response.get("content", "") if isinstance(response, dict) else str(response),
+                    "tool_calls": response.get("tool_calls", []) if isinstance(response, dict) else []
+                }
         
         # Additional processing: Check if the LLM returned JSON tool calls in the content
         # and extract them if the tool_calls field is empty
         content = formatted_response.get("content", "")
         tool_calls = formatted_response.get("tool_calls", [])
+        
+        # Debug: Print what we got from the pipeline before processing
+        print(f"DEBUG: Content generator received from pipeline - content: {repr(content)}, tool_calls: {tool_calls}")
         
         # If no tool calls were extracted by the converter but content might contain them
         if not tool_calls and content.strip():
@@ -114,11 +122,30 @@ class LLMContentGenerator(BaseContentGenerator):
         for tool_call in tool_calls:
             if isinstance(tool_call, dict):
                 # Convert dictionary to ToolCall object
-                processed_tool_calls.append(ToolCall(
-                    id=tool_call.get("id", ""),
-                    name=tool_call.get("name", ""),
-                    arguments=tool_call.get("arguments", {})
-                ))
+                # Handle different possible structures of tool call dictionaries
+                if "function" in tool_call:  # OpenAI-style structure
+                    function_data = tool_call.get("function", {})
+                    # Parse arguments string to dictionary if needed
+                    arguments = function_data.get("arguments", {})
+                    if isinstance(arguments, str):
+                        import json
+                        try:
+                            arguments = json.loads(arguments)
+                        except json.JSONDecodeError:
+                            # If JSON parsing fails, keep original string value
+                            arguments = function_data.get("arguments", {})
+                    
+                    processed_tool_calls.append(ToolCall(
+                        id=tool_call.get("id", ""),
+                        name=function_data.get("name", ""),
+                        arguments=arguments
+                    ))
+                else:  # Direct structure
+                    processed_tool_calls.append(ToolCall(
+                        id=tool_call.get("id", ""),
+                        name=tool_call.get("name", ""),
+                        arguments=tool_call.get("arguments", {})
+                    ))
             else:
                 # Already a ToolCall object
                 processed_tool_calls.append(tool_call)
@@ -242,19 +269,27 @@ class LLMContentGenerator(BaseContentGenerator):
         response = await self.generate_content(request, user_prompt_id=f"tool_result_{id(tool_result)}")
         
         # Use the converter to properly format the response
-        try:
-            formatted_response = self.converter.convert_provider_response_to_kernel(response)
-        except Exception:
-            # If converter fails (e.g., in mock scenarios), use fallback format
-            formatted_response = {
-                "content": response.get("content", "") if isinstance(response, dict) else str(response),
-                "tool_calls": response.get("tool_calls", []) if isinstance(response, dict) else []
-            }
+        # But first check if the response is already in the expected kernel format (from pipeline)
+        if isinstance(response, dict) and "content" in response and "tool_calls" in response:
+            # The response is already in the expected format (likely from pipeline)
+            formatted_response = response
+        else:
+            try:
+                formatted_response = self.converter.convert_provider_response_to_kernel(response)
+            except Exception:
+                # If converter fails (e.g., in mock scenarios), use fallback format
+                formatted_response = {
+                    "content": response.get("content", "") if isinstance(response, dict) else str(response),
+                    "tool_calls": response.get("tool_calls", []) if isinstance(response, dict) else []
+                }
         
         # Additional processing: Check if the LLM returned JSON tool calls in the content
         # and extract them if the tool_calls field is empty
         content = formatted_response.get("content", "")
         tool_calls = formatted_response.get("tool_calls", [])
+        
+        # Debug: Print what we got from the pipeline before processing
+        print(f"DEBUG: Content generator received from pipeline in process_tool_result - content: {repr(content)}, tool_calls: {tool_calls}")
         
         # If no tool calls were extracted by the converter but content might contain them
         if not tool_calls and content.strip():
@@ -274,11 +309,30 @@ class LLMContentGenerator(BaseContentGenerator):
         for tool_call in tool_calls:
             if isinstance(tool_call, dict):
                 # Convert dictionary to ToolCall object
-                processed_tool_calls.append(ToolCall(
-                    id=tool_call.get("id", ""),
-                    name=tool_call.get("name", ""),
-                    arguments=tool_call.get("arguments", {})
-                ))
+                # Handle different possible structures of tool call dictionaries
+                if "function" in tool_call:  # OpenAI-style structure
+                    function_data = tool_call.get("function", {})
+                    # Parse arguments string to dictionary if needed
+                    arguments = function_data.get("arguments", {})
+                    if isinstance(arguments, str):
+                        import json
+                        try:
+                            arguments = json.loads(arguments)
+                        except json.JSONDecodeError:
+                            # If JSON parsing fails, keep original string value
+                            arguments = function_data.get("arguments", {})
+                    
+                    processed_tool_calls.append(ToolCall(
+                        id=tool_call.get("id", ""),
+                        name=function_data.get("name", ""),
+                        arguments=arguments
+                    ))
+                else:  # Direct structure
+                    processed_tool_calls.append(ToolCall(
+                        id=tool_call.get("id", ""),
+                        name=tool_call.get("name", ""),
+                        arguments=tool_call.get("arguments", {})
+                    ))
             else:
                 # Already a ToolCall object
                 processed_tool_calls.append(tool_call)

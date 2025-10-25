@@ -45,13 +45,23 @@ class GCSKernel:
         self.logger = EventLogger()
         self.mcp_client = MCPClient()
         
-        # Initialize AI orchestrator
+        # Initialize AI orchestrator with direct kernel access for simplified architecture
         from services.ai_orchestrator.orchestrator_service import AIOrchestratorService
         from services.llm_provider.content_generator import LLMContentGenerator
         from services.config import settings
         # Create content generator using settings
         content_generator = LLMContentGenerator()
-        self.ai_orchestrator = AIOrchestratorService(self.mcp_client, content_generator, kernel=self)
+        # Initialize orchestrator as the primary AI interaction handler
+        self.ai_orchestrator = AIOrchestratorService(
+            kernel_client=self.mcp_client,
+            content_generator=content_generator,
+            kernel=self
+        )
+        # Set kernel services for direct access by orchestrator
+        self.ai_orchestrator.set_kernel_services(
+            registry=self.registry,
+            scheduler=self.scheduler
+        )
         
         # Initialize with resource quotas
         self.resource_quota = ResourceQuota(**self.config.get('resource_quota', {}))

@@ -83,11 +83,28 @@ class ContentConverter:
         # Process tool calls if present
         if "tool_calls" in message:
             for tool_call in message["tool_calls"]:
-                result["tool_calls"].append({
-                    "id": tool_call.get("id"),
-                    "name": tool_call.get("function", {}).get("name"),
-                    "arguments": json.loads(tool_call.get("function", {}).get("arguments", "{}"))
-                })
+                # Get the tool name
+                tool_name = tool_call.get("function", {}).get("name")
+                
+                # Only include tool calls with valid names (non-empty)
+                if tool_name and tool_name.strip():
+                    # For the kernel, arguments should be parsed from JSON string to object
+                    # but in the response back to kernel, keep as string for proper format
+                    arguments_str = tool_call.get("function", {}).get("arguments", "{}")
+                    arguments_obj = arguments_str
+                    try:
+                        # Try to parse if it's a JSON string, otherwise keep as is
+                        if isinstance(arguments_str, str):
+                            arguments_obj = json.loads(arguments_str)
+                    except json.JSONDecodeError:
+                        # If parsing fails, keep the original value
+                        pass
+                    
+                    result["tool_calls"].append({
+                        "id": tool_call.get("id"),
+                        "name": tool_name,
+                        "arguments": arguments_obj
+                    })
         
         return result
 

@@ -10,7 +10,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 
 from gcs_kernel.kernel import GCSKernel
-from services.ai_orchestrator import AIOrchestratorService
+from services.ai_orchestrator.orchestrator_service import AIOrchestratorService
 from services.llm_provider.content_generator import LLMContentGenerator
 from services.llm_provider.providers.mock_provider import MockProvider
 from services.config import settings
@@ -96,6 +96,9 @@ async def test_kernel_to_llm_hello_world():
                 self.provider = mock_provider
                 from services.llm_provider.pipeline import ContentGenerationPipeline
                 self.pipeline = ContentGenerationPipeline(self.provider)
+                # Also initialize the converter
+                from services.llm_provider.converter import ContentConverter
+                self.converter = ContentConverter(self.model)
         
         # Initialize the orchestrator with the mock content generator
         ai_orchestrator.set_content_generator(MockContentGenerator())
@@ -157,6 +160,9 @@ async def test_kernel_llm_streaming_hello_world():
                 self.provider = mock_provider
                 from services.llm_provider.pipeline import ContentGenerationPipeline
                 self.pipeline = ContentGenerationPipeline(self.provider)
+                # Also initialize the converter
+                from services.llm_provider.converter import ContentConverter
+                self.converter = ContentConverter(self.model)
         
         # Initialize the orchestrator with the mock content generator
         ai_orchestrator.set_content_generator(MockContentGenerator())

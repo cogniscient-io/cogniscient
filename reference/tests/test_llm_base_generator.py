@@ -37,7 +37,7 @@ class MockContentGenerator(BaseContentGenerator):
             tool_calls=[]
         )
     
-    async def process_tool_result(self, tool_result: Any) -> Any:
+    async def process_tool_result(self, tool_result: Any, conversation_history: list = None) -> Any:
         """
         Mock implementation of process_tool_result.
         """

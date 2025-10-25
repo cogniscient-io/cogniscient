@@ -47,13 +47,15 @@ class LLMContentGenerator(BaseContentGenerator):
         self.provider = self.provider_factory.create_provider(provider_type, provider_config)
         self.pipeline = ContentGenerationPipeline(self.provider)
     
-    async def generate_response(self, prompt: str) -> Any:
+    async def generate_response(self, prompt: str, system_context: str = None, tools: list = None) -> Any:
         """
         Generate a response to the given prompt with potential tool calls.
         Implements the interface expected by the ai_orchestrator.
         
         Args:
             prompt: The input prompt
+            system_context: Optional system context/prompt to provide to the LLM
+            tools: Optional list of tools to provide to the LLM for native function calling
             
         Returns:
             The generated response with potential tool calls
@@ -67,10 +69,60 @@ class LLMContentGenerator(BaseContentGenerator):
             "max_tokens": llm_config.llm_max_tokens
         }
         
+        # Add system context if provided
+        if system_context:
+            request["system_prompt"] = system_context
+        
+        # Add tools if provided
+        if tools:
+            request["tools"] = tools
+        
         # Generate content using the pipeline
         response = await self.generate_content(request, user_prompt_id=f"prompt_{id(prompt)}")
         
+        # Use the converter to properly format the response
+        try:
+            formatted_response = self.converter.convert_provider_response_to_kernel(response)
+        except Exception:
+            # If converter fails (e.g., in mock scenarios), use fallback format
+            # This handles cases where the response format doesn't match expected structure
+            formatted_response = {
+                "content": response.get("content", "") if isinstance(response, dict) else str(response),
+                "tool_calls": response.get("tool_calls", []) if isinstance(response, dict) else []
+            }
+        
+        # Additional processing: Check if the LLM returned JSON tool calls in the content
+        # and extract them if the tool_calls field is empty
+        content = formatted_response.get("content", "")
+        tool_calls = formatted_response.get("tool_calls", [])
+        
+        # If no tool calls were extracted by the converter but content might contain them
+        if not tool_calls and content.strip():
+            extracted_tool_calls = self._extract_tool_calls_from_content(content)
+            if extracted_tool_calls:
+                # Update tool calls and clean content
+                tool_calls = extracted_tool_calls
+                # Remove tool call JSON from content
+                cleaned_content = self._remove_tool_calls_from_content(content)
+                content = cleaned_content
+        
         # Convert to the expected response format
+        # Also convert tool call dictionaries to proper ToolCall objects if they aren't already
+        from .tool_call_processor import ToolCall
+        
+        processed_tool_calls = []
+        for tool_call in tool_calls:
+            if isinstance(tool_call, dict):
+                # Convert dictionary to ToolCall object
+                processed_tool_calls.append(ToolCall(
+                    id=tool_call.get("id", ""),
+                    name=tool_call.get("name", ""),
+                    arguments=tool_call.get("arguments", {})
+                ))
+            else:
+                # Already a ToolCall object
+                processed_tool_calls.append(tool_call)
+        
         class ResponseObj:
             def __init__(self, content, tool_calls):
                 self.content = content
@@ -78,36 +130,179 @@ class LLMContentGenerator(BaseContentGenerator):
                 self.name = "openai_response"  # For attribute access
         
         return ResponseObj(
-            content=response.get("content", ""),
-            tool_calls=response.get("tool_calls", [])
+            content=content,
+            tool_calls=processed_tool_calls
         )
     
-    async def process_tool_result(self, tool_result: ToolResult) -> Any:
+    def _extract_tool_calls_from_content(self, content: str):
+        """
+        Extract potential tool calls from content that might include JSON objects.
+        
+        Args:
+            content: The content string that might contain JSON tool calls
+        Returns:
+            List of extracted tool call objects, or empty list if none found
+        """
+        import re
+        import json
+        import logging
+        
+        # More comprehensive regex pattern to match JSON objects representing tool calls
+        # Handles multiple JSON objects in the same content
+        tool_call_pattern = r'\{\s*"name"\s*:\s*"[^"]+"\s*,\s*"parameters"\s*:\s*\{(?:[^{}]|{[^{}]*})*\}\s*\}'
+        
+        # Find all occurrences of potential tool call JSON
+        potential_tool_calls = re.findall(tool_call_pattern, content)
+        
+        extracted_calls = []
+        
+        for potential_call in potential_tool_calls:
+            try:
+                tool_call = json.loads(potential_call.strip())
+                # Validate that it has the expected structure
+                if "name" in tool_call and "parameters" in tool_call:
+                    extracted_calls.append(tool_call)
+            except json.JSONDecodeError as e:
+                logging.debug(f"Failed to parse potential tool call JSON: {potential_call}, Error: {e}")
+                # Skip invalid JSON
+                continue
+        
+        return extracted_calls
+    
+    def _remove_tool_calls_from_content(self, content: str) -> str:
+        """
+        Remove JSON tool calls from content string.
+        
+        Args:
+            content: The content string that might contain JSON tool calls
+        Returns:
+            Content string with JSON tool calls removed
+        """
+        import re
+        
+        # Pattern to match tool calls and remove them
+        tool_call_pattern = r'\{\s*"name"\s*:\s*"[^"]+"\s*,\s*"parameters"\s*:\s*\{[^}]*\}\s*\}'
+        
+        # Remove all tool call JSON objects from the content
+        cleaned_content = re.sub(tool_call_pattern, '', content).strip()
+        
+        # Also remove any lines that are just whitespace or braces
+        lines = cleaned_content.split('\n')
+        cleaned_lines = [line for line in lines if line.strip() and not line.strip() in ['{', '}', ''] and not line.strip().startswith('//')]
+        
+        return '\n'.join(cleaned_lines).strip()
+    
+    async def process_tool_result(self, tool_result: ToolResult, conversation_history: list = None) -> Any:
         """
         Process a tool result and continue the conversation.
         Implements the interface expected by the ai_orchestrator.
         
         Args:
             tool_result: The result from a tool execution
+            conversation_history: The conversation history to maintain context
             
         Returns:
             The updated response after processing the tool result
         """
-        # For now, return a simple response indicating the tool was processed
-        # In a full implementation, this would send the tool result back to the LLM
-        class ResponseObj:
-            def __init__(self, content):
-                self.content = content
+        # Prepare the request in the format expected by the pipeline
+        # This should send the tool result back to the LLM to continue the conversation
+        llm_config = settings
         
-        return ResponseObj(content=f"Processed tool result: {tool_result.return_display}")
+        # Use the conversation history if provided, otherwise create minimal messages array
+        if conversation_history:
+            # Create messages array from the conversation history
+            messages = conversation_history.copy()  # Use existing conversation
+            
+            # Add the tool result as a new message
+            messages.append({
+                "role": "tool",
+                "content": tool_result.llm_content,
+                "tool_call_id": tool_result.tool_name  # Using tool name as identifier if no specific ID is available
+            })
+        else:
+            # Create a minimal messages array with just the tool result
+            # This is a fallback when conversation history isn't provided
+            messages = [
+                {
+                    "role": "tool",
+                    "content": tool_result.llm_content,
+                    "tool_call_id": tool_result.tool_name
+                }
+            ]
+        
+        # Create the request with the full conversation context
+        request = {
+            "messages": messages,
+            "model": self.model,
+            "temperature": llm_config.llm_temperature,
+            "max_tokens": llm_config.llm_max_tokens
+        }
+        
+        # Generate content using the pipeline with the full conversation context
+        response = await self.generate_content(request, user_prompt_id=f"tool_result_{id(tool_result)}")
+        
+        # Use the converter to properly format the response
+        try:
+            formatted_response = self.converter.convert_provider_response_to_kernel(response)
+        except Exception:
+            # If converter fails (e.g., in mock scenarios), use fallback format
+            formatted_response = {
+                "content": response.get("content", "") if isinstance(response, dict) else str(response),
+                "tool_calls": response.get("tool_calls", []) if isinstance(response, dict) else []
+            }
+        
+        # Additional processing: Check if the LLM returned JSON tool calls in the content
+        # and extract them if the tool_calls field is empty
+        content = formatted_response.get("content", "")
+        tool_calls = formatted_response.get("tool_calls", [])
+        
+        # If no tool calls were extracted by the converter but content might contain them
+        if not tool_calls and content.strip():
+            extracted_tool_calls = self._extract_tool_calls_from_content(content)
+            if extracted_tool_calls:
+                # Update tool calls and clean content
+                tool_calls = extracted_tool_calls
+                # Remove tool call JSON from content
+                cleaned_content = self._remove_tool_calls_from_content(content)
+                content = cleaned_content
+        
+        # Convert to the expected response format
+        # Also convert tool call dictionaries to proper ToolCall objects if they aren't already
+        from .tool_call_processor import ToolCall
+        
+        processed_tool_calls = []
+        for tool_call in tool_calls:
+            if isinstance(tool_call, dict):
+                # Convert dictionary to ToolCall object
+                processed_tool_calls.append(ToolCall(
+                    id=tool_call.get("id", ""),
+                    name=tool_call.get("name", ""),
+                    arguments=tool_call.get("arguments", {})
+                ))
+            else:
+                # Already a ToolCall object
+                processed_tool_calls.append(tool_call)
+        
+        class ResponseObj:
+            def __init__(self, content, tool_calls):
+                self.content = content
+                self.tool_calls = tool_calls if tool_calls else []
+                self.name = "openai_response"  # For attribute access
+        
+        return ResponseObj(
+            content=content,
+            tool_calls=processed_tool_calls
+        )
     
-    async def stream_response(self, prompt: str) -> AsyncIterator[str]:
+    async def stream_response(self, prompt: str, system_context: str = None, tools: list = None) -> AsyncIterator[str]:
         """
         Stream a response to the given prompt.
         Implements the interface expected by the ai_orchestrator.
         
         Args:
             prompt: The input prompt
+            system_context: Optional system context/prompt to provide to the LLM
+            tools: Optional list of tools to provide to the LLM for native function calling
             
         Yields:
             Partial response strings as they become available
@@ -119,6 +314,14 @@ class LLMContentGenerator(BaseContentGenerator):
             "temperature": llm_config.llm_temperature,
             "max_tokens": llm_config.llm_max_tokens
         }
+        
+        # Add system context if provided
+        if system_context:
+            request["system_prompt"] = system_context
+        
+        # Add tools if provided
+        if tools:
+            request["tools"] = tools
         
         async for chunk in self.generate_content_stream(request, user_prompt_id=f"stream_{id(prompt)}"):
             yield chunk

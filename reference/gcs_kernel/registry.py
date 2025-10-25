@@ -7,7 +7,7 @@ their registration, and discovery (command-based and MCP-based).
 
 import asyncio
 from typing import Dict, Any, Optional, Protocol
-from gcs_kernel.models import ToolDefinition, ToolResult
+from gcs_kernel.models import ToolDefinition, ToolResult, ToolApprovalMode
 
 
 class BaseTool(Protocol):
@@ -46,19 +46,45 @@ class ToolRegistry:
         self.tools: Dict[str, BaseTool] = {}
         self.logger = None  # Will be set by kernel
 
-    async def initialize(self):
+    async def initialize(self, kernel=None):
         """Initialize the registry."""
         # Register built-in tools
-        await self._register_built_in_tools()
+        await self._register_built_in_tools(kernel=kernel)
 
     async def shutdown(self):
         """Shutdown the registry."""
         pass
 
-    async def _register_built_in_tools(self):
+    async def _register_built_in_tools(self, kernel=None):
         """Register built-in tools available to the kernel."""
-        # In a real system, we would register actual built-in tools here
-        pass
+        # Import built-in tools
+        from gcs_kernel.tools.file_operations import ReadFileTool, WriteFileTool, ListDirectoryTool
+        from gcs_kernel.tools.shell_command import ShellCommandTool
+        from gcs_kernel.tools.system_tools import ListToolsTool, GetToolInfoTool
+        
+        # Create instances of built-in tools
+        tools_to_register = [
+            ReadFileTool(),
+            WriteFileTool(),
+            ListDirectoryTool(),
+            ShellCommandTool()
+        ]
+        
+        # Register each built-in tool
+        for tool in tools_to_register:
+            # Use the default approval mode for built-in tools
+            # In a real system, you might want to set different approval modes based on tool risk
+            await self.register_tool(tool)
+        
+        # Register system tools that need access to the kernel
+        if kernel:
+            system_tools = [
+                ListToolsTool(kernel),
+                GetToolInfoTool(kernel)
+            ]
+            
+            for tool in system_tools:
+                await self.register_tool(tool)
 
     async def register_tool(self, tool: BaseTool) -> bool:
         """
@@ -141,9 +167,128 @@ class ToolRegistry:
         Returns:
             A dictionary of discovered tools
         """
-        # In a real system, this would search for command-based tools
-        # For now, return an empty dictionary
-        return {}
+        # In a real system, this would search for available command-line tools
+        # For now, return a basic set of command-based tools
+        discovered_tools = {}
+        
+        # Check for common command-line tools
+        import shutil
+        
+        # Example: Check for git
+        if shutil.which("git"):
+            git_tool = self._create_command_tool("git", "Git Version Control", "Execute git commands", {
+                "type": "object",
+                "properties": {
+                    "subcommand": {
+                        "type": "string",
+                        "description": "Git subcommand to execute (e.g., status, log, commit)"
+                    },
+                    "args": {
+                        "type": "string",
+                        "description": "Additional arguments for the git command"
+                    }
+                },
+                "required": ["subcommand"]
+            })
+            discovered_tools["git"] = git_tool
+        
+        # Example: Check for docker
+        if shutil.which("docker"):
+            docker_tool = self._create_command_tool("docker", "Docker", "Execute docker commands", {
+                "type": "object",
+                "properties": {
+                    "subcommand": {
+                        "type": "string",
+                        "description": "Docker subcommand to execute (e.g., run, ps, images)"
+                    },
+                    "args": {
+                        "type": "string",
+                        "description": "Additional arguments for the docker command"
+                    }
+                },
+                "required": ["subcommand"]
+            })
+            discovered_tools["docker"] = docker_tool
+            
+        return discovered_tools
+    
+    def _create_command_tool(self, name: str, display_name: str, description: str, parameter_schema: Dict[str, Any]):
+        """
+        Create a dynamic command-based tool.
+        
+        Args:
+            name: The tool name
+            display_name: The display name
+            description: The tool description
+            parameter_schema: The parameter schema for the tool
+            
+        Returns:
+            A dynamic tool object that implements the BaseTool protocol
+        """
+        import subprocess
+        
+        class DynamicCommandTool:
+            def __init__(self, name, display_name, description, parameter_schema):
+                self.name = name
+                self.display_name = display_name
+                self.description = description
+                self.parameter_schema = parameter_schema
+                
+            async def execute(self, parameters: Dict[str, Any]) -> ToolResult:
+                # Build the command to execute
+                command = [self.name]
+                
+                # Add subcommand if provided
+                subcommand = parameters.get("subcommand", "")
+                if subcommand:
+                    command.append(subcommand)
+                
+                # Add additional arguments if provided
+                args = parameters.get("args", "")
+                if args:
+                    command.extend(args.split())
+                
+                try:
+                    result = subprocess.run(
+                        command,
+                        capture_output=True,
+                        text=True,
+                        timeout=30
+                    )
+                    
+                    if result.returncode == 0:
+                        output = result.stdout
+                        success = True
+                    else:
+                        output = f"Command failed with exit code {result.returncode}\n{result.stderr}"
+                        success = False
+                    
+                    return ToolResult(
+                        tool_name=self.name,
+                        success=success,
+                        llm_content=output,
+                        return_display=output
+                    )
+                except subprocess.TimeoutExpired:
+                    error_msg = f"Command '{' '.join(command)}' timed out"
+                    return ToolResult(
+                        tool_name=self.name,
+                        success=False,
+                        error=error_msg,
+                        llm_content=error_msg,
+                        return_display=error_msg
+                    )
+                except Exception as e:
+                    error_msg = f"Error executing command '{' '.join(command)}': {str(e)}"
+                    return ToolResult(
+                        tool_name=self.name,
+                        success=False,
+                        error=error_msg,
+                        llm_content=error_msg,
+                        return_display=error_msg
+                    )
+        
+        return DynamicCommandTool(name, display_name, description, parameter_schema)
 
     async def discover_mcp_based_tools(self) -> Dict[str, BaseTool]:
         """
@@ -152,6 +297,7 @@ class ToolRegistry:
         Returns:
             A dictionary of discovered tools
         """
-        # In a real system, this would connect to MCP servers and discover tools
+        # In a real system, this would connect to MCP servers via HTTP clients
+        # and discover tools using the /capabilities endpoint
         # For now, return an empty dictionary
         return {}

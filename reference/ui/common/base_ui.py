@@ -26,6 +26,18 @@ class KernelAPIProtocol(Protocol):
     def list_registered_tools(self) -> list:
         """List registered tools."""
         ...
+    
+    async def get_available_tools(self):
+        """Get all available tools from the kernel."""
+        ...
+    
+    async def execute_tool(self, tool_name: str, params: dict):
+        """Execute a specific tool with parameters."""
+        ...
+    
+    async def get_tool_result(self, execution_id: str):
+        """Get the result of a tool execution."""
+        ...
 
 
 class BaseUI(ABC):

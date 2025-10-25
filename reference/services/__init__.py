@@ -14,7 +14,7 @@ from .llm_provider import (
     ProviderFactory,
     OpenAIProvider
 )
-from .ai_orchestrator import AIOrchestratorService
+from .ai_orchestrator.orchestrator_service import AIOrchestratorService
 
 __all__ = [
     "settings",

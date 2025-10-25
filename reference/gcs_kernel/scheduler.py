@@ -9,7 +9,8 @@ and execution states.
 import asyncio
 from datetime import datetime
 from typing import Dict, Any
-from gcs_kernel.models import ToolDefinition, ToolExecution, ToolState, ToolResult
+from jsonschema import validate, ValidationError
+from gcs_kernel.models import ToolDefinition, ToolExecution, ToolState, ToolResult, ToolApprovalMode
 
 
 class ToolExecutionScheduler:
@@ -24,6 +25,7 @@ class ToolExecutionScheduler:
         self.approval_queue = asyncio.Queue()
         self.logger = None  # Will be set by kernel
         self.tool_registry = None  # Will be set by kernel
+        self.resource_quotas = {} # Store resource quotas for tools
 
     async def initialize(self):
         """Initialize the scheduler."""
@@ -65,7 +67,11 @@ class ToolExecutionScheduler:
             self.executions[execution.id] = execution
             return execution.id
         
-        # Determine if approval is needed
+        # Determine if approval is needed and set approval mode
+        approval_mode = await self._determine_approval_mode(tool_def, execution)
+        execution.approval_mode = approval_mode
+        
+        # Check if approval is required based on mode
         if self._requires_approval(tool_def, execution):
             execution.state = ToolState.AWAITING_APPROVAL
             await self.approval_queue.put(execution)
@@ -93,7 +99,7 @@ class ToolExecutionScheduler:
 
     async def _validate_parameters(self, tool_def: ToolDefinition, params: Dict[str, Any]) -> bool:
         """
-        Validate parameters against the tool definition's schema.
+        Validate parameters against the tool definition's schema using JSON Schema validation.
         
         Args:
             tool_def: The tool definition containing the schema
@@ -103,38 +109,39 @@ class ToolExecutionScheduler:
             True if validation passes, False otherwise
         """
         try:
-            # Validate against the parameter schema
-            schema = tool_def.parameter_schema
-            # This is a simplified validation - in a real system, we would use
-            # a proper JSON Schema validator
-            for param_name, param_details in schema.get("properties", {}).items():
-                if param_details.get("type") == "string":
-                    if param_name in params and not isinstance(params[param_name], str):
-                        return False
-                elif param_details.get("type") == "integer":
-                    if param_name in params and not isinstance(params[param_name], int):
-                        return False
-                elif param_details.get("type") == "number":
-                    if param_name in params and not isinstance(params[param_name], (int, float)):
-                        return False
-                elif param_details.get("type") == "boolean":
-                    if param_name in params and not isinstance(params[param_name], bool):
-                        return False
-                # Add more validation as needed based on schema
-                
-            # Check required parameters
-            required_params = schema.get("required", [])
-            for param in required_params:
-                if param not in params:
-                    return False
-            
+            # Use the jsonschema library to validate parameters against the schema
+            validate(instance=params, schema=tool_def.parameter_schema)
             return True
-        except Exception:
+        except ValidationError as e:
+            if self.logger:
+                self.logger.error(f"Parameter validation failed: {e.message}")
             return False
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Unexpected error during parameter validation: {str(e)}")
+            return False
+
+    async def _determine_approval_mode(self, tool_def: ToolDefinition, execution: ToolExecution) -> ToolApprovalMode:
+        """
+        Determine the approval mode for a tool execution.
+        
+        Args:
+            tool_def: The tool definition
+            execution: The tool execution
+            
+        Returns:
+            The appropriate ToolApprovalMode
+        """
+        # In a real system, this would determine the approval mode based on
+        # tool definition, execution parameters, and possibly security policies
+        # For now, return the default mode unless overridden in tool definition
+        if hasattr(tool_def, 'approval_mode') and tool_def.approval_mode:
+            return tool_def.approval_mode
+        return ToolApprovalMode.DEFAULT
 
     def _requires_approval(self, tool_def: ToolDefinition, execution: ToolExecution) -> bool:
         """
-        Determine if a tool execution requires approval.
+        Determine if a tool execution requires approval based on the mode.
         
         Args:
             tool_def: The tool definition
@@ -143,7 +150,17 @@ class ToolExecutionScheduler:
         Returns:
             True if approval is required, False otherwise
         """
-        return tool_def.approval_required
+        # Approval is not required based on mode
+        if execution.approval_mode == ToolApprovalMode.YOLO:
+            return False
+        elif execution.approval_mode == ToolApprovalMode.AUTO_EDIT:
+            # Auto-edit may have specific conditions where approval is not required
+            return tool_def.approval_required
+        elif execution.approval_mode == ToolApprovalMode.PLAN:
+            # Plan mode may require approval for certain operations
+            return tool_def.approval_required
+        else:  # DEFAULT
+            return tool_def.approval_required
 
     async def _approve_tool_execution(self, execution: ToolExecution) -> bool:
         """
@@ -155,9 +172,22 @@ class ToolExecutionScheduler:
         Returns:
             True if approved, False otherwise
         """
-        # In a real system, this would implement different approval mechanisms
-        # based on the approval mode (DEFAULT, PLAN, AUTO_EDIT, YOLO)
-        return True  # For now, approve everything
+        if execution.approval_mode == ToolApprovalMode.YOLO:
+            # In YOLO mode, auto-approve without user interaction
+            return True
+        elif execution.approval_mode == ToolApprovalMode.AUTO_EDIT:
+            # For auto-edit mode, check if it's a safe operation
+            # In a real system, you'd have more complex logic here
+            return True
+        elif execution.approval_mode == ToolApprovalMode.PLAN:
+            # For plan mode, you might want to approve or reject based on
+            # whether the tool execution aligns with the current plan
+            # For now, always approve
+            return True
+        else:  # DEFAULT
+            # Default mode - for now, approve everything
+            # In a real system, this would involve user interaction
+            return True
 
     async def _execute_tool(self, execution: ToolExecution):
         """
@@ -168,6 +198,19 @@ class ToolExecutionScheduler:
         """
         execution.state = ToolState.EXECUTING
         execution.executed_at = datetime.now()
+        
+        # Check resource quotas before executing the tool
+        if not await self._check_resource_quotas(execution):
+            execution.result = ToolResult(
+                tool_name=execution.tool_name,
+                success=False,
+                error="Resource quota exceeded",
+                llm_content="Tool execution denied due to resource quota limits",
+                return_display="Tool execution denied due to resource quota limits"
+            )
+            execution.state = ToolState.COMPLETED
+            execution.completed_at = datetime.now()
+            return
         
         try:
             # Look up the tool in the registry
@@ -204,6 +247,20 @@ class ToolExecutionScheduler:
         
         execution.state = ToolState.COMPLETED
         execution.completed_at = datetime.now()
+
+    async def _check_resource_quotas(self, execution: ToolExecution) -> bool:
+        """
+        Check if the tool execution complies with resource quotas.
+        
+        Args:
+            execution: The tool execution to check
+            
+        Returns:
+            True if within quotas, False otherwise
+        """
+        # For now, just return True to allow all executions
+        # In a real system, this would check CPU, memory, execution time, etc. against defined limits
+        return True
 
     def get_execution(self, execution_id: str) -> ToolExecution:
         """

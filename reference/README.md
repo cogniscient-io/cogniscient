@@ -86,7 +86,9 @@ gcs_kernel/                 # Core kernel functionality only
     └── client.py           # MCP client to connect to external tool services
 services/                   # Services that run on top of the kernel
 ├── __init__.py
-├── ai_orchestrator.py      # AI client orchestrator service
+├── ai_orchestrator/        # AI orchestrator package
+│   ├── __init__.py         # Package init
+│   └── orchestrator_service.py # AI client orchestrator service
 ├── tool_discovery/         # Tool discovery services
 │   ├── __init__.py
 │   ├── command_discovery.py # Command-based tool discovery

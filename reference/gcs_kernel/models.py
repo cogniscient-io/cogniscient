@@ -43,6 +43,7 @@ class ToolDefinition(BaseModel):
     description: str
     parameter_schema: Dict[str, Any]
     approval_required: bool = True
+    approval_mode: ToolApprovalMode = ToolApprovalMode.DEFAULT
 
 
 class ToolExecution(BaseModel):
@@ -57,6 +58,7 @@ class ToolExecution(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
     executed_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    tool_definition: Optional[ToolDefinition] = None
 
 
 class ResourceQuota(BaseModel):

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gcs-kernel"
-version = "0.1.0"
-description = "GCS Kernel - Generic Control System Kernel for AI agent orchestration"
+version = "0.2.0"
+description = "GCS - Generic Control System for AI agent orchestration"
 readme = "README.md"
 authors = [{name = "Cogniscient Team"}]
 license = {text = "MIT"}

@@ -30,12 +30,13 @@ class BaseContentGenerator(ABC):
         pass
     
     @abstractmethod
-    async def process_tool_result(self, tool_result: Any) -> Any:
+    async def process_tool_result(self, tool_result: Any, conversation_history: list = None) -> Any:
         """
         Process a tool result and continue the conversation.
         
         Args:
             tool_result: The result from a tool execution
+            conversation_history: The conversation history to maintain context
             
         Returns:
             The updated response after processing the tool result

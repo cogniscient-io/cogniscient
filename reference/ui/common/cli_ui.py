@@ -61,6 +61,9 @@ class CLIUI(BaseUI):
                     break
                 elif user_input.lower() == 'help':
                     self.show_help()
+                elif user_input.lower().startswith('/'):
+                    # Handle slash commands
+                    await self._handle_slash_command(user_input)
                 elif user_input.lower().startswith('ai '):
                     # Process AI command with streaming
                     prompt = user_input[3:]  # Remove 'ai ' prefix
@@ -81,21 +84,90 @@ class CLIUI(BaseUI):
         user_input = await loop.run_in_executor(None, input, "gcs> ")
         return user_input.strip()
     
+    async def _handle_slash_command(self, command: str):
+        """Handle slash commands."""
+        command_parts = command.split()
+        cmd = command_parts[0].lower()
+        
+        if cmd == '/list-tools' or cmd == '!tools':
+            await self._list_tools()
+        elif cmd == '/run-tool':
+            if len(command_parts) >= 2:
+                tool_name = command_parts[1]
+                # Extract parameters (simplified parsing)
+                params = {}
+                for part in command_parts[2:]:
+                    if '=' in part:
+                        key, value = part.split('=', 1)
+                        # Try to parse as JSON if it starts with { or [
+                        if value.startswith('{') or value.startswith('['):
+                            import json
+                            try:
+                                params[key] = json.loads(value)
+                            except json.JSONDecodeError:
+                                params[key] = value
+                        else:
+                            # Try to convert to number if possible
+                            try:
+                                params[key] = int(value)
+                            except ValueError:
+                                try:
+                                    params[key] = float(value)
+                                except ValueError:
+                                    params[key] = value
+                await self._run_tool(tool_name, params)
+            else:
+                print("Usage: /run-tool <tool_name> [param1=value1 param2=value2 ...]")
+        elif cmd == '/help':
+            self.show_help()
+        else:
+            print(f"Unknown slash command: {cmd}. Type /help for available commands.")
+    
+    async def _list_tools(self):
+        """List all available tools."""
+        try:
+            tools = await self.kernel_api.get_available_tools()
+            if tools:
+                print("Available tools:")
+                for name, tool in tools.items():
+                    description = getattr(tool, 'description', 'No description')
+                    print(f"  - {name}: {description}")
+            else:
+                print("No tools available.")
+        except Exception as e:
+            print(f"Error listing tools: {str(e)}")
+    
+    async def _run_tool(self, tool_name: str, params: dict):
+        """Run a specified tool with parameters."""
+        try:
+            execution_id = await self.kernel_api.execute_tool(tool_name, params)
+            print(f"Tool '{tool_name}' executed with ID: {execution_id}")
+            
+            # Wait for the result and display it
+            result = await self.kernel_api.get_tool_result(execution_id)
+            if result:
+                print(f"Result: {result.return_display}")
+            else:
+                print("No result returned.")
+        except Exception as e:
+            print(f"Error running tool: {str(e)}")
+    
     def show_help(self):
         """Show help information."""
         help_text = """
 GCS Kernel CLI Commands:
   help                    - Show this help message
   status                  - Get kernel status
-  list-tools              - List available tools
-  run-tool <name> [args]  - Execute a tool with arguments
+  /list-tools or !tools   - List available tools
+  /run-tool <name> [args] - Execute a tool with arguments
+  /help                   - Show this help message
   ai <prompt>             - Send a prompt to the AI orchestrator
   exit/quit               - Exit the CLI
 
 Examples:
-  gcs> status
-  gcs> list-tools
-  gcs> run-tool read_file path=README.md
+  gcs> /list-tools
+  gcs> /run-tool read_file path=README.md
+  gcs> /help
   gcs> ai What files are in the current directory?
         """
         print(help_text)

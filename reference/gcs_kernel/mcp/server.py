@@ -7,8 +7,9 @@ and tool execution capabilities via MCP interfaces.
 
 import asyncio
 import json
+import secrets
 from typing import Dict, Any, Callable, Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Header
 from pydantic import BaseModel
 import uvicorn
 from gcs_kernel.models import MCPConfig, ToolDefinition, ToolExecution, ToolResult
@@ -35,8 +36,34 @@ class MCPServer:
         self.kernel = None  # Will be set by kernel
         self.logger = None  # Will be set by kernel
         
+        # Generate a secret token for basic authentication if not provided in config
+        if not self.config.client_secret:
+            self.config.client_secret = secrets.token_urlsafe(32)
+        
         # Register MCP endpoints
         self._register_endpoints()
+
+    async def _authenticate(self, authorization: str = Header(None)):
+        """
+        Authenticate incoming requests using the configured authentication method.
+        
+        Args:
+            authorization: Authorization header from the request
+            
+        Raises:
+            HTTPException: If authentication fails
+        """
+        if not self.config.client_secret:
+            # If no authentication is configured, allow all requests
+            return
+        
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
+        
+        token = authorization[7:]  # Remove "Bearer " prefix
+        
+        if not secrets.compare_digest(token, self.config.client_secret):
+            raise HTTPException(status_code=401, detail="Invalid authentication token")
 
     def _register_endpoints(self):
         """Register MCP-compliant endpoints."""
@@ -45,7 +72,7 @@ class MCPServer:
             return {"status": "healthy", "kernel_running": self.kernel.is_running() if self.kernel else False}
         
         @self.app.get("/tools")
-        async def list_tools():
+        async def list_tools(auth=Depends(self._authenticate)):
             """List all registered tools."""
             if self.kernel and self.kernel.registry:
                 tools = self.kernel.registry.get_all_tools()
@@ -62,7 +89,7 @@ class MCPServer:
             return {"tools": []}
         
         @self.app.get("/tools/{tool_name}")
-        async def get_tool(tool_name: str):
+        async def get_tool(tool_name: str, auth=Depends(self._authenticate)):
             """Get details of a specific tool."""
             if self.kernel and self.kernel.registry:
                 tool = await self.kernel.registry.get_tool(tool_name)
@@ -78,17 +105,39 @@ class MCPServer:
                 raise HTTPException(status_code=500, detail="Registry not available")
         
         @self.app.post("/tools/{tool_name}/execute")
-        async def execute_tool(tool_name: str, params: Dict[str, Any]):
+        async def execute_tool(tool_name: str, params: Dict[str, Any], auth=Depends(self._authenticate)):
             """Execute a tool with given parameters."""
             if self.kernel and self.kernel.scheduler:
-                # Create a temporary ToolDefinition for validation
-                # In a real system, this would come from the registry
-                tool_def = ToolDefinition(
-                    name=tool_name,
-                    display_name=tool_name,
-                    description=f"Tool {tool_name}",
-                    parameter_schema={"type": "object", "properties": {}}
-                )
+                # Get the actual tool definition from the registry
+                if self.kernel and self.kernel.registry:
+                    # Get the actual tool to get its validation schema
+                    tool = await self.kernel.registry.get_tool(tool_name)
+                    if tool:
+                        # Use the actual tool definition
+                        tool_def = ToolDefinition(
+                            name=tool.name,
+                            display_name=tool.display_name,
+                            description=tool.description,
+                            parameter_schema=tool.parameter_schema,
+                            approval_required=getattr(tool, 'approval_required', True),
+                            approval_mode=getattr(tool, 'approval_mode', None)
+                        )
+                    else:
+                        # If tool is not in registry, create a minimal definition
+                        tool_def = ToolDefinition(
+                            name=tool_name,
+                            display_name=tool_name,
+                            description=f"Tool {tool_name}",
+                            parameter_schema={"type": "object", "properties": {}}
+                        )
+                else:
+                    # If no registry available, create a minimal definition
+                    tool_def = ToolDefinition(
+                        name=tool_name,
+                        display_name=tool_name,
+                        description=f"Tool {tool_name}",
+                        parameter_schema={"type": "object", "properties": {}}
+                    )
                 
                 # Submit the tool execution
                 execution_id = await self.kernel.scheduler.submit_tool_execution(tool_def, params)
@@ -96,8 +145,70 @@ class MCPServer:
             else:
                 raise HTTPException(status_code=500, detail="Scheduler not available")
         
+        @self.app.post("/tools/{tool_name}/execute_stream")
+        async def execute_tool_stream(tool_name: str, params: Dict[str, Any], auth=Depends(self._authenticate)):
+            """Execute a tool with given parameters and stream the results."""
+            from fastapi import BackgroundTasks
+            from fastapi.responses import StreamingResponse
+            import json
+            
+            if not (self.kernel and self.kernel.scheduler and self.kernel.registry):
+                raise HTTPException(status_code=500, detail="Kernel components not available")
+            
+            # Get the actual tool to get its validation schema
+            tool = await self.kernel.registry.get_tool(tool_name)
+            if not tool:
+                raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
+            
+            # Use the actual tool definition
+            tool_def = ToolDefinition(
+                name=tool.name,
+                display_name=tool.display_name,
+                description=tool.description,
+                parameter_schema=tool.parameter_schema,
+                approval_required=getattr(tool, 'approval_required', True),
+                approval_mode=getattr(tool, 'approval_mode', None)
+            )
+            
+            # Submit the tool execution
+            execution_id = await self.kernel.scheduler.submit_tool_execution(tool_def, params)
+            
+            async def generate_stream():
+                """Generate streaming updates for the tool execution."""
+                # For now, just return the final result when it's ready
+                # In a real system, this would stream updates as the tool executes
+                while True:
+                    execution = self.kernel.scheduler.get_execution(execution_id)
+                    if not execution:
+                        yield f"data: {json.dumps({'error': 'Execution not found'})}\n\n"
+                        break
+                    
+                    # Create a status update
+                    status_update = {
+                        "execution_id": execution.id,
+                        "tool_name": execution.tool_name,
+                        "state": execution.state.value,
+                        "progress": 0,  # In a real system, track actual progress
+                        "message": f"Execution in state: {execution.state.value}"
+                    }
+                    
+                    # Add result if available
+                    if execution.result:
+                        status_update["result"] = execution.result.dict()
+                        status_update["completed"] = True
+                        yield f"data: {json.dumps(status_update)}\n\n"
+                        break
+                    
+                    # Yield the status update
+                    yield f"data: {json.dumps(status_update)}\n\n"
+                    
+                    # Wait before the next check
+                    await asyncio.sleep(0.5)  # Check every 0.5 seconds
+            
+            return StreamingResponse(generate_stream(), media_type="text/plain")
+        
         @self.app.get("/executions/{execution_id}")
-        async def get_execution(execution_id: str):
+        async def get_execution(execution_id: str, auth=Depends(self._authenticate)):
             """Get status and result of an execution."""
             if self.kernel and self.kernel.scheduler:
                 execution = self.kernel.scheduler.get_execution(execution_id)
@@ -117,7 +228,7 @@ class MCPServer:
                 raise HTTPException(status_code=500, detail="Scheduler not available")
 
         @self.app.get("/capabilities")
-        async def get_capabilities():
+        async def get_capabilities(auth=Depends(self._authenticate)):
             """Get the MCP capabilities of this server."""
             return {
                 "version": "1.0",

@@ -46,12 +46,12 @@ class GCSKernel:
         self.mcp_client = MCPClient()
         
         # Initialize AI orchestrator
-        from services.ai_orchestrator import AIOrchestratorService
+        from services.ai_orchestrator.orchestrator_service import AIOrchestratorService
         from services.llm_provider.content_generator import LLMContentGenerator
         from services.config import settings
         # Create content generator using settings
         content_generator = LLMContentGenerator()
-        self.ai_orchestrator = AIOrchestratorService(self.mcp_client, content_generator)
+        self.ai_orchestrator = AIOrchestratorService(self.mcp_client, content_generator, kernel=self)
         
         # Initialize with resource quotas
         self.resource_quota = ResourceQuota(**self.config.get('resource_quota', {}))
@@ -104,8 +104,8 @@ class GCSKernel:
         # Initialize resource manager
         await self.resource_manager.initialize()
         
-        # Initialize registry
-        await self.registry.initialize()
+        # Initialize registry with reference to kernel for system tools
+        await self.registry.initialize(kernel=self)
         
         # Initialize scheduler
         await self.scheduler.initialize()

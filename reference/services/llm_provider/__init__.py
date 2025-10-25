@@ -7,7 +7,7 @@ with streaming support and kernel integration.
 
 from .base_generator import BaseContentGenerator
 from .content_generator import LLMContentGenerator
-from .config import settings
+from ..config import settings
 from .providers.provider_factory import ProviderFactory
 from .providers.openai_provider import OpenAIProvider
 
@@ -18,6 +18,4 @@ __all__ = [
     "settings",
     "ProviderFactory", 
     "OpenAIProvider",
-    "load_config_from_env",
-    "validate_config"
 ]

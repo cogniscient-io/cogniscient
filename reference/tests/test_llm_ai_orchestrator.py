@@ -5,10 +5,11 @@ This module tests the AIOrchestratorService's integration with LLM providers.
 """
 import pytest
 from unittest.mock import AsyncMock, MagicMock
-from services.ai_orchestrator import AIOrchestratorService
+from services.ai_orchestrator.orchestrator_service import AIOrchestratorService
 from services.llm_provider.base_generator import BaseContentGenerator
 from gcs_kernel.mcp.client import MCPClient
 from gcs_kernel.models import MCPConfig, ToolResult
+
 
 
 class MockContentGenerator(BaseContentGenerator):
@@ -25,7 +26,7 @@ class MockContentGenerator(BaseContentGenerator):
         self.timeout = self.config.get("timeout")
         self.max_retries = self.config.get("max_retries")
     
-    async def generate_response(self, prompt: str):
+    async def generate_response(self, prompt: str, system_context: str = None, tools: list = None):
         """
         Mock implementation of generate_response.
         """
@@ -40,9 +41,9 @@ class MockContentGenerator(BaseContentGenerator):
             class MockToolCall:
                 def __init__(self):
                     self.id = "call_123"
-                    self.name = "test_tool"
-                    self.parameters = {"param1": "value1"}  # Note: using parameters instead of arguments
-            
+                    self.name = "shell_command"
+                    self.parameters = {"command": "echo hello"}  # Using a real tool with valid parameters
+        
             return ResponseObj(
                 content="I'll use a tool to help with that.",
                 tool_calls=[MockToolCall()]
@@ -53,7 +54,7 @@ class MockContentGenerator(BaseContentGenerator):
                 tool_calls=[]
             )
     
-    async def process_tool_result(self, tool_result):
+    async def process_tool_result(self, tool_result, conversation_history=None):
         """
         Mock implementation of process_tool_result.
         """
@@ -63,7 +64,7 @@ class MockContentGenerator(BaseContentGenerator):
         
         return ResponseObj(content=f"Processed tool result: {tool_result}")
     
-    async def stream_response(self, prompt: str):
+    async def stream_response(self, prompt: str, system_context: str = None, tools: list = None):
         """
         Mock implementation of stream_response.
         """
@@ -126,15 +127,58 @@ async def test_ai_orchestrator_handle_ai_interaction_with_tool_call():
     mock_kernel_client = AsyncMock()
     mock_kernel_client.submit_tool_execution.return_value = "exec_123"
     
+    # Mock the list_tools method for backward compatibility
+    mock_kernel_client.list_tools.return_value = {
+        "tools": [
+            {
+                "name": "shell_command",
+                "description": "Execute a shell command and return the output",
+                "parameter_schema": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": "The shell command to execute"
+                        }
+                    },
+                    "required": ["command"]
+                }
+            }
+        ]
+    }
+    
     tool_result = ToolResult(
-        tool_name="test_tool",
-        llm_content="Tool executed successfully",
-        return_display="Tool executed successfully",
+        tool_name="shell_command",
+        llm_content="hello\n",  # Output of echo hello
+        return_display="hello\n",
         success=True
     )
     mock_kernel_client.get_execution_result.return_value = tool_result
     
     orchestrator = AIOrchestratorService(mock_kernel_client)
+    
+    # Mock the system_context_builder to return the available tools
+    async def mock_get_available_tools():
+        return {
+            "shell_command": {
+                "name": "shell_command",
+                "description": "Execute a shell command and return the output",
+                "parameter_schema": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": "The shell command to execute"
+                        }
+                    },
+                    "required": ["command"]
+                }
+            }
+        }
+    
+    # Replace the system_context_builder's method with our mock
+    orchestrator.system_context_builder.get_available_tools = mock_get_available_tools
+    
     mock_provider = MockContentGenerator()
     orchestrator.set_content_generator(mock_provider)
     

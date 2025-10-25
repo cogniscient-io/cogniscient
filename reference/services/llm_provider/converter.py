@@ -28,11 +28,16 @@ class ContentConverter:
         Returns:
             Request in provider-specific format
         """
-        # Extract prompt from request
-        prompt = request.get("prompt", "")
-        
-        # Convert to provider message format (e.g., OpenAI format)
-        messages = [{"role": "user", "content": prompt}]
+        # Check if the request already contains a messages array (e.g., for continuing conversation)
+        if "messages" in request:
+            # Use the existing messages array
+            messages = request["messages"]
+        else:
+            # Extract prompt from request and create a user message
+            prompt = request.get("prompt", "")
+            
+            # Convert to provider message format (e.g., OpenAI format)
+            messages = [{"role": "user", "content": prompt}]
         
         # Add system message if present
         if "system_prompt" in request:

@@ -83,7 +83,15 @@ class ContentGenerationPipeline:
         elif hasattr(response, 'status_code') and type(response.status_code).__name__ != 'MagicMock':
             # This is a real response object (status_code is not a mock)
             if response.status_code == 200:
-                result = await response.json()
+                # For httpx responses, json() is typically synchronous
+                # But handle both cases to be safe
+                try:
+                    # Try the synchronous version first (standard for httpx)
+                    result = response.json()
+                except TypeError:
+                    # If that fails, it might be an awaitable
+                    result = await response.json()
+                    
                 content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
                 
                 return {

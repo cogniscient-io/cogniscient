@@ -29,6 +29,15 @@ class BaseProvider(ABC):
         self.timeout = config.get("timeout", 60)
         self.max_retries = config.get("max_retries", 3)
         
+    @property
+    @abstractmethod
+    def converter(self):
+        """
+        The converter for this provider to transform data between kernel and provider formats.
+        Each provider implementation should return a converter appropriate for its API format.
+        """
+        pass
+    
     @abstractmethod
     def build_headers(self) -> Dict[str, str]:
         """

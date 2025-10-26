@@ -48,13 +48,14 @@ class MockContentGenerator(BaseContentGenerator):
             tool_calls=[MockToolCall()]
         )
     
-    async def process_tool_result(self, tool_result, conversation_history=None):
+    async def process_tool_result(self, tool_result, conversation_history=None, available_tools=None):
         """
         Mock implementation of process_tool_result.
         """
         self.process_tool_result_calls.append({
             'tool_result': tool_result,
-            'conversation_history': conversation_history
+            'conversation_history': conversation_history,
+            'available_tools': available_tools
         })
         
         class ResponseObj:

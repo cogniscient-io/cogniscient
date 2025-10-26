@@ -66,7 +66,7 @@ async def test_complete_flow_with_tracing():
                     tool_calls=[]
                 )
         
-        async def process_tool_result(self, tool_result):
+        async def process_tool_result(self, tool_result, conversation_history=None, available_tools=None):
             print(f"process_tool_result called with: {tool_result.return_display}")
             
             class ResponseObj:

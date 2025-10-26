@@ -9,7 +9,7 @@ import httpx
 from typing import Dict, Any, AsyncIterator
 from unittest.mock import MagicMock
 from services.llm_provider.providers.base_provider import BaseProvider
-from services.llm_provider.converter import ContentConverter  # Import the converter
+
 
 
 class ContentGenerationPipeline:
@@ -26,8 +26,8 @@ class ContentGenerationPipeline:
         """
         self.provider = provider
         self.client = provider.build_client()
-        # Create a converter instance for request/response transformations  
-        self.converter = ContentConverter(provider.model)
+        # Use the converter provided by the provider
+        self.converter = provider.converter
     
     async def execute(self, request: Dict[str, Any], user_prompt_id: str) -> Any:
         """
@@ -40,17 +40,13 @@ class ContentGenerationPipeline:
         Returns:
             The content generation response
         """
-        # Convert the request from kernel format to provider format
-        converted_request = self.converter.convert_kernel_request_to_provider(request)
-        
-        # Build the final request using the provider
-        final_request = self.provider.build_request(converted_request, user_prompt_id)
+        # Build the final request using the provider (conversion handled internally)
+        final_request = self.provider.build_request(request, user_prompt_id)
         
         # Determine the URL for content generation
         url = f"{self.provider.base_url}/chat/completions"
         
-        # Debug: Print the request being sent to LLM
-        print(f"DEBUG: Request being sent to LLM: {final_request}")
+
         
         # In test environments where httpx.AsyncClient is patched, 
         # we might need to get an updated client from the provider
@@ -75,8 +71,7 @@ class ContentGenerationPipeline:
         # Handle the response based on its type
         # First, try to determine if we have a mock response by checking the type and attributes
         
-        # Debug: Print the raw response from LLM before processing
-        print(f"DEBUG: Raw LLM response in execute method: {response}")
+
         
         if (hasattr(response, '_spec_class') or 
             type(response).__name__ in ['MagicMock', 'AsyncMock']):
@@ -91,10 +86,11 @@ class ContentGenerationPipeline:
                 result = json_result
             
             content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+            tool_calls = result.get("choices", [{}])[0].get("message", {}).get("tool_calls", [])
             
             return {
                 "content": content,
-                "tool_calls": result.get("choices", [{}])[0].get("message", {}).get("tool_calls", [])
+                "tool_calls": tool_calls
             }
         elif hasattr(response, 'status_code') and hasattr(response, 'json'):
             # Both status_code and json exist, need to determine if it's a real response or mock
@@ -106,10 +102,11 @@ class ContentGenerationPipeline:
                     # If json() returns a coroutine, await it
                     result = await json_result
                     content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    tool_calls = result.get("choices", [{}])[0].get("message", {}).get("tool_calls", [])
                     
                     return {
                         "content": content,
-                        "tool_calls": result.get("choices", [{}])[0].get("message", {}).get("tool_calls", [])
+                        "tool_calls": tool_calls
                     }
                 else:
                     # This is a real httpx response object (status_code is not a mock)
@@ -117,10 +114,11 @@ class ContentGenerationPipeline:
                         # For httpx responses, json() is typically synchronous
                         result = json_result  # Use the result we already have
                         content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+                        tool_calls = result.get("choices", [{}])[0].get("message", {}).get("tool_calls", [])
                         
                         return {
                             "content": content,
-                            "tool_calls": result.get("choices", [{}])[0].get("message", {}).get("tool_calls", [])
+                            "tool_calls": tool_calls
                         }
                     else:
                         raise Exception(f"Provider returned status code {response.status_code}")
@@ -130,18 +128,22 @@ class ContentGenerationPipeline:
                 if response.status_code == 200:
                     result = response.json()
                     content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    tool_calls = result.get("choices", [{}])[0].get("message", {}).get("tool_calls", [])
                     
                     return {
                         "content": content,
-                        "tool_calls": result.get("choices", [{}])[0].get("message", {}).get("tool_calls", [])
+                        "tool_calls": tool_calls
                     }
                 else:
                     raise Exception(f"Provider returned status code {response.status_code}")
         else:
             # Direct return in case of other mock scenarios
+            content = getattr(response, 'content', "Test response content")
+            tool_calls = getattr(response, 'tool_calls', [])
+            
             return {
-                "content": getattr(response, 'content', "Test response content"),
-                "tool_calls": getattr(response, 'tool_calls', [])
+                "content": content,
+                "tool_calls": tool_calls
             }
     
     async def execute_stream(self, request: Dict[str, Any], user_prompt_id: str) -> AsyncIterator[str]:
@@ -155,11 +157,8 @@ class ContentGenerationPipeline:
         Yields:
             Partial content responses as they become available
         """
-        # Convert the request from kernel format to provider format
-        converted_request = self.converter.convert_kernel_request_to_provider(request)
-        
-        # Build the final request using the provider
-        final_request = self.provider.build_request(converted_request, user_prompt_id)
+        # Build the final request using the provider (conversion handled internally)
+        final_request = self.provider.build_request(request, user_prompt_id)
         
         # Add stream=True to the request
         final_request["stream"] = True

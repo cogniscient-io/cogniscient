@@ -100,6 +100,7 @@ def test_convert_kernel_request_to_provider_with_tools():
 def test_convert_provider_response_to_kernel():
     """
     Test converting provider response format to kernel format.
+    With passthrough architecture, tool calls remain in OpenAI format.
     """
     converter = ContentConverter("gpt-test-model")
     
@@ -114,7 +115,8 @@ def test_convert_provider_response_to_kernel():
                             "function": {
                                 "name": "test_tool",
                                 "arguments": "{\"param1\": \"value1\"}"
-                            }
+                            },
+                            "type": "function"
                         }
                     ]
                 }
@@ -126,9 +128,11 @@ def test_convert_provider_response_to_kernel():
     
     assert kernel_response["content"] == "Test response content"
     assert len(kernel_response["tool_calls"]) == 1
+    # With passthrough, tool calls remain in OpenAI format (with function property)
     assert kernel_response["tool_calls"][0]["id"] == "call_123"
-    assert kernel_response["tool_calls"][0]["name"] == "test_tool"
-    assert kernel_response["tool_calls"][0]["arguments"]["param1"] == "value1"
+    assert kernel_response["tool_calls"][0]["function"]["name"] == "test_tool"
+    assert kernel_response["tool_calls"][0]["function"]["arguments"] == "{\"param1\": \"value1\"}"
+    assert kernel_response["tool_calls"][0]["type"] == "function"
 
 
 def test_convert_provider_response_to_kernel_no_tool_calls():

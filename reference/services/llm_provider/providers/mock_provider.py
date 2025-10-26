@@ -14,6 +14,28 @@ class MockProvider(BaseProvider):
     Mock provider implementation for integration testing.
     """
     
+    def __init__(self, config: Dict[str, Any]):
+        """
+        Initialize the mock provider with configuration.
+        
+        Args:
+            config: Dictionary containing provider configuration
+        """
+        # Call the parent constructor
+        super().__init__(config)
+        
+        # Initialize a converter for this provider
+        from services.llm_provider.converter import OpenAIConverter
+        self._converter = OpenAIConverter(self.model)
+    
+    @property
+    def converter(self):
+        """
+        The converter for this mock provider to transform data between kernel and provider formats.
+        This returns an OpenAI-compatible converter suitable for testing.
+        """
+        return self._converter
+    
     def build_headers(self) -> Dict[str, str]:
         """
         Build headers for mock API requests.
@@ -58,16 +80,18 @@ class MockProvider(BaseProvider):
     
     def build_request(self, request: Dict[str, Any], user_prompt_id: str) -> Dict[str, Any]:
         """
-        Build a mock request based on the input.
-
+        Convert and build a mock request based on the input.
+        
         Args:
-            request: The base request
+            request: The base request in kernel format
             user_prompt_id: Unique identifier for the user prompt
-
+            
         Returns:
-            Mock request structure
+            Mock request structure in OpenAI-compatible format
         """
-        # Simply return the request with the user prompt ID for tracking
-        enhanced_request = request.copy()
-        enhanced_request["user_prompt_id"] = user_prompt_id
-        return enhanced_request
+        # Convert the kernel format request to OpenAI format (for consistency with testing)
+        openai_request = self.converter.convert_kernel_request_to_provider(request)
+        
+        # Add user prompt ID for tracking
+        openai_request["user_prompt_id"] = user_prompt_id
+        return openai_request

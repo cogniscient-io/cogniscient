@@ -7,6 +7,7 @@ This module implements the OpenAI provider following Qwen Code patterns.
 import httpx
 from typing import Dict, Any
 from services.llm_provider.providers.base_provider import BaseProvider
+from services.llm_provider.converter import OpenAIConverter
 
 
 class OpenAIProvider(BaseProvider):
@@ -32,6 +33,17 @@ class OpenAIProvider(BaseProvider):
         
         # Call the parent constructor with the updated config
         super().__init__(config)
+        
+        # Initialize the converter for this provider
+        self._converter = OpenAIConverter(self.model)
+    
+    @property
+    def converter(self):
+        """
+        The converter for this OpenAI provider to transform data between kernel and provider formats.
+        This returns an OpenAI-compatible converter with minimal transformations.
+        """
+        return self._converter
     
     def build_headers(self) -> Dict[str, str]:
         """
@@ -60,22 +72,22 @@ class OpenAIProvider(BaseProvider):
     
     def build_request(self, request: Dict[str, Any], user_prompt_id: str) -> Dict[str, Any]:
         """
-        Enhance the request with OpenAI-specific features.
+        Convert and enhance the request with OpenAI-specific features.
         
         Args:
-            request: The base request
+            request: The base request in kernel format
             user_prompt_id: Unique identifier for the user prompt
             
         Returns:
-            Enhanced request with OpenAI-specific features
+            Request with OpenAI-specific format and features
         """
-        # Add user prompt ID as metadata to the request
-        enhanced_request = request.copy()
+        # Convert the kernel format request to OpenAI format
+        openai_request = self.converter.convert_kernel_request_to_provider(request)
         
-        # Add provider-specific parameters if not already present
-        if "model" not in enhanced_request:
-            enhanced_request["model"] = self.model
-        if "user" not in enhanced_request:
-            enhanced_request["user"] = user_prompt_id  # OpenAI's user field for tracking
+        # Add provider-specific parameters
+        if "model" not in openai_request:
+            openai_request["model"] = self.model
+        if "user" not in openai_request:
+            openai_request["user"] = user_prompt_id  # OpenAI's user field for tracking
             
-        return enhanced_request
+        return openai_request

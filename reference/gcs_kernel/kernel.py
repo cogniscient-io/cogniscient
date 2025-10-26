@@ -63,6 +63,9 @@ class GCSKernel:
             scheduler=self.scheduler
         )
         
+        # Connect scheduler to the registry so it can execute tools
+        self.scheduler.tool_registry = self.registry
+        
         # Initialize with resource quotas
         self.resource_quota = ResourceQuota(**self.config.get('resource_quota', {}))
         

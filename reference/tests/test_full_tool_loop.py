@@ -65,7 +65,7 @@ async def test_full_tool_calling_loop():
                     tool_calls=[]
                 )
         
-        async def process_tool_result(self, tool_result):
+        async def process_tool_result(self, tool_result, conversation_history=None, available_tools=None):
             print(f"Processing tool result: {tool_result}")
             
             class ResponseObj:

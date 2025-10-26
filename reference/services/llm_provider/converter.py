@@ -6,17 +6,17 @@ This module implements content conversion following Qwen Code's OpenAIContentCon
 
 from typing import Dict, Any, List
 from gcs_kernel.models import ToolResult
-import json
+from services.llm_provider.base_converter import BaseConverter
 
 
-class ContentConverter:
+class OpenAIConverter(BaseConverter):
     """
-    Converter for transforming data between kernel format and LLM provider format
-    following Qwen Code's OpenAIContentConverter implementation patterns.
+    OpenAI-compatible converter for transforming data between kernel format and OpenAI provider format.
+    This converter minimizes transformations since kernel formats are aligned with OpenAI format.
     """
     
     def __init__(self, model: str):
-        self.model = model
+        super().__init__(model)
 
     def convert_kernel_request_to_provider(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -60,14 +60,15 @@ class ContentConverter:
     def convert_provider_response_to_kernel(self, provider_response: Dict[str, Any]) -> Dict[str, Any]:
         """
         Convert provider response format to kernel format.
+        Since we're standardizing on OpenAI format, this is now a minimal transformation.
         
         Args:
-            provider_response: Response from LLM provider (as dictionary)
+            provider_response: Response from LLM provider (as dictionary) in OpenAI format
             
         Returns:
-            Response in kernel format
+            Response in kernel format (which is now OpenAI-compatible)
         """
-        # Extract content and potential tool calls from provider response
+        # Extract content and potential tool calls from provider response (OpenAI format)
         choices = provider_response.get("choices", [])
         if not choices:
             return {"content": "", "tool_calls": []}
@@ -75,75 +76,78 @@ class ContentConverter:
         choice = choices[0]
         message = choice.get("message", {})
         
+        # Return in OpenAI-compatible format with minimal transformation
         result = {
             "content": message.get("content", ""),
-            "tool_calls": []
+            "tool_calls": message.get("tool_calls", [])  # Already in OpenAI format
         }
-        
-        # Process tool calls if present
-        if "tool_calls" in message:
-            for tool_call in message["tool_calls"]:
-                # Get the tool name
-                tool_name = tool_call.get("function", {}).get("name")
-                
-                # Only include tool calls with valid names (non-empty)
-                if tool_name and tool_name.strip():
-                    # For the kernel, arguments should be parsed from JSON string to object
-                    # but in the response back to kernel, keep as string for proper format
-                    arguments_str = tool_call.get("function", {}).get("arguments", "{}")
-                    arguments_obj = arguments_str
-                    try:
-                        # Try to parse if it's a JSON string, otherwise keep as is
-                        if isinstance(arguments_str, str):
-                            arguments_obj = json.loads(arguments_str)
-                    except json.JSONDecodeError:
-                        # If parsing fails, keep the original value
-                        pass
-                    
-                    result["tool_calls"].append({
-                        "id": tool_call.get("id"),
-                        "name": tool_name,
-                        "arguments": arguments_obj
-                    })
         
         return result
 
     def convert_kernel_tools_to_provider(self, kernel_tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Convert kernel tool format to provider tool format.
+        Since kernel tools are already in OpenAI format, this is now essentially a passthrough.
         
         Args:
-            kernel_tools: Tools in kernel format
+            kernel_tools: Tools in kernel format (now in OpenAI format)
             
         Returns:
-            Tools in provider format
+            Tools in provider format (same as input - already OpenAI format)
         """
+        # The kernel tools should already be in OpenAI format, so just return them as-is
+        # If they're ToolDefinition objects, convert them to dictionaries in OpenAI format
+        from gcs_kernel.models import ToolDefinition
+        
         provider_tools = []
         for tool in kernel_tools:
-            provider_tool = {
-                "type": "function",
-                "function": {
-                    "name": tool.get("name"),
-                    "description": tool.get("description"),
-                    "parameters": tool.get("parameters", {})
-                }
-            }
-            provider_tools.append(provider_tool)
+            if isinstance(tool, ToolDefinition):
+                # ToolDefinition is already in OpenAI format, just extract the dict representation
+                provider_tools.append({
+                    "type": tool.type,
+                    "function": tool.function
+                })
+            elif isinstance(tool, dict):
+                # For backward compatibility with dict format, return as-is if already in OpenAI format
+                if "function" in tool and "type" in tool:
+                    # Already in full OpenAI format
+                    provider_tools.append(tool)
+                elif "name" in tool and "parameters" in tool:
+                    # Old kernel format, convert to OpenAI format
+                    provider_tools.append({
+                        "type": "function",
+                        "function": {
+                            "name": tool["name"],
+                            "description": tool.get("description", ""),
+                            "parameters": tool["parameters"]
+                        }
+                    })
+                else:
+                    # Unknown format, return as-is with a default
+                    provider_tools.append(tool)
+            else:
+                # For any other format, return as-is
+                provider_tools.append(tool)
         
         return provider_tools
 
     def convert_kernel_tool_result_to_provider(self, tool_result: ToolResult) -> Dict[str, Any]:
         """
         Convert kernel ToolResult to provider format for continuing conversation.
+        This maps kernel execution result fields to the OpenAI message format.
+        OpenAI expects a message with role='tool', content, and tool_call_id.
         
         Args:
-            tool_result: Tool result in kernel format
+            tool_result: Tool result in kernel format (execution result)
             
         Returns:
-            Tool result in provider format
+            Tool result in OpenAI message format for conversation history
         """
         return {
             "role": "tool",
             "content": tool_result.return_display,
-            "tool_call_id": tool_result.tool_name
+            "tool_call_id": tool_result.tool_name  # OpenAI format uses tool_call_id
         }
+
+# Maintain backward compatibility
+ContentConverter = OpenAIConverter

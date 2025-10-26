@@ -37,13 +37,62 @@ class ToolResult(BaseModel):
 
 
 class ToolDefinition(BaseModel):
-    """Definition of a tool with schema and metadata"""
-    name: str
-    display_name: str
-    description: str
-    parameter_schema: Dict[str, Any]
+    """Definition of a tool with schema and metadata. Uses OpenAI-compatible format."""
+    # The tool definition itself should match the OpenAI function format
+    type: str = "function"  # OpenAI uses type="function" for function tools
+    function: Dict[str, Any]  # Contains name, description, and parameters
     approval_required: bool = True
     approval_mode: ToolApprovalMode = ToolApprovalMode.DEFAULT
+    
+    @property
+    def name(self) -> str:
+        """Convenience property to access the function name."""
+        return self.function.get("name", "")
+    
+    @property 
+    def display_name(self) -> str:
+        """Convenience property to access the display name."""
+        # Try to get display_name from function if available, otherwise use name
+        return self.function.get("display_name", self.function.get("name", ""))
+    
+    @property
+    def description(self) -> str:
+        """Convenience property to access the function description."""
+        return self.function.get("description", "")
+    
+    @property
+    def parameters(self) -> Dict[str, Any]:
+        """Convenience property to access the function parameters."""
+        return self.function.get("parameters", {})
+    
+    @classmethod
+    def create(cls, name: str, description: str, parameters: Dict[str, Any], 
+               display_name: str = None, approval_required: bool = True,
+               approval_mode: ToolApprovalMode = ToolApprovalMode.DEFAULT):
+        """
+        Create a ToolDefinition in OpenAI-compatible format.
+        
+        Args:
+            name: The name of the tool
+            description: The description of the tool
+            parameters: The parameters in OpenAI format
+            display_name: Optional display name (defaults to name)
+            approval_required: Whether this tool requires approval
+            approval_mode: The approval mode for this tool
+        """
+        function_data = {
+            "name": name,
+            "description": description,
+            "parameters": parameters
+        }
+        if display_name:
+            function_data["display_name"] = display_name
+            
+        return cls(
+            function=function_data,
+            approval_required=approval_required,
+            approval_mode=approval_mode
+        )
 
 
 class ToolExecution(BaseModel):

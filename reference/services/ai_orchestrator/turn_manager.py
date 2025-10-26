@@ -83,8 +83,7 @@ class TurnManager:
         if system_context:
             messages.insert(0, {"role": "system", "content": system_context})
         
-        # Debug: Print current conversation history state
-        print(f"DEBUG: Turn manager conversation history at start of run_turn: {self.conversation_history}")
+
         
         # Get initial response from LLM (potentially with tool calls)
         initial_response = await self.content_generator.generate_response(
@@ -107,13 +106,12 @@ class TurnManager:
             for tool_call in initial_response.tool_calls:
                 # Only add valid tool calls (with non-empty names)
                 if tool_call.name and tool_call.name.strip():
-                    import json
                     assistant_message["tool_calls"].append({
                         "id": tool_call.id,
                         "type": "function",  # Keeping 'function' type for compatibility
                         "function": {
                             "name": tool_call.name,
-                            "arguments": json.dumps(tool_call.arguments) if isinstance(tool_call.arguments, dict) else tool_call.arguments
+                            "arguments": tool_call.arguments_json  # Now directly uses the JSON string format
                         }
                     })
             
@@ -148,8 +146,7 @@ class TurnManager:
                         }
                         self.conversation_history.append(tool_message)
                         
-                        # Debug: Print the tool result being added to history
-                        print(f"DEBUG: Adding tool result to conversation history: {tool_message}")
+
                         
                         # Yield tool call response event
                         yield TurnEvent(TurnEventType.TOOL_CALL_RESPONSE, {
@@ -188,23 +185,114 @@ class TurnManager:
             if system_context and not any(msg.get("role") == "system" for msg in self.conversation_history):
                 self.conversation_history.insert(0, {"role": "system", "content": system_context})
             
-            # Debug: Print the full conversation history being sent to process_tool_result
-            print(f"DEBUG: Full conversation history before process_tool_result: {self.conversation_history}")
+
             
             # Continue the conversation with the tool results
-            final_response = await self.content_generator.process_tool_result(
+            # Process recursively until there are no more tool calls
+            current_response = await self.content_generator.process_tool_result(
                 ToolResult(
                     tool_name="tool_result",
                     success=True,
                     llm_content="Tool execution results provided.",
                     return_display="Tool execution results provided."
                 ),
-                self.conversation_history
+                self.conversation_history,
+                available_tools  # Pass available tools so LLM knows what functions it can call
             )
             
-            # Yield the final content if available
-            if hasattr(final_response, 'content') and final_response.content:
-                yield TurnEvent(TurnEventType.CONTENT, final_response.content)
+            # Process recursively if there are more tool calls
+            while current_response and hasattr(current_response, 'tool_calls') and current_response.tool_calls:
+                # Add assistant message with tool calls to conversation history
+                assistant_message = {
+                    "role": "assistant",
+                    "content": current_response.content,
+                    "tool_calls": []
+                }
+                
+                for tool_call in current_response.tool_calls:
+                    # Only add valid tool calls (with non-empty names)
+                    if tool_call.name and tool_call.name.strip():
+                        assistant_message["tool_calls"].append({
+                            "id": tool_call.id,
+                            "type": "function",  # Keeping 'function' type for compatibility
+                            "function": {
+                                "name": tool_call.name,
+                                "arguments": tool_call.arguments_json  # Now directly uses the JSON string format
+                            }
+                        })
+                
+                # Only add the assistant message if it has valid tool calls
+                if assistant_message["tool_calls"]:
+                    self.conversation_history.append(assistant_message)
+                
+                # Process each tool call
+                for tool_call in current_response.tool_calls:
+                    # Only process valid tool calls (with non-empty names)
+                    if tool_call.name and tool_call.name.strip():
+                        try:
+                            if signal and signal.is_set():
+                                yield TurnEvent(TurnEventType.ERROR, error=Exception("Turn cancelled by user"))
+                                return
+                            
+                            # Yield tool call request event
+                            yield TurnEvent(TurnEventType.TOOL_CALL_REQUEST, {
+                                "call_id": tool_call.id,
+                                "name": tool_call.name,
+                                "arguments": tool_call.arguments
+                            })
+                            
+                            # Execute the tool
+                            tool_result = await self._execute_tool_call(tool_call)
+                            
+                            # Add tool result to conversation history
+                            tool_message = {
+                                "role": "tool",
+                                "content": tool_result.llm_content,
+                                "tool_call_id": tool_call.id
+                            }
+                            self.conversation_history.append(tool_message)
+                            
+                            # Yield tool call response event
+                            yield TurnEvent(TurnEventType.TOOL_CALL_RESPONSE, {
+                                "call_id": tool_call.id,
+                                "result": tool_result
+                            })
+                            
+                        except Exception as e:
+                            error_result = ToolResult(
+                                tool_name=tool_call.name,
+                                success=False,
+                                error=f"Error executing tool: {str(e)}",
+                                llm_content=f"Error executing tool {tool_call.name}: {str(e)}",
+                                return_display=f"Error executing tool {tool_call.name}: {str(e)}"
+                            )
+                            
+                            yield TurnEvent(TurnEventType.ERROR, error=error_result.error)
+                            return
+                    else:
+                        # Add a message to the conversation history to inform about the invalid tool call
+                        invalid_tool_message = {
+                            "role": "tool",
+                            "content": "Error: Invalid tool call detected - tool name is empty or malformed. Please try rephrasing your request.",
+                            "tool_call_id": tool_call.id
+                        }
+                        self.conversation_history.append(invalid_tool_message)
+                
+                # Get the next response after processing the current tool calls
+                current_response = await self.content_generator.process_tool_result(
+                    ToolResult(
+                        tool_name="tool_result",
+                        success=True,
+                        llm_content="Tool execution results provided.",
+                        return_display="Tool execution results provided."
+                    ),
+                    self.conversation_history,
+                    available_tools  # Pass available tools so LLM knows what functions it can call
+                )
+            
+            # Yield the final content from the last response if available
+            if hasattr(current_response, 'content') and current_response.content:
+                yield TurnEvent(TurnEventType.CONTENT, current_response.content)
         else:
             # If there were no tool calls, just return the initial content
             if initial_response.content:

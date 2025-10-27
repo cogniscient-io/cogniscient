@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, AsyncGenerator
 from gcs_kernel.mcp.client import MCPClient
 from gcs_kernel.models import ToolResult
 from services.llm_provider.base_generator import BaseContentGenerator
+from .system_context_builder import SystemContextBuilder
 from .turn_manager import TurnManager, TurnEvent, TurnEventType
 from .tool_executor import ToolExecutor
 from .streaming_handler import StreamingHandler
@@ -45,6 +46,9 @@ class AIOrchestratorService:
         self.turn_manager = TurnManager(kernel_client, content_generator, kernel)
         self.tool_executor = ToolExecutor(kernel_client, kernel)
         self.streaming_handler = StreamingHandler(kernel_client, content_generator, kernel)
+        
+        # Initialize system context builder for creating system context with prompts
+        self.system_context_builder = SystemContextBuilder(kernel_client, kernel)
         
         # Initialize conversation history to maintain context across interactions
         self.conversation_history = []
@@ -235,59 +239,18 @@ class AIOrchestratorService:
         
         return kernel_tools
 
-    async def _build_system_context(self) -> str:
+    async def _build_system_context(self, additional_context: str = None) -> str:
         """
         Build system context with information about available tools and capabilities.
         
+        Args:
+            additional_context: Optional additional context to include
+            
         Returns:
             System context string with tool information and other capabilities
         """
-        # Get available tools from the kernel
-        available_tools = await self._get_available_tools()
-        
-        # Start building the system context
-        if available_tools:
-            # Include explicit tool names in the initial system message to make them prominent
-            tool_names = ', '.join([tool.get('name', 'unknown') for tool in available_tools])
-            system_context = f"You are an AI assistant with specific capabilities in the GCS Kernel system. You have access to these tools: {tool_names}.\\n\\n"
-            
-            system_context += "Available tools:\\n\\n"
-            
-            for tool in available_tools:
-                name = tool.get('name', 'unknown')
-                description = tool.get('description', 'No description')
-                schema = tool.get('parameters', {})
-                system_context += f"- {name}: {description}\\n"
-                if schema:
-                    system_context += f"  Parameters: {schema}\\n"
-                system_context += "\\n"
-        else:
-            system_context = "You are an AI assistant with specific capabilities in the GCS Kernel system.\\n\\n"
-            system_context += "No tools are currently available.\\n\\n"
-        
-        # Add instructions for using tools
-        system_context += (
-            "When you need to use a tool, respond in JSON format with a tool_call object:\\n"
-            "{\\n"
-            '  "name": "tool_name",\\n'
-            '  "arguments": {\\n'
-            '    "param1": "value1",\\n'
-            '    "param2": "value2"\\n'
-            "  }\\n"
-            "}\\n\\n"
-        )
-        
-        system_context += (
-            "Only use tools when necessary to fulfill the user's request. "
-            "If a tool can help answer the user's question or perform a task, "
-            "use it appropriately. Otherwise, respond directly to the user.\\n\\n"
-        )
-        
-        # Add general guidance
-        system_context += (
-            "You are operating within the GCS Kernel system. Follow best practices for "
-            "safety, security, and efficiency when executing tasks or using tools."
-        )
+        # Use the SystemContextBuilder to create the system context with prompts
+        system_context = await self.system_context_builder.build_system_context(additional_context=additional_context)
         
         return system_context
 

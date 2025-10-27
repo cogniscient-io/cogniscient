@@ -48,6 +48,10 @@ class MockMCPClient:
             return_display=f"Mock result for execution {execution_id}",
             error_message=None
         )
+    
+    async def list_tools(self):
+        """Return a list of available tools for testing."""
+        return []
 
 
 @pytest.mark.asyncio
@@ -97,7 +101,7 @@ async def test_kernel_to_llm_hello_world():
                 from services.llm_provider.pipeline import ContentGenerationPipeline
                 self.pipeline = ContentGenerationPipeline(self.provider)
                 # Also initialize the converter
-                from services.llm_provider.converter import ContentConverter
+                from services.llm_provider.providers.openai_converter import ContentConverter
                 self.converter = ContentConverter(self.model)
         
         # Initialize the orchestrator with the mock content generator
@@ -161,7 +165,7 @@ async def test_kernel_llm_streaming_hello_world():
                 from services.llm_provider.pipeline import ContentGenerationPipeline
                 self.pipeline = ContentGenerationPipeline(self.provider)
                 # Also initialize the converter
-                from services.llm_provider.converter import ContentConverter
+                from services.llm_provider.providers.openai_converter import ContentConverter
                 self.converter = ContentConverter(self.model)
         
         # Initialize the orchestrator with the mock content generator

@@ -6,12 +6,16 @@ and follows Qwen Code patterns for content generation, using Pydantic Settings.
 It supports multiple LLM providers through the provider factory.
 """
 
+import logging
 from typing import Any, Dict, AsyncIterator
 from gcs_kernel.models import ToolResult
 from services.config import settings
 from services.llm_provider.base_generator import BaseContentGenerator
 from services.llm_provider.pipeline import ContentGenerationPipeline
 from services.llm_provider.providers.provider_factory import ProviderFactory
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 
 class LLMContentGenerator(BaseContentGenerator):
@@ -82,4 +86,142 @@ class LLMContentGenerator(BaseContentGenerator):
         
         # Use the shared helper method to format the response consistently
         return self._format_response(response)
+    
+    async def process_tool_result(self, tool_result: Any, conversation_history: list = None, available_tools: list = None) -> Any:
+        """
+        Process a tool result and continue the conversation.
+        
+        Args:
+            tool_result: The result from a tool execution
+            conversation_history: The conversation history to maintain context
+            available_tools: List of tools available to the LLM for function calling
+            
+        Returns:
+            The updated response after processing the tool result
+        """
+        # Prepare the request in the format expected by the pipeline
+        llm_config = settings
+        request = {
+            "prompt": f"Process this tool result: {tool_result}",
+            "model": self.model,
+            "temperature": llm_config.llm_temperature,
+            "max_tokens": llm_config.llm_max_tokens
+        }
+        
+        # Add conversation history if provided
+        if conversation_history:
+            request["conversation_history"] = conversation_history
+        
+        # Add tools if provided
+        if available_tools:
+            request["tools"] = available_tools
+        
+        # Generate content using the pipeline
+        response = await self.generate_content(request, user_prompt_id=f"tool_result_{id(tool_result)}")
+        
+        # Use the shared helper method to format the response consistently
+        return self._format_response(response)
+    
+    async def stream_response(self, prompt: str) -> AsyncIterator[str]:
+        """
+        Stream a response to the given prompt.
+        This method handles content streaming for UX purposes and also
+        processes the complete response with potential tool calls after streaming completes.
+        
+        Args:
+            prompt: The input prompt
+            
+        Yields:
+            Partial response strings as they become available
+        """
+        # Prepare the request in the format expected by the pipeline for streaming
+        llm_config = settings
+        request = {
+            "prompt": prompt,
+            "model": self.model,
+            "temperature": llm_config.llm_temperature,
+            "max_tokens": llm_config.llm_max_tokens,
+            "stream": True
+        }
+        
+        # Execute streaming content generation through the pipeline
+        async for chunk in self.pipeline.execute_stream(request, user_prompt_id=f"stream_{id(prompt)}"):
+            yield chunk
+        
+        # After streaming completes, get the complete response from the pipeline
+        complete_response = self.pipeline.get_last_streaming_response()
+        
+        # If the complete response contains tool calls, we could process them here
+        # For now, this ensures the complete response is processed through our standard flow
+        if complete_response:
+            # Process the complete response through the standard flow to handle potential tool calls
+            formatted_response = self._format_response(complete_response)
+            
+            # NOTE: Since this is an async generator, we can't directly return the complete response.
+            # The complete response with tool calls would need to be handled by the caller
+            # (e.g., ai orchestrator) through a separate mechanism.
+            # The primary purpose of this is to ensure the complete response gets processed
+            # through _format_response and tool call processor even after streaming.
+    
+    async def generate_content(self, request: Dict[str, Any], user_prompt_id: str) -> Any:
+        """
+        Generate content using the pipeline.
+        
+        Args:
+            request: The content generation request
+            user_prompt_id: Unique identifier for the user prompt
+            
+        Returns:
+            The content generation response
+        """
+        return await self.pipeline.execute(request, user_prompt_id)
+    
+    def _format_response(self, response: Any) -> Any:
+        """
+        Format the response consistently.
+        Since the response is now in OpenAI format, use the dedicated tool call processor
+        to convert tool_calls from dict format to objects with expected attributes 
+        for compatibility with turn manager.
+        
+        Args:
+            response: The raw response from the pipeline (in OpenAI format)
+            
+        Returns:
+            The formatted response
+        """
+        from .tool_call_processor import process_tool_calls_in_response, ToolCall
+        
+        class ResponseObject:
+            def __init__(self, content="", tool_calls=None):
+                self.content = content
+                self.tool_calls = tool_calls or []
+        
+        # If the response has content and tool_calls attributes, return an object with these attributes
+        if isinstance(response, dict):
+            content = response.get("content", "")
+            raw_tool_calls = response.get("tool_calls", [])
+            
+            logger.debug(f"ContentGenerator _format_response - content: '{content}', raw_tool_calls: {raw_tool_calls}")
+            
+            # Use the dedicated tool call processor to handle conversion properly
+            _, processed_tool_calls = process_tool_calls_in_response(content, raw_tool_calls)
+            
+            return ResponseObject(
+                content=content,
+                tool_calls=processed_tool_calls
+            )
+        else:
+            # Handle other response formats
+            content = getattr(response, 'content', '') or str(response)
+            raw_tool_calls = getattr(response, 'tool_calls', [])
+            
+            logger.debug(f"ContentGenerator _format_response - non-dict response - content: '{content}', raw_tool_calls: {raw_tool_calls}")
+            
+            # Use the dedicated tool call processor to handle conversion properly
+            _, processed_tool_calls = process_tool_calls_in_response(content, raw_tool_calls)
+            
+            return ResponseObject(
+                content=content,
+                tool_calls=processed_tool_calls
+            )
     

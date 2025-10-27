@@ -4,9 +4,13 @@ Content Converter for GCS Kernel LLM Provider Backend.
 This module implements content conversion following Qwen Code's OpenAIContentConverter patterns.
 """
 
+import logging
 from typing import Dict, Any, List
 from gcs_kernel.models import ToolResult
 from services.llm_provider.base_converter import BaseConverter
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 
 class OpenAIConverter(BaseConverter):
@@ -32,6 +36,15 @@ class OpenAIConverter(BaseConverter):
         if "messages" in request:
             # Use the existing messages array
             messages = request["messages"]
+        # Check if conversation history is provided (contains full conversation context)
+        elif "conversation_history" in request:
+            # Use the conversation history as the messages array
+            messages = request["conversation_history"]
+            
+            # If there's also a prompt, add it as the final user message
+            prompt = request.get("prompt", "")
+            if prompt:
+                messages.append({"role": "user", "content": prompt})
         else:
             # Extract prompt from request and create a user message
             prompt = request.get("prompt", "")
@@ -55,18 +68,21 @@ class OpenAIConverter(BaseConverter):
         if "tools" in request:
             provider_request["tools"] = self.convert_kernel_tools_to_provider(request["tools"])
         
+        logger.debug(f"OpenAIConverter convert_kernel_request_to_provider - provider_request: {provider_request}")
+        
         return provider_request
 
     def convert_provider_response_to_kernel(self, provider_response: Dict[str, Any]) -> Dict[str, Any]:
         """
         Convert provider response format to kernel format.
-        Since we're standardizing on OpenAI format, this is now a minimal transformation.
+        Since kernel formats are now aligned with OpenAI format, this is a true passthrough.
+        Returns the provider response in the expected dictionary format.
         
         Args:
             provider_response: Response from LLM provider (as dictionary) in OpenAI format
             
         Returns:
-            Response in kernel format (which is now OpenAI-compatible)
+            Response in kernel format (which is now identical to OpenAI format)
         """
         # Extract content and potential tool calls from provider response (OpenAI format)
         choices = provider_response.get("choices", [])
@@ -76,10 +92,10 @@ class OpenAIConverter(BaseConverter):
         choice = choices[0]
         message = choice.get("message", {})
         
-        # Return in OpenAI-compatible format with minimal transformation
+        # Return in the same OpenAI format - true passthrough
         result = {
             "content": message.get("content", ""),
-            "tool_calls": message.get("tool_calls", [])  # Already in OpenAI format
+            "tool_calls": message.get("tool_calls", [])
         }
         
         return result
@@ -148,6 +164,3 @@ class OpenAIConverter(BaseConverter):
             "content": tool_result.return_display,
             "tool_call_id": tool_result.tool_name  # OpenAI format uses tool_call_id
         }
-
-# Maintain backward compatibility
-ContentConverter = OpenAIConverter

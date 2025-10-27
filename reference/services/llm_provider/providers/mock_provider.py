@@ -25,7 +25,7 @@ class MockProvider(BaseProvider):
         super().__init__(config)
         
         # Initialize a converter for this provider
-        from services.llm_provider.converter import OpenAIConverter
+        from .openai_converter import OpenAIConverter
         self._converter = OpenAIConverter(self.model)
     
     @property

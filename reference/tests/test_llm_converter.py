@@ -4,7 +4,7 @@ Test suite for the Content Converter Implementation.
 This module tests the ContentConverter class and its functionality.
 """
 import pytest
-from services.llm_provider.converter import ContentConverter
+from services.llm_provider.providers.openai_converter import ContentConverter
 from gcs_kernel.models import ToolResult
 
 

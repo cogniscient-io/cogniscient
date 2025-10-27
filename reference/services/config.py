@@ -2,6 +2,8 @@
 Configuration settings for the GCS Kernel application.
 """
 
+import logging
+import sys
 from pydantic_settings import BaseSettings
 from typing import Optional
 from pydantic import ConfigDict
@@ -36,3 +38,24 @@ class Settings(BaseSettings):
 
 # Create a global settings instance
 settings = Settings()
+
+
+def configure_logging():
+    """Configure logging based on the application settings."""
+    # Convert the log level string to the corresponding logging constant
+    numeric_level = getattr(logging, settings.log_level.upper(), None)
+    if not isinstance(numeric_level, int):
+        raise ValueError(f"Invalid log level: {settings.log_level}")
+    
+    # Configure the root logger
+    logging.basicConfig(
+        level=numeric_level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(sys.stdout)  # Output to stdout so it appears in CLI
+        ]
+    )
+
+
+# Configure logging when the module is imported
+configure_logging()

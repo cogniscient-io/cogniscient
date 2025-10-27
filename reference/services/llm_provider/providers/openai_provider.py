@@ -7,7 +7,7 @@ This module implements the OpenAI provider following Qwen Code patterns.
 import httpx
 from typing import Dict, Any
 from services.llm_provider.providers.base_provider import BaseProvider
-from services.llm_provider.converter import OpenAIConverter
+from .openai_converter import OpenAIConverter
 
 
 class OpenAIProvider(BaseProvider):

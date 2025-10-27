@@ -107,7 +107,7 @@ class AIOrchestratorService:
         self.conversation_history = []
         
         # Build system context with available tools
-        system_context = await self._build_system_context()
+        system_context = await self.system_context_builder.build_system_context()
         available_tools = await self._get_available_tools()
         
         # Process the interaction using turn manager which handles the streaming/non-streaming
@@ -156,7 +156,7 @@ class AIOrchestratorService:
         self.conversation_history = []
         
         # Build system context with available tools
-        system_context = await self._build_system_context()
+        system_context = await self.system_context_builder.build_system_context()
         available_tools = await self._get_available_tools()
         
         # Create an abort signal for the turn
@@ -239,20 +239,7 @@ class AIOrchestratorService:
         
         return kernel_tools
 
-    async def _build_system_context(self, additional_context: str = None) -> str:
-        """
-        Build system context with information about available tools and capabilities.
-        
-        Args:
-            additional_context: Optional additional context to include
-            
-        Returns:
-            System context string with tool information and other capabilities
-        """
-        # Use the SystemContextBuilder to create the system context with prompts
-        system_context = await self.system_context_builder.build_system_context(additional_context=additional_context)
-        
-        return system_context
+
 
     async def reset_conversation(self):
         """

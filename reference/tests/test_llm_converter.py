@@ -1,18 +1,18 @@
 """
-Test suite for the Content Converter Implementation.
+Test suite for the OpenAI Converter Implementation.
 
-This module tests the ContentConverter class and its functionality.
+This module tests the OpenAIConverter class and its functionality.
 """
 import pytest
-from services.llm_provider.providers.openai_converter import ContentConverter
+from services.llm_provider.providers.openai_converter import OpenAIConverter
 from gcs_kernel.models import ToolResult
 
 
 def test_content_converter_initialization():
     """
-    Test that ContentConverter initializes properly with model.
+    Test that OpenAIConverter initializes properly with model.
     """
-    converter = ContentConverter("gpt-test-model")
+    converter = OpenAIConverter("gpt-test-model")
     
     assert converter.model == "gpt-test-model"
 
@@ -21,7 +21,7 @@ def test_convert_kernel_request_to_provider():
     """
     Test converting kernel request format to provider format.
     """
-    converter = ContentConverter("gpt-test-model")
+    converter = OpenAIConverter("gpt-test-model")
     
     kernel_request = {
         "prompt": "Test user prompt",
@@ -47,7 +47,7 @@ def test_convert_kernel_request_to_provider_with_system_prompt():
     """
     Test converting kernel request format to provider format with system prompt.
     """
-    converter = ContentConverter("gpt-test-model")
+    converter = OpenAIConverter("gpt-test-model")
     
     kernel_request = {
         "prompt": "Test user prompt",
@@ -69,7 +69,7 @@ def test_convert_kernel_request_to_provider_with_tools():
     """
     Test converting kernel request format to provider format with tools.
     """
-    converter = ContentConverter("gpt-test-model")
+    converter = OpenAIConverter("gpt-test-model")
     
     kernel_request = {
         "prompt": "Test user prompt",
@@ -102,7 +102,7 @@ def test_convert_provider_response_to_kernel():
     Test converting provider response format to kernel format.
     With passthrough architecture, tool calls remain in OpenAI format.
     """
-    converter = ContentConverter("gpt-test-model")
+    converter = OpenAIConverter("gpt-test-model")
     
     provider_response = {
         "choices": [
@@ -139,7 +139,7 @@ def test_convert_provider_response_to_kernel_no_tool_calls():
     """
     Test converting provider response format to kernel format without tool calls.
     """
-    converter = ContentConverter("gpt-test-model")
+    converter = OpenAIConverter("gpt-test-model")
     
     provider_response = {
         "choices": [
@@ -161,7 +161,7 @@ def test_convert_provider_response_to_kernel_empty_choices():
     """
     Test converting provider response format to kernel format with empty choices.
     """
-    converter = ContentConverter("gpt-test-model")
+    converter = OpenAIConverter("gpt-test-model")
     
     provider_response = {
         "choices": []
@@ -177,7 +177,7 @@ def test_convert_kernel_tools_to_provider():
     """
     Test converting kernel tools to provider format.
     """
-    converter = ContentConverter("gpt-test-model")
+    converter = OpenAIConverter("gpt-test-model")
     
     kernel_tools = [
         {
@@ -212,7 +212,7 @@ def test_convert_kernel_tool_result_to_provider():
         success=True
     )
     
-    converter = ContentConverter("gpt-test-model")
+    converter = OpenAIConverter("gpt-test-model")
     provider_tool_result = converter.convert_kernel_tool_result_to_provider(tool_result)
     
     assert provider_tool_result["role"] == "tool"

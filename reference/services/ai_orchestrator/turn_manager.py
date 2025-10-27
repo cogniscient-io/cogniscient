@@ -75,20 +75,21 @@ class TurnManager:
         Yields:
             TurnEvent objects representing different stages of the interaction
         """
-        # Reset conversation history for this turn
+        # Reset conversation history to OpenAI format for this turn
         self.conversation_history = []
         
-        # Initialize conversation
+        # Initialize conversation in OpenAI format
         messages = [{"role": "user", "content": prompt}]
         if system_context:
             messages.insert(0, {"role": "system", "content": system_context})
         
-
+        # Use the conversation history directly
+        self.conversation_history = messages
         
         # Get initial response from LLM (potentially with tool calls)
         initial_response = await self.content_generator.generate_response(
-            prompt,
-            system_context=system_context,
+            prompt,  # This will be ignored in favor of conversation history
+            system_context=system_context,  # This will be ignored in favor of conversation history
             tools=available_tools
         )
         

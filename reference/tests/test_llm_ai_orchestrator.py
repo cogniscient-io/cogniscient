@@ -45,6 +45,8 @@ class MockContentGenerator(BaseContentGenerator):
                     self.name = "shell_command"
                     self.arguments = {"command": "echo hello"}  # Using a real tool with valid parameters
                     self.parameters = {"command": "echo hello"}  # For compatibility
+                    import json
+                    self.arguments_json = json.dumps(self.arguments)  # JSON string format for OpenAI compatibility
 
             return ResponseObj(
                 content="I'll use a tool to help with that.",
@@ -56,7 +58,7 @@ class MockContentGenerator(BaseContentGenerator):
                 tool_calls=[]
             )
     
-    async def process_tool_result(self, tool_result, conversation_history=None):
+    async def process_tool_result(self, tool_result, conversation_history=None, available_tools=None):
         """
         Mock implementation of process_tool_result.
         """

@@ -83,8 +83,11 @@ def test_openai_provider_build_request():
     
     enhanced_request = provider.build_request(request, "user_prompt_123")
     
-    # Check that the original request parameters are preserved
-    assert enhanced_request["prompt"] == "Test prompt"
+    # Check that the request is converted to OpenAI format (messages instead of prompt)
+    assert "messages" in enhanced_request
+    assert len(enhanced_request["messages"]) == 1
+    assert enhanced_request["messages"][0]["role"] == "user"
+    assert enhanced_request["messages"][0]["content"] == "Test prompt"
     assert enhanced_request["temperature"] == 0.7
     
     # Check that default model is added if not present in original request
@@ -115,5 +118,11 @@ def test_openai_provider_build_request_with_model_override():
     
     # Original model should be preserved, not overridden by config
     assert enhanced_request["model"] == "gpt-specific-model"
-    assert enhanced_request["prompt"] == "Test prompt"
+    
+    # Check that the request is converted to OpenAI format (messages instead of prompt)
+    assert "messages" in enhanced_request
+    assert len(enhanced_request["messages"]) == 1
+    assert enhanced_request["messages"][0]["role"] == "user"
+    assert enhanced_request["messages"][0]["content"] == "Test prompt"
+    
     assert enhanced_request["user"] == "user_prompt_123"

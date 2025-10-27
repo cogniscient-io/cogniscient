@@ -5,6 +5,7 @@ This module implements the provider factory following Qwen Code patterns.
 """
 
 from typing import Dict, Any, Type
+from services.config import settings
 from services.llm_provider.providers.base_provider import BaseProvider
 from services.llm_provider.providers.openai_provider import OpenAIProvider
 from services.llm_provider.providers.mock_provider import MockProvider
@@ -48,6 +49,49 @@ class ProviderFactory:
         if provider_type not in self.providers:
             raise ValueError(f"Provider type '{provider_type}' is not registered")
         
+        provider_class = self.providers[provider_type]
+        return provider_class(config)
+    
+    def create_provider_from_settings(self) -> BaseProvider:
+        """
+        Create a provider instance using configuration from global settings.
+        This eliminates the need for callers to handle configuration details.
+        
+        Returns:
+            Provider instance configured from global settings
+            
+        Raises:
+            ValueError: If provider type is not registered or required settings are missing
+        """
+        # Get configuration from global settings
+        llm_config = settings
+        
+        provider_type = llm_config.llm_provider_type
+        if not provider_type:
+            raise ValueError("Provider type is not specified in configuration")
+        
+        if provider_type not in self.providers:
+            raise ValueError(f"Provider type '{provider_type}' is not registered")
+        
+        # Build configuration dictionary from settings
+        config = {
+            "api_key": llm_config.llm_api_key,
+        }
+        
+        # Add optional configuration if provided
+        if llm_config.llm_model:
+            config["model"] = llm_config.llm_model
+        if llm_config.llm_base_url:
+            config["base_url"] = llm_config.llm_base_url
+        if llm_config.llm_timeout:
+            config["timeout"] = llm_config.llm_timeout
+        if llm_config.llm_max_retries:
+            config["max_retries"] = llm_config.llm_max_retries
+            
+        # Validate required configuration
+        if not config["api_key"]:
+            raise ValueError("API key is required but not provided in environment variables")
+            
         provider_class = self.providers[provider_type]
         return provider_class(config)
     

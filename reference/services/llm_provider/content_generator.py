@@ -26,30 +26,16 @@ class LLMContentGenerator(BaseContentGenerator):
     """
     
     def __init__(self):
-        # Get settings from config service
-        llm_config = settings
-        
-        # Use the settings to access settings
-        self.api_key = llm_config.llm_api_key
-        if not self.api_key:
-            raise ValueError("API key is required but not provided in environment variables")
-        self.model = llm_config.llm_model
-        self.base_url = llm_config.llm_base_url
-        self.timeout = llm_config.llm_timeout
-        self.max_retries = llm_config.llm_max_retries
-        
         # Initialize provider components
+        # The provider factory will handle all configuration internally from settings
         self.provider_factory = ProviderFactory()
-        provider_type = llm_config.llm_provider_type
-        provider_config = {
-            "api_key": self.api_key,
-            "model": self.model,
-            "base_url": self.base_url,
-            "timeout": self.timeout,
-            "max_retries": self.max_retries
-        }
-        self.provider = self.provider_factory.create_provider(provider_type, provider_config)
+        
+        # Let the provider factory create the provider with configuration from settings
+        self.provider = self.provider_factory.create_provider_from_settings()
         self.pipeline = ContentGenerationPipeline(self.provider)
+        
+        # Content generator no longer needs to store or validate configuration
+        # The provider handles all configuration concerns internally
     
     async def generate_response(self, prompt: str, system_context: str = None, tools: list = None) -> Any:
         """
@@ -64,18 +50,17 @@ class LLMContentGenerator(BaseContentGenerator):
         Returns:
             The generated response with potential tool calls
         """
-        # Prepare the request in the format expected by the pipeline
-        llm_config = settings
-        request = {
-            "prompt": prompt,
-            "model": self.model,
-            "temperature": llm_config.llm_temperature,
-            "max_tokens": llm_config.llm_max_tokens
-        }
+        # Prepare the request with essential content only
+        # The provider will handle all configuration parameters internally
         
-        # Add system context if provided
+        # Create messages in OpenAI format
+        messages = [{"role": "user", "content": prompt}]
         if system_context:
-            request["system_prompt"] = system_context
+            messages.insert(0, {"role": "system", "content": system_context})
+        
+        request = {
+            "messages": messages
+        }
         
         # Add tools if provided
         if tools:
@@ -99,18 +84,19 @@ class LLMContentGenerator(BaseContentGenerator):
         Returns:
             The updated response after processing the tool result
         """
-        # Prepare the request in the format expected by the pipeline
-        llm_config = settings
-        request = {
-            "prompt": f"Process this tool result: {tool_result}",
-            "model": self.model,
-            "temperature": llm_config.llm_temperature,
-            "max_tokens": llm_config.llm_max_tokens
-        }
+        # Prepare the request with essential content only
+        # The provider will handle all configuration parameters internally
         
-        # Add conversation history if provided
+        # Use the conversation history directly if provided, otherwise create minimal messages
         if conversation_history:
-            request["conversation_history"] = conversation_history
+            messages = conversation_history
+        else:
+            # Fallback: create minimal message with the tool result
+            messages = [{"role": "user", "content": f"Process this tool result: {tool_result}"}]
+        
+        request = {
+            "messages": messages
+        }
         
         # Add tools if provided
         if available_tools:
@@ -134,13 +120,14 @@ class LLMContentGenerator(BaseContentGenerator):
         Yields:
             Partial response strings as they become available
         """
-        # Prepare the request in the format expected by the pipeline for streaming
-        llm_config = settings
+        # Prepare the request with essential content only for streaming
+        # The provider will handle all configuration parameters internally
+        
+        # Create messages in OpenAI format
+        messages = [{"role": "user", "content": prompt}]
+        
         request = {
-            "prompt": prompt,
-            "model": self.model,
-            "temperature": llm_config.llm_temperature,
-            "max_tokens": llm_config.llm_max_tokens,
+            "messages": messages,
             "stream": True
         }
         

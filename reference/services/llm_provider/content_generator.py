@@ -25,7 +25,7 @@ class LLMContentGenerator(BaseContentGenerator):
     Supports multiple LLM providers through the provider factory.
     """
     
-    def __init__(self):
+    def __init__(self, kernel=None):
         # Initialize provider components
         # The provider factory will handle all configuration internally from settings
         self.provider_factory = ProviderFactory()
@@ -34,10 +34,13 @@ class LLMContentGenerator(BaseContentGenerator):
         self.provider = self.provider_factory.create_provider_from_settings()
         self.pipeline = ContentGenerationPipeline(self.provider)
         
+        # Store reference to kernel to access tools registry directly
+        self.kernel = kernel
+        
         # Content generator no longer needs to store or validate configuration
         # The provider handles all configuration concerns internally
     
-    async def generate_response(self, prompt: str, system_context: str = None, tools: list = None) -> Any:
+    async def generate_response(self, prompt: str, system_context: str = None) -> Any:
         """
         Generate a response to the given prompt with potential tool calls.
         Implements the interface expected by the ai_orchestrator.
@@ -45,7 +48,6 @@ class LLMContentGenerator(BaseContentGenerator):
         Args:
             prompt: The input prompt
             system_context: Optional system context/prompt to provide to the LLM
-            tools: Optional list of tools to provide to the LLM for native function calling
             
         Returns:
             The generated response with potential tool calls
@@ -62,9 +64,10 @@ class LLMContentGenerator(BaseContentGenerator):
             "messages": messages
         }
         
-        # Add tools if provided
-        if tools:
-            request["tools"] = tools
+        # Add tools from kernel registry
+        if self.kernel and hasattr(self.kernel, 'registry'):
+            # Get tools from kernel registry
+            request["tools"] = self.kernel.registry.get_all_tools_formatted()
         
         # Generate content using the pipeline
         response = await self.generate_content(request, user_prompt_id=f"prompt_{id(prompt)}")
@@ -72,43 +75,9 @@ class LLMContentGenerator(BaseContentGenerator):
         # Use the shared helper method to format the response consistently
         return self._format_response(response)
     
-    async def process_tool_result(self, tool_result: Any, conversation_history: list = None, available_tools: list = None) -> Any:
-        """
-        Process a tool result and continue the conversation.
-        
-        Args:
-            tool_result: The result from a tool execution
-            conversation_history: The conversation history to maintain context
-            available_tools: List of tools available to the LLM for function calling
-            
-        Returns:
-            The updated response after processing the tool result
-        """
-        # Prepare the request with essential content only
-        # The provider will handle all configuration parameters internally
-        
-        # Use the conversation history directly if provided, otherwise create minimal messages
-        if conversation_history:
-            messages = conversation_history
-        else:
-            # Fallback: create minimal message with the tool result
-            messages = [{"role": "user", "content": f"Process this tool result: {tool_result}"}]
-        
-        request = {
-            "messages": messages
-        }
-        
-        # Add tools if provided
-        if available_tools:
-            request["tools"] = available_tools
-        
-        # Generate content using the pipeline
-        response = await self.generate_content(request, user_prompt_id=f"tool_result_{id(tool_result)}")
-        
-        # Use the shared helper method to format the response consistently
-        return self._format_response(response)
+
     
-    async def stream_response(self, prompt: str) -> AsyncIterator[str]:
+    async def stream_response(self, prompt: str, system_context: str = None) -> AsyncIterator[str]:
         """
         Stream a response to the given prompt.
         This method handles content streaming for UX purposes and also
@@ -116,6 +85,7 @@ class LLMContentGenerator(BaseContentGenerator):
         
         Args:
             prompt: The input prompt
+            system_context: Optional system context/prompt to provide to the LLM
             
         Yields:
             Partial response strings as they become available
@@ -125,11 +95,18 @@ class LLMContentGenerator(BaseContentGenerator):
         
         # Create messages in OpenAI format
         messages = [{"role": "user", "content": prompt}]
+        if system_context:
+            messages.insert(0, {"role": "system", "content": system_context})
         
         request = {
             "messages": messages,
             "stream": True
         }
+        
+        # Add tools from kernel registry
+        if self.kernel and hasattr(self.kernel, 'registry'):
+            # Get tools from kernel registry
+            request["tools"] = self.kernel.registry.get_all_tools_formatted()
         
         # Execute streaming content generation through the pipeline
         async for chunk in self.pipeline.execute_stream(request, user_prompt_id=f"stream_{id(prompt)}"):

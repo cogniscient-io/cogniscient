@@ -108,7 +108,6 @@ class AIOrchestratorService:
         
         # Build system context with available tools
         system_context = await self.system_context_builder.build_system_context()
-        available_tools = await self._get_available_tools()
         
         # Process the interaction using turn manager which handles the streaming/non-streaming
         # transition for tool execution
@@ -121,13 +120,16 @@ class AIOrchestratorService:
             async for event in self.turn_manager.run_turn(
                 prompt, 
                 system_context, 
-                available_tools, 
                 abort_signal
             ):
                 if event.type == TurnEventType.CONTENT:
                     final_response += event.value
+                elif event.type == TurnEventType.TOOL_CALL_REQUEST:
+                    # For non-streaming, we'll report that a tool call is being processed
+                    tool_name = event.value.get('name', 'unknown')
+                    final_response += f"\n[Processing tool call: {tool_name}]\n"
                 elif event.type == TurnEventType.TOOL_CALL_RESPONSE:
-                    # Tool result handled internally by turn manager
+                    # Tool result handled internally by turn manager - no need to report completion
                     continue
                 elif event.type == TurnEventType.ERROR:
                     final_response += f"\nError: {event.error}"
@@ -157,7 +159,6 @@ class AIOrchestratorService:
         
         # Build system context with available tools
         system_context = await self.system_context_builder.build_system_context()
-        available_tools = await self._get_available_tools()
         
         # Create an abort signal for the turn
         abort_signal = asyncio.Event()
@@ -166,17 +167,17 @@ class AIOrchestratorService:
             async for event in self.turn_manager.run_turn(
                 prompt, 
                 system_context, 
-                available_tools, 
                 abort_signal
             ):
                 if event.type == TurnEventType.CONTENT:
                     yield event.value
                 elif event.type == TurnEventType.TOOL_CALL_REQUEST:
                     # For streaming, we'll report that a tool call is being processed
-                    yield f"\n[Processing tool call: {event.value.get('name', 'unknown')}]\n"
+                    tool_name = event.value.get('name', 'unknown')
+                    yield f"\n[Processing tool call: {tool_name}]\n"
                 elif event.type == TurnEventType.TOOL_CALL_RESPONSE:
-                    # Tool result handled internally by turn manager
-                    yield f"\n[Tool call completed]\n"
+                    # Tool result handled internally by turn manager - no need to report completion
+                    continue
                 elif event.type == TurnEventType.ERROR:
                     yield f"\nError: {event.value or str(event.error)}\n"
                 elif event.type == TurnEventType.FINISHED:
@@ -184,60 +185,7 @@ class AIOrchestratorService:
         except Exception as e:
             yield f"\nError during streaming interaction: {str(e)}\n"
 
-    async def _get_available_tools(self) -> List[Dict[str, Any]]:
-        """
-        Get available tools from the system context builder or kernel registry.
-        
-        Returns:
-            List of available tools in the format expected by the LLM
-        """
-        # Get available tools to provide to the LLM natively
-        if self.kernel and hasattr(self.kernel, 'registry'):
-            tools = self.kernel.registry.get_all_tools()
-            # Convert tool objects to dictionary format
-            tools_dict = {}
-            for tool_name, tool_obj in tools.items():
-                tools_dict[tool_name] = {
-                    "name": getattr(tool_obj, 'name', tool_name),
-                    "description": getattr(tool_obj, 'description', ''),
-                    "parameter_schema": getattr(tool_obj, 'parameter_schema', {}),
-                    "display_name": getattr(tool_obj, 'display_name', tool_name)
-                }
-            tools = tools_dict
-        else:
-            # Fallback to MCP client if kernel isn't available
-            tools_response = await self.kernel_client.list_tools()
-            
-            # Handle different response formats
-            if isinstance(tools_response, dict):
-                if "tools" in tools_response:  # MCP response with tools array
-                    tools_list = tools_response["tools"]
-                    # Convert list of tools to dict format
-                    tools = {}
-                    for tool_info in tools_list:
-                        name = tool_info.get("name", "unknown")
-                        tools[name] = tool_info
-                else:  # MCP response with tools as dict {name: info}
-                    tools = tools_response
-            elif isinstance(tools_response, list):  # Direct list of tools
-                tools = {}
-                for tool_info in tools_response:
-                    name = tool_info.get("name", "unknown")
-                    tools[name] = tool_info
-            else:
-                tools = {}
-        
-        # Convert available tools to kernel tool format to pass to LLM
-        kernel_tools = []
-        for tool_name, tool_info in tools.items():
-            kernel_tool = {
-                "name": tool_info.get("name", tool_name),
-                "description": tool_info.get("description", ""),
-                "parameters": tool_info.get("parameter_schema", {})
-            }
-            kernel_tools.append(kernel_tool)
-        
-        return kernel_tools
+
 
 
 

@@ -110,7 +110,8 @@ class ToolExecutionScheduler:
         """
         try:
             # Use the jsonschema library to validate parameters against the schema
-            validate(instance=params, schema=tool_def.parameter_schema)
+            # In the new format, we access parameters via the parameters property
+            validate(instance=params, schema=tool_def.parameters)
             return True
         except ValidationError as e:
             if self.logger:
@@ -150,20 +151,13 @@ class ToolExecutionScheduler:
         Returns:
             True if approval is required, False otherwise
         """
-    def _requires_approval(self, tool_def: ToolDefinition, execution: ToolExecution) -> bool:
-        """
-        Determine if a tool execution requires approval based on the mode.
-
-        Args:
-            tool_def: The tool definition
-            execution: The tool execution
-
-        Returns:
-            True if approval is required, False otherwise
-        """
-        # For now, bypass all approval requirements to avoid attribute errors
-        # TODO: Reimplement proper approval system with complete architecture
-        return False
+        # If the execution is in YOLO mode, no approval is needed
+        if execution.approval_mode == ToolApprovalMode.YOLO:
+            return False
+            
+        # Otherwise, use the approval_required flag from the tool definition
+        # Since ToolDefinition now uses a function dict, we can access it via the property
+        return getattr(tool_def, 'approval_required', True)
 
     async def _approve_tool_execution(self, execution: ToolExecution) -> bool:
         """

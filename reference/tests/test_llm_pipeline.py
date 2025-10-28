@@ -15,13 +15,15 @@ class MockProvider(BaseProvider):
     Mock implementation of BaseProvider for testing purposes.
     """
     def __init__(self, config, mock_client=None):
-        self.config = config
-        self.api_key = config.get("api_key")
-        self.model = config.get("model", "gpt-test-model")
-        self.base_url = config.get("base_url", "https://api.test.com/v1")
-        self.timeout = config.get("timeout", 60)
-        self.max_retries = config.get("max_retries", 3)
+        super().__init__(config)  # Call the parent constructor
         self._mock_client = mock_client  # Store the client to return
+        # Create a mock converter for testing
+        from unittest.mock import Mock
+        self._converter = Mock()
+    
+    @property
+    def converter(self):
+        return self._converter
     
     def build_headers(self):
         return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}

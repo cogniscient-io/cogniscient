@@ -27,10 +27,9 @@ async def test_complete_flow_with_tracing():
         def __init__(self):
             self.call_count = 0
         
-        async def generate_response(self, prompt: str, system_context: str = None, tools: list = None):
+        async def generate_response(self, prompt: str, system_context: str = None):
             print(f"Content generator received prompt: '{prompt}'")
             print(f"System context provided: {system_context is not None}")
-            print(f"Number of tools provided: {len(tools) if tools else 0}")
             
             self.call_count += 1
             
@@ -66,7 +65,7 @@ async def test_complete_flow_with_tracing():
                     tool_calls=[]
                 )
         
-        async def process_tool_result(self, tool_result, conversation_history=None, available_tools=None):
+        async def process_tool_result(self, tool_result, conversation_history=None):
             print(f"process_tool_result called with: {tool_result.return_display}")
             
             class ResponseObj:
@@ -126,7 +125,7 @@ async def test_kernel_api_flow():
         def __init__(self):
             self.call_count = 0
         
-        async def generate_response(self, prompt: str, system_context: str = None, tools: list = None):
+        async def generate_response(self, prompt: str, system_context: str = None):
             self.call_count += 1
             
             class ResponseObj:

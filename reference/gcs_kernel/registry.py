@@ -160,6 +160,25 @@ class ToolRegistry:
         """
         return self.tools.copy()
 
+    def get_all_tools_formatted(self) -> list:
+        """
+        Get all registered tools in a format suitable for LLM consumption.
+        
+        Returns:
+            A list of tools in the format expected by the LLM
+        """
+        # Convert available tools to kernel tool format to pass to LLM
+        kernel_tools = []
+        for tool_name, tool_obj in self.tools.items():
+            kernel_tool = {
+                "name": getattr(tool_obj, 'name', tool_name),
+                "description": getattr(tool_obj, 'description', ''),
+                "parameters": getattr(tool_obj, 'parameter_schema', {})
+            }
+            kernel_tools.append(kernel_tool)
+        
+        return kernel_tools
+
     async def discover_command_based_tools(self) -> Dict[str, BaseTool]:
         """
         Discover tools using command-based discovery mechanism.

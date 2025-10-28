@@ -2,56 +2,17 @@
 Integration test for the GCS Kernel to LLM response flow.
 
 This test verifies the complete flow from the kernel through to the LLM and back,
-using a mock provider to simulate the LLM response without requiring an actual API.
+using real system components where possible while mocking external dependencies.
 """
 
 import asyncio
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 
 from gcs_kernel.kernel import GCSKernel
+from gcs_kernel.registry import ToolRegistry
 from services.ai_orchestrator.orchestrator_service import AIOrchestratorService
 from services.llm_provider.content_generator import LLMContentGenerator
-from services.llm_provider.providers.mock_provider import MockProvider
 from services.config import settings
-
-
-class MockMCPClient:
-    """Mock MCP client for testing purposes."""
-    
-    def __init__(self):
-        self.submitted_executions = []
-        self.execution_results = {}
-    
-    async def initialize(self):
-        pass
-        
-    async def shutdown(self):
-        pass
-    
-    async def submit_tool_execution(self, tool_name, parameters):
-        execution_id = f"exec_{len(self.submitted_executions) + 1}"
-        self.submitted_executions.append({
-            "id": execution_id,
-            "tool_name": tool_name,
-            "parameters": parameters
-        })
-        return execution_id
-    
-    async def get_execution_result(self, execution_id):
-        # Return a mock tool result
-        from gcs_kernel.models import ToolResult
-        return ToolResult(
-            execution_id=execution_id,
-            success=True,
-            return_code=0,
-            return_display=f"Mock result for execution {execution_id}",
-            error_message=None
-        )
-    
-    async def list_tools(self):
-        """Return a list of available tools for testing."""
-        return []
 
 
 @pytest.mark.asyncio
@@ -65,18 +26,59 @@ async def test_kernel_to_llm_hello_world():
     3. The LLM provider can generate a response to a simple prompt
     4. The response flows back through the system correctly
     """
-    # Use mock settings for testing
+    # Use mock settings for testing to avoid requiring real API keys
     original_api_key = settings.llm_api_key
     settings.llm_api_key = "test-key"  # Required value for initialization
     
     try:
-        # Initialize the MCP client mock
-        mock_kernel_client = MockMCPClient()
+        # Create a real kernel instance
+        kernel = GCSKernel()
         
-        # Initialize the AI orchestrator service
-        ai_orchestrator = AIOrchestratorService(kernel_client=mock_kernel_client)
+        # Initialize the MCP client for the kernel
+        # For integration test, we'll create a minimal kernel client that simulates
+        # communication with the kernel
+        class TestKernelClient:
+            def __init__(self, kernel_instance):
+                self.kernel = kernel_instance
+
+            async def submit_tool_execution(self, tool_name, parameters):
+                # Simulate tool execution submission to the kernel
+                if self.kernel and hasattr(self.kernel, 'registry'):
+                    # Use the actual kernel to execute tools when possible
+                    tool = await self.kernel.registry.get_tool(tool_name)
+                    if tool:
+                        result = await tool.execute(parameters)
+                        return f"exec_{id(result)}"
+                
+                # Fallback to simulated execution ID
+                return f"exec_{hash(tool_name) % 10000}"
+            
+            async def get_execution_result(self, execution_id):
+                # Simulate getting result from kernel
+                from gcs_kernel.models import ToolResult
+                return ToolResult(
+                    tool_name="test_tool",
+                    success=True,
+                    llm_content=f"Simulated result for execution {execution_id}",
+                    return_display=f"Simulated result for execution {execution_id}"
+                )
+
+        kernel_client = TestKernelClient(kernel)
         
-        # Create a mock provider directly
+        # Initialize the AI orchestrator service with the kernel client
+        ai_orchestrator = AIOrchestratorService(kernel_client=kernel_client)
+        
+        # Set up real kernel services
+        registry = ToolRegistry()
+        ai_orchestrator.set_kernel_services(registry=registry)
+        
+        # Create the real content generator - this tests the real integration
+        content_generator = LLMContentGenerator(kernel=kernel)
+        
+        # Override the provider in the content generator to avoid real API calls
+        # But keep the real converter, pipeline, and other components for integration testing
+        from services.llm_provider.providers.mock_provider import MockProvider
+        
         mock_provider_config = {
             "api_key": "test-key",
             "model": "gpt-4-test",
@@ -84,34 +86,23 @@ async def test_kernel_to_llm_hello_world():
             "timeout": 30,
             "max_retries": 1
         }
-        mock_provider = MockProvider(mock_provider_config)
+        content_generator.provider = MockProvider(mock_provider_config)
         
-        # Create a content generator that uses the mock provider
-        class MockContentGenerator(LLMContentGenerator):
-            def __init__(self):
-                # Set up minimal configuration for testing
-                self.api_key = "test-key"
-                self.model = "gpt-4-test"
-                self.base_url = "https://mock.api.test"
-                self.timeout = 30
-                self.max_retries = 1
-                
-                # Use the mock provider directly
-                self.provider = mock_provider
-                from services.llm_provider.pipeline import ContentGenerationPipeline
-                self.pipeline = ContentGenerationPipeline(self.provider)
-                # Also initialize the converter
-                from services.llm_provider.providers.openai_converter import ContentConverter
-                self.converter = ContentConverter(self.model)
+        # Set up the pipeline with the mock provider
+        from services.llm_provider.pipeline import ContentGenerationPipeline
+        content_generator.pipeline = ContentGenerationPipeline(content_generator.provider)
         
-        # Initialize the orchestrator with the mock content generator
-        ai_orchestrator.set_content_generator(MockContentGenerator())
+        # Initialize the orchestrator with the real content generator
+        ai_orchestrator.set_content_generator(content_generator)
         
         # Test the full flow with a simple hello world prompt
         prompt = "Say hello world"
         response = await ai_orchestrator.handle_ai_interaction(prompt)
         
         # Verify the response contains expected content
+        # This tests that the whole pipeline works correctly
+        assert response is not None
+        # The MockProvider returns "Hello, this is a test response from the LLM!"
         assert "Hello" in response or "hello" in response
         assert "test" in response or "Test" in response
         
@@ -129,18 +120,57 @@ async def test_kernel_llm_streaming_hello_world():
     
     This integration test verifies the streaming capability of the system.
     """
-    # Use mock settings for testing
+    # Use mock settings for testing to avoid requiring real API keys
     original_api_key = settings.llm_api_key
     settings.llm_api_key = "test-key"  # Required value for initialization
     
     try:
-        # Initialize the MCP client mock
-        mock_kernel_client = MockMCPClient()
+        # Create a real kernel instance
+        kernel = GCSKernel()
         
-        # Initialize the AI orchestrator service
-        ai_orchestrator = AIOrchestratorService(kernel_client=mock_kernel_client)
+        # Initialize the MCP client for the kernel
+        class TestKernelClient:
+            def __init__(self, kernel_instance):
+                self.kernel = kernel_instance
+
+            async def submit_tool_execution(self, tool_name, parameters):
+                # Simulate tool execution submission to the kernel
+                if self.kernel and hasattr(self.kernel, 'registry'):
+                    # Use the actual kernel to execute tools when possible
+                    tool = await self.kernel.registry.get_tool(tool_name)
+                    if tool:
+                        result = await tool.execute(parameters)
+                        return f"exec_{id(result)}"
+                
+                # Fallback to simulated execution ID
+                return f"exec_{hash(tool_name) % 10000}"
+            
+            async def get_execution_result(self, execution_id):
+                # Simulate getting result from kernel
+                from gcs_kernel.models import ToolResult
+                return ToolResult(
+                    tool_name="test_tool",
+                    success=True,
+                    llm_content=f"Simulated result for execution {execution_id}",
+                    return_display=f"Simulated result for execution {execution_id}"
+                )
         
-        # Create a mock provider directly
+        kernel_client = TestKernelClient(kernel)
+        
+        # Initialize the AI orchestrator service with the kernel client
+        ai_orchestrator = AIOrchestratorService(kernel_client=kernel_client)
+        
+        # Set up real kernel services
+        registry = ToolRegistry()
+        ai_orchestrator.set_kernel_services(registry=registry)
+        
+        # Create the real content generator - this tests the real integration
+        content_generator = LLMContentGenerator(kernel=kernel)
+        
+        # Override the provider in the content generator to avoid real API calls
+        # But keep the real converter, pipeline, and other components for integration testing
+        from services.llm_provider.providers.mock_provider import MockProvider
+        
         mock_provider_config = {
             "api_key": "test-key",
             "model": "gpt-4-test",
@@ -148,28 +178,14 @@ async def test_kernel_llm_streaming_hello_world():
             "timeout": 30,
             "max_retries": 1
         }
-        mock_provider = MockProvider(mock_provider_config)
+        content_generator.provider = MockProvider(mock_provider_config)
         
-        # Create a content generator that uses the mock provider
-        class MockContentGenerator(LLMContentGenerator):
-            def __init__(self):
-                # Set up minimal configuration for testing
-                self.api_key = "test-key"
-                self.model = "gpt-4-test"
-                self.base_url = "https://mock.api.test"
-                self.timeout = 30
-                self.max_retries = 1
-                
-                # Use the mock provider directly
-                self.provider = mock_provider
-                from services.llm_provider.pipeline import ContentGenerationPipeline
-                self.pipeline = ContentGenerationPipeline(self.provider)
-                # Also initialize the converter
-                from services.llm_provider.providers.openai_converter import ContentConverter
-                self.converter = ContentConverter(self.model)
+        # Set up the pipeline with the mock provider
+        from services.llm_provider.pipeline import ContentGenerationPipeline
+        content_generator.pipeline = ContentGenerationPipeline(content_generator.provider)
         
-        # Initialize the orchestrator with the mock content generator
-        ai_orchestrator.set_content_generator(MockContentGenerator())
+        # Initialize the orchestrator with the real content generator
+        ai_orchestrator.set_content_generator(content_generator)
         
         # Test the streaming flow with a simple hello world prompt
         prompt = "Say hello world"
@@ -181,6 +197,9 @@ async def test_kernel_llm_streaming_hello_world():
         full_response = "".join(chunks)
         
         # Verify the response contains expected content
+        # This tests that the whole streaming pipeline works correctly
+        assert full_response is not None
+        # The MockProvider returns "Hello, this is a test response from the LLM!"
         assert "Hello" in full_response or "hello" in full_response
         assert "test" in full_response or "Test" in full_response
         

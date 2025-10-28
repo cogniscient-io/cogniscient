@@ -58,11 +58,10 @@ class TestToolExecutionScheduler:
     
     async def test_submit_tool_execution_with_valid_params(self, scheduler):
         """Test submitting a tool execution with valid parameters."""
-        tool_def = ToolDefinition(
+        tool_def = ToolDefinition.create(
             name="mock_tool",
-            display_name="Mock Tool",
             description="A mock tool for testing",
-            parameter_schema={
+            parameters={
                 "type": "object",
                 "properties": {
                     "param1": {"type": "string"}
@@ -86,11 +85,10 @@ class TestToolExecutionScheduler:
     
     async def test_submit_tool_execution_with_invalid_params(self, scheduler):
         """Test submitting a tool execution with invalid parameters."""
-        tool_def = ToolDefinition(
+        tool_def = ToolDefinition.create(
             name="mock_tool",
-            display_name="Mock Tool",
             description="A mock tool for testing",
-            parameter_schema={
+            parameters={
                 "type": "object",
                 "properties": {
                     "param1": {"type": "string"}
@@ -112,13 +110,12 @@ class TestToolExecutionScheduler:
     async def test_determine_approval_mode(self, scheduler):
         """Test determining approval mode for tool execution."""
         # Test with default mode
-        tool_def = ToolDefinition(
+        tool_def = ToolDefinition.create(
             name="mock_tool",
-            display_name="Mock Tool",
             description="A mock tool for testing",
-            parameter_schema={},
-            approval_mode=ToolApprovalMode.DEFAULT
+            parameters={}
         )
+        tool_def.approval_mode = ToolApprovalMode.DEFAULT
         
         from gcs_kernel.models import ToolExecution
         execution = ToolExecution(
@@ -136,11 +133,10 @@ class TestToolExecutionScheduler:
     
     async def test_requires_approval_with_default_mode(self, scheduler):
         """Test if approval is required with default mode."""
-        tool_def = ToolDefinition(
+        tool_def = ToolDefinition.create(
             name="mock_tool",
-            display_name="Mock Tool",
             description="A mock tool for testing",
-            parameter_schema={},
+            parameters={},
             approval_required=True
         )
         
@@ -156,11 +152,10 @@ class TestToolExecutionScheduler:
     
     async def test_requires_approval_with_yolo_mode(self, scheduler):
         """Test if approval is required with YOLO mode."""
-        tool_def = ToolDefinition(
+        tool_def = ToolDefinition.create(
             name="mock_tool",
-            display_name="Mock Tool",
             description="A mock tool for testing",
-            parameter_schema={},
+            parameters={},
             approval_required=True
         )
         
@@ -201,11 +196,10 @@ class TestToolExecutionScheduler:
     
     async def test_validate_parameters_valid(self, scheduler):
         """Test parameter validation with valid parameters."""
-        tool_def = ToolDefinition(
+        tool_def = ToolDefinition.create(
             name="mock_tool",
-            display_name="Mock Tool",
             description="A mock tool for testing",
-            parameter_schema={
+            parameters={
                 "type": "object",
                 "properties": {
                     "param1": {"type": "string"}
@@ -219,11 +213,10 @@ class TestToolExecutionScheduler:
     
     async def test_validate_parameters_invalid(self, scheduler):
         """Test parameter validation with invalid parameters."""
-        tool_def = ToolDefinition(
+        tool_def = ToolDefinition.create(
             name="mock_tool",
-            display_name="Mock Tool",
             description="A mock tool for testing",
-            parameter_schema={
+            parameters={
                 "type": "object",
                 "properties": {
                     "param1": {"type": "string"}

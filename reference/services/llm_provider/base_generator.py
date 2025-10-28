@@ -17,12 +17,13 @@ class BaseContentGenerator(ABC):
     """
     
     @abstractmethod
-    async def generate_response(self, prompt: str) -> Any:
+    async def generate_response(self, prompt: str, system_context: str = None) -> Any:
         """
         Generate a response to the given prompt with potential tool calls.
         
         Args:
             prompt: The input prompt
+            system_context: Optional system context/prompt to provide to the LLM
             
         Returns:
             The generated response with potential tool calls
@@ -30,27 +31,13 @@ class BaseContentGenerator(ABC):
         pass
     
     @abstractmethod
-    async def process_tool_result(self, tool_result: Any, conversation_history: list = None, available_tools: list = None) -> Any:
-        """
-        Process a tool result and continue the conversation.
-        
-        Args:
-            tool_result: The result from a tool execution
-            conversation_history: The conversation history to maintain context
-            available_tools: List of tools available to the LLM for function calling
-        
-        Returns:
-            The updated response after processing the tool result
-        """
-        pass
-    
-    @abstractmethod
-    async def stream_response(self, prompt: str) -> AsyncIterator[str]:
+    async def stream_response(self, prompt: str, system_context: str = None) -> AsyncIterator[str]:
         """
         Stream a response to the given prompt.
         
         Args:
             prompt: The input prompt
+            system_context: Optional system context/prompt to provide to the LLM
             
         Yields:
             Partial response strings as they become available

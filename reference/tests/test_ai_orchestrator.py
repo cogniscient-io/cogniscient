@@ -56,7 +56,7 @@ async def test_kernel_with_mocked_llm():
     from services.llm_provider.tool_call_processor import ToolCall
     
     class MockContentGenerator(BaseContentGenerator):
-        async def generate_response(self, prompt: str, system_context: str = None, tools: list = None):
+        async def generate_response(self, prompt: str, system_context: str = None):
             # For specific prompts, return tool calls
             if "system status" in prompt.lower() or "date" in prompt.lower():
                 # Create a mock tool call
@@ -96,7 +96,7 @@ async def test_kernel_with_mocked_llm():
 
             return MockResponse(content=f"Processed tool result: {tool_result.llm_content}")
         
-        async def stream_response(self, prompt: str, system_context: str = None, tools: list = None):
+        async def stream_response(self, prompt: str, system_context: str = None):
             yield f"Streaming: {prompt}"
 
     # Replace the content generator with mock

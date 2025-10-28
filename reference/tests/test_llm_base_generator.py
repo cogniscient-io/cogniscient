@@ -23,7 +23,7 @@ class MockContentGenerator(BaseContentGenerator):
         self.timeout = self.config.get("timeout")
         self.max_retries = self.config.get("max_retries")
     
-    async def generate_response(self, prompt: str) -> Any:
+    async def generate_response(self, prompt: str, system_context: str = None) -> Any:
         """
         Mock implementation of generate_response.
         """
@@ -37,7 +37,7 @@ class MockContentGenerator(BaseContentGenerator):
             tool_calls=[]
         )
     
-    async def process_tool_result(self, tool_result: Any, conversation_history: list = None, available_tools: list = None) -> Any:
+    async def process_tool_result(self, tool_result: Any, conversation_history: list = None) -> Any:
         """
         Mock implementation of process_tool_result.
         """
@@ -88,7 +88,7 @@ async def test_base_content_generator_generate_response():
     }
     
     generator = MockContentGenerator(config)
-    response = await generator.generate_response("Test prompt")
+    response = await generator.generate_response("Test prompt", system_context="Test context")
     
     assert hasattr(response, 'content')
     assert hasattr(response, 'tool_calls')

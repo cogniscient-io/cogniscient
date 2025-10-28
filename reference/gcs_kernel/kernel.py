@@ -49,8 +49,8 @@ class GCSKernel:
         from services.ai_orchestrator.orchestrator_service import AIOrchestratorService
         from services.llm_provider.content_generator import LLMContentGenerator
         from services.config import settings
-        # Create content generator using settings
-        content_generator = LLMContentGenerator()
+        # Create content generator using settings, with kernel reference for tool access
+        content_generator = LLMContentGenerator(kernel=self)
         # Initialize orchestrator as the primary AI interaction handler
         self.ai_orchestrator = AIOrchestratorService(
             kernel_client=self.mcp_client,

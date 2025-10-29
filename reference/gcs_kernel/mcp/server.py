@@ -81,7 +81,7 @@ class MCPServer:
                         {
                             "name": name,
                             "description": getattr(tool, 'description', ''),
-                            "parameter_schema": getattr(tool, 'parameter_schema', {})
+                            "parameter_schema": getattr(tool, 'parameters', {})
                         }
                         for name, tool in tools.items()
                     ]
@@ -97,7 +97,7 @@ class MCPServer:
                     return {
                         "name": tool_name,
                         "description": getattr(tool, 'description', ''),
-                        "parameter_schema": getattr(tool, 'parameter_schema', {})
+                        "parameter_schema": getattr(tool, 'parameters', {})
                     }
                 else:
                     raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
@@ -114,29 +114,29 @@ class MCPServer:
                     tool = await self.kernel.registry.get_tool(tool_name)
                     if tool:
                         # Use the actual tool definition
-                        tool_def = ToolDefinition(
+                        tool_def = ToolDefinition.create(
                             name=tool.name,
-                            display_name=tool.display_name,
                             description=tool.description,
-                            parameter_schema=tool.parameter_schema,
+                            parameters=tool.parameters,
+                            display_name=tool.display_name,
                             approval_required=getattr(tool, 'approval_required', True),
                             approval_mode=getattr(tool, 'approval_mode', None)
                         )
                     else:
                         # If tool is not in registry, create a minimal definition
-                        tool_def = ToolDefinition(
+                        tool_def = ToolDefinition.create(
                             name=tool_name,
-                            display_name=tool_name,
                             description=f"Tool {tool_name}",
-                            parameter_schema={"type": "object", "properties": {}}
+                            parameters={"type": "object", "properties": {}},
+                            display_name=tool_name
                         )
                 else:
                     # If no registry available, create a minimal definition
-                    tool_def = ToolDefinition(
+                    tool_def = ToolDefinition.create(
                         name=tool_name,
-                        display_name=tool_name,
                         description=f"Tool {tool_name}",
-                        parameter_schema={"type": "object", "properties": {}}
+                        display_name=tool_name,
+                        parameters={"type": "object", "properties": {}}
                     )
                 
                 # Submit the tool execution
@@ -161,11 +161,11 @@ class MCPServer:
                 raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
             
             # Use the actual tool definition
-            tool_def = ToolDefinition(
+            tool_def = ToolDefinition.create(
                 name=tool.name,
-                display_name=tool.display_name,
                 description=tool.description,
-                parameter_schema=tool.parameter_schema,
+                parameters=tool.parameters,
+                display_name=tool.display_name,
                 approval_required=getattr(tool, 'approval_required', True),
                 approval_mode=getattr(tool, 'approval_mode', None)
             )
@@ -321,11 +321,11 @@ class MCPServer:
         """
         if self.kernel and self.kernel.scheduler:
             # Create a temporary ToolDefinition for validation
-            tool_def = ToolDefinition(
+            tool_def = ToolDefinition.create(
                 name=tool_name,
-                display_name=tool_name,
                 description=f"Tool {tool_name}",
-                parameter_schema={"type": "object", "properties": {}}
+                display_name=tool_name,
+                parameters={"type": "object", "properties": {}}
             )
             
             # Submit the tool execution

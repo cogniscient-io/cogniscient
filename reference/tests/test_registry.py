@@ -14,7 +14,7 @@ class MockTool:
     name = "mock_tool"
     display_name = "Mock Tool"
     description = "A mock tool for testing"
-    parameter_schema = {
+    parameters = {  # Following OpenAI-compatible format
         "type": "object",
         "properties": {
             "param1": {"type": "string"}

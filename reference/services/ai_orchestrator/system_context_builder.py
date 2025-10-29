@@ -139,7 +139,7 @@ class SystemContextBuilder:
                     formatted_tools[name] = {
                         'name': getattr(tool, 'name', name),
                         'description': getattr(tool, 'description', 'No description'),
-                        'parameter_schema': getattr(tool, 'parameter_schema', {}),
+                        'parameters': getattr(tool, 'parameters', {}),  # Using OpenAI-compatible format
                         'display_name': getattr(tool, 'display_name', name)
                     }
                 return formatted_tools
@@ -191,7 +191,7 @@ class SystemContextBuilder:
             
             for tool_name, tool_info in available_tools.items():
                 description = tool_info.get('description', 'No description')
-                schema = tool_info.get('parameter_schema', {})
+                schema = tool_info.get('parameters', {})
                 
                 # Format parameters if available
                 if schema:

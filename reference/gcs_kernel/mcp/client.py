@@ -199,7 +199,7 @@ class MCPClient:
         if not tool_info:
             return False
         
-        schema = tool_info.get("parameter_schema", {})
+        schema = tool_info.get("parameters", {})
         if not schema:
             return True  # If no schema, assume valid
         

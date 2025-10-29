@@ -144,7 +144,7 @@ async def test_ai_orchestrator_handle_ai_interaction_with_tool_call():
         "shell_command": {
             "name": "shell_command",
             "description": "Execute a shell command and return the output",
-            "parameter_schema": {
+            "parameters": {  # Using OpenAI-compatible format
                 "type": "object",
                 "properties": {
                     "command": {

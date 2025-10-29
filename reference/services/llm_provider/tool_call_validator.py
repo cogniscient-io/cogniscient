@@ -40,7 +40,7 @@ def validate_tool_call(tool_name: str, parameters: Dict[str, Any], available_too
     
     # Get the tool definition
     tool_def = available_tools[tool_name]
-    schema = tool_def.get('parameter_schema', {})
+    schema = tool_def.get('parameters', {})
     
     # Validate required parameters
     required_params = schema.get('required', [])

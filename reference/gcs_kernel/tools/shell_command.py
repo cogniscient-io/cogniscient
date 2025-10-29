@@ -16,7 +16,7 @@ class ShellCommandTool:
     name = "shell_command"
     display_name = "Shell Command"
     description = "Execute a shell command and return the output"
-    parameter_schema = {
+    parameters = {  # Following OpenAI-compatible format
         "type": "object",
         "properties": {
             "command": {

@@ -20,7 +20,7 @@ class BaseTool(Protocol):
     name: str
     display_name: str
     description: str
-    parameter_schema: Dict[str, Any]
+    parameters: Dict[str, Any]  # Following OpenAI-compatible format
     
     async def execute(self, parameters: Dict[str, Any]) -> ToolResult:
         """
@@ -232,7 +232,7 @@ class ToolRegistry:
                 self.name = name
                 self.display_name = display_name
                 self.description = description
-                self.parameter_schema = parameter_schema
+                self.parameters = parameter_schema  # Use parameters as per OpenAI format
                 
             async def execute(self, parameters: Dict[str, Any]) -> ToolResult:
                 # Build the command to execute

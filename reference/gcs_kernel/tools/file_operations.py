@@ -17,7 +17,7 @@ class ReadFileTool:
     name = "read_file"
     display_name = "Read File"
     description = "Read the contents of a specified file"
-    parameter_schema = {
+    parameters = {  # Following OpenAI-compatible format
         "type": "object",
         "properties": {
             "file_path": {
@@ -99,7 +99,7 @@ class WriteFileTool:
     name = "write_file"
     display_name = "Write File"
     description = "Write content to a specified file"
-    parameter_schema = {
+    parameters = {  # Following OpenAI-compatible format
         "type": "object",
         "properties": {
             "file_path": {
@@ -181,7 +181,7 @@ class ListDirectoryTool:
     name = "list_directory"
     display_name = "List Directory"
     description = "List the contents of a specified directory"
-    parameter_schema = {
+    parameters = {  # Following OpenAI-compatible format
         "type": "object",
         "properties": {
             "directory_path": {

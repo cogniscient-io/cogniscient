@@ -42,7 +42,7 @@ async def test_tool_calling_flow():
             "shell_command": {
                 "name": "shell_command",
                 "description": "Execute a shell command and return the output",
-                "parameter_schema": {
+                "parameters": {  # Using OpenAI-compatible format
                     "type": "object",
                     "properties": {
                         "command": {
@@ -143,7 +143,7 @@ async def test_tool_calling_with_error():
             "shell_command": {
                 "name": "shell_command",
                 "description": "Execute a shell command and return the output",
-                "parameter_schema": {
+                "parameters": {  # Using OpenAI-compatible format
                     "type": "object",
                     "properties": {
                         "command": {

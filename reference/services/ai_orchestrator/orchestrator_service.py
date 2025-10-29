@@ -200,7 +200,7 @@ class AIOrchestratorService:
                 tools_dict[tool_name] = {
                     "name": getattr(tool_obj, 'name', tool_name),
                     "description": getattr(tool_obj, 'description', ''),
-                    "parameter_schema": getattr(tool_obj, 'parameter_schema', {}),
+                    "parameters": getattr(tool_obj, 'parameters', {}),  # Using OpenAI-compatible format
                     "display_name": getattr(tool_obj, 'display_name', tool_name)
                 }
             tools = tools_dict
@@ -233,7 +233,7 @@ class AIOrchestratorService:
             kernel_tool = {
                 "name": tool_info.get("name", tool_name),
                 "description": tool_info.get("description", ""),
-                "parameters": tool_info.get("parameter_schema", {})
+                "parameters": tool_info.get("parameters", {})
             }
             kernel_tools.append(kernel_tool)
         

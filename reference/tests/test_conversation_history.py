@@ -120,7 +120,7 @@ async def test_conversation_history_with_tool_call():
             "shell_command": {
                 "name": "shell_command",
                 "description": "Execute a shell command and return the output",
-                "parameter_schema": {
+                "parameters": {  # Using OpenAI-compatible format
                     "type": "object",
                     "properties": {
                         "command": {
@@ -240,7 +240,7 @@ async def test_multiple_tool_calls_maintain_conversation_history():
             "shell_command": {
                 "name": "shell_command",
                 "description": "Execute a shell command and return the output",
-                "parameter_schema": {
+                "parameters": {  # Using OpenAI-compatible format
                     "type": "object",
                     "properties": {
                         "command": {
@@ -297,7 +297,7 @@ async def test_conversation_history_includes_all_messages():
             "shell_command": {
                 "name": "shell_command",
                 "description": "Execute a shell command and return the output",
-                "parameter_schema": {
+                "parameters": {  # Using OpenAI-compatible format
                     "type": "object",
                     "properties": {
                         "command": {
@@ -357,7 +357,7 @@ async def test_enhanced_conversation_management():
             "shell_command": {
                 "name": "shell_command",
                 "description": "Execute a shell command and return the output",
-                "parameter_schema": {
+                "parameters": {  # Using OpenAI-compatible format
                     "type": "object",
                     "properties": {
                         "command": {
@@ -420,7 +420,7 @@ async def test_conversation_reset_functionality():
             "shell_command": {
                 "name": "shell_command",
                 "description": "Execute a shell command and return the output",
-                "parameter_schema": {
+                "parameters": {  # Using OpenAI-compatible format
                     "type": "object",
                     "properties": {
                         "command": {

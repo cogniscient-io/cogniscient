@@ -61,11 +61,11 @@ class KernelAPIClient(KernelAPIProtocol):
         
         # Create a ToolDefinition from the registered tool
         from gcs_kernel.models import ToolDefinition
-        tool_def = ToolDefinition(
+        tool_def = ToolDefinition.create(
             name=tool.name,
-            display_name=tool.display_name,
             description=tool.description,
-            parameter_schema=tool.parameter_schema,
+            parameters=tool.parameters,
+            display_name=tool.display_name,
             approval_required=getattr(tool, 'approval_required', True),
             approval_mode=getattr(tool, 'approval_mode', None)
         )
@@ -86,7 +86,7 @@ class KernelAPIClient(KernelAPIProtocol):
     
     async def _validate_tool_parameters(self, tool, params: dict):
         """Validate parameters against the tool's parameter schema."""
-        schema = getattr(tool, 'parameter_schema', {})
+        schema = getattr(tool, 'parameters', {})
         required_params = schema.get('required', [])
         
         # Check if all required parameters are present

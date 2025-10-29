@@ -17,7 +17,7 @@ class ListToolsTool:
     name = "list_tools"
     display_name = "List Tools"
     description = "List all available tools in the kernel"
-    parameter_schema = {
+    parameters = {  # Following OpenAI-compatible format
         "type": "object",
         "properties": {},
         "required": []
@@ -87,7 +87,7 @@ class GetToolInfoTool:
     name = "get_tool_info"
     display_name = "Get Tool Info"
     description = "Get detailed information about a specific tool"
-    parameter_schema = {
+    parameters = {  # Following OpenAI-compatible format
         "type": "object",
         "properties": {
             "tool_name": {
@@ -155,7 +155,7 @@ class GetToolInfoTool:
             name = getattr(tool, 'name', tool_name)
             description = getattr(tool, 'description', 'No description')
             display_name = getattr(tool, 'display_name', name)
-            schema = getattr(tool, 'parameter_schema', {})
+            schema = getattr(tool, 'parameters', {})
             
             result = f"Tool Information for '{tool_name}':\n"
             result += f"  Name: {name}\n"

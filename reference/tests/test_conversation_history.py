@@ -82,8 +82,18 @@ class MockContentGenerator(BaseContentGenerator):
             def __init__(self, content):
                 self.content = content
         
-        # Return a response that shows the tool result was processed with context
-        response_content = f"The time is {tool_result.llm_content.strip() if tool_result.success else 'not available'}"
+        # In the real system, the LLM looks at the conversation history for tool results
+        # For the mock, let's check the conversation history for the most recent tool result
+        actual_result_content = "Tool execution results provided."
+        if conversation_history:
+            # Look for the most recent tool message in the conversation history
+            for msg in reversed(conversation_history):
+                if msg.get("role") == "tool":
+                    actual_result_content = msg.get("content", "Tool execution results provided.")
+                    break
+        
+        # Use the actual result from conversation history if available, otherwise fall back
+        response_content = f"The time is {actual_result_content.strip()}"
         return ResponseObj(content=response_content)
     
     async def stream_response(self, prompt: str, system_context: str = None, tools: list = None):
@@ -120,7 +130,7 @@ async def test_conversation_history_with_tool_call():
             "shell_command": {
                 "name": "shell_command",
                 "description": "Execute a shell command and return the output",
-                "parameters": {  # Using OpenAI-compatible format
+                "parameter_schema": {  # External API format from system
                     "type": "object",
                     "properties": {
                         "command": {
@@ -240,7 +250,7 @@ async def test_multiple_tool_calls_maintain_conversation_history():
             "shell_command": {
                 "name": "shell_command",
                 "description": "Execute a shell command and return the output",
-                "parameters": {  # Using OpenAI-compatible format
+                "parameter_schema": {  # External API format from system
                     "type": "object",
                     "properties": {
                         "command": {
@@ -297,7 +307,7 @@ async def test_conversation_history_includes_all_messages():
             "shell_command": {
                 "name": "shell_command",
                 "description": "Execute a shell command and return the output",
-                "parameters": {  # Using OpenAI-compatible format
+                "parameter_schema": {  # External API format from system
                     "type": "object",
                     "properties": {
                         "command": {
@@ -357,7 +367,7 @@ async def test_enhanced_conversation_management():
             "shell_command": {
                 "name": "shell_command",
                 "description": "Execute a shell command and return the output",
-                "parameters": {  # Using OpenAI-compatible format
+                "parameter_schema": {  # External API format from system
                     "type": "object",
                     "properties": {
                         "command": {
@@ -420,7 +430,7 @@ async def test_conversation_reset_functionality():
             "shell_command": {
                 "name": "shell_command",
                 "description": "Execute a shell command and return the output",
-                "parameters": {  # Using OpenAI-compatible format
+                "parameter_schema": {  # External API format from system
                     "type": "object",
                     "properties": {
                         "command": {

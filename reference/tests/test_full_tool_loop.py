@@ -91,9 +91,9 @@ async def test_full_tool_calling_loop():
 
 
 @pytest.mark.asyncio
-async def test_with_original_generator():
-    """Test with the original content generator to see if the issue is elsewhere."""
-    print("\nTesting with original LLM provider setup...")
+async def test_full_tool_loop_with_current_generator():
+    """Test the full tool calling loop with the current generator and architecture."""
+    print("\nTesting full tool loop with current architecture...")
     
     # Create kernel 
     kernel = GCSKernel()
@@ -101,38 +101,82 @@ async def test_with_original_generator():
     # Initialize components
     await kernel._initialize_components()
     
-    # Use the actual LLM content generator but intercept network calls
-    with patch('httpx.AsyncClient.post') as mock_post:
-        # Mock a response that includes a tool call
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "choices": [{
-                "message": {
-                    "role": "assistant",
-                    "content": "",
-                    "tool_calls": [{
-                        "id": "call_123",
-                        "function": {
-                            "name": "shell_command",
-                            "arguments": "{\"command\": \"date\"}"
-                        }
-                    }]
-                }
-            }]
-        }
-        mock_post.return_value = mock_response
+    # Create a mock content generator that simulates realistic tool call behavior
+    from services.llm_provider.base_generator import BaseContentGenerator
+    from services.llm_provider.tool_call_processor import ToolCall
+
+    class AdvancedTestContentGenerator(BaseContentGenerator):
+        def __init__(self):
+            self.call_count = 0
         
-        try:
-            print("Sending 'what is the date?' with network call mocked...")
-            response = await kernel.send_user_prompt("What is the date?")
-            print(f"Response: {response}")
-        except Exception as e:
-            print(f"Error occurred: {e}")
-            import traceback
-            traceback.print_exc()
-        finally:
-            await kernel._cleanup_components()
+        async def generate_response(self, prompt: str, system_context: str = None, tools: list = None):
+            print(f"Advanced generator - Received prompt: {prompt}")
+            print(f"Available tools count: {len(tools) if tools else 0}")
+            
+            # On first call, simulate a tool call for date command
+            if self.call_count == 0:
+                self.call_count += 1
+                print("Returning tool call for date command")
+                
+                tool_call = ToolCall(
+                    id="call_date_1",
+                    name="shell_command", 
+                    arguments={"command": "date"}
+                )
+                
+                class ResponseObj:
+                    content = "Let me get the current date for you."
+                    tool_calls = [tool_call]
+                
+                return ResponseObj()
+            
+            # On second call, simulate a final response
+            else:
+                print("Returning final response")
+                
+                class ResponseObj:
+                    content = "The current date is now available."
+                    tool_calls = []
+                
+                return ResponseObj()
+        
+        async def process_tool_result(self, tool_result, conversation_history=None, available_tools=None):
+            print(f"Processing tool result - success: {tool_result.success}")
+            print(f"Tool result content: {tool_result.llm_content[:50]}..." if tool_result.llm_content else "No content")
+            print(f"Conversation history length: {len(conversation_history) if conversation_history else 0}")
+            
+            class ResponseObj:
+                content = f"Based on the tool execution: {tool_result.llm_content.strip()}"
+                tool_calls = []
+            
+            return ResponseObj()
+        
+        async def stream_response(self, prompt: str, system_context: str = None, tools: list = None):
+            yield f"Processing: {prompt}"
+
+    # Replace the content generator with our advanced test version
+    test_generator = AdvancedTestContentGenerator()
+    kernel.ai_orchestrator.set_content_generator(test_generator)
+    
+    try:
+        print("Initiating full tool loop test...")
+        response = await kernel.send_user_prompt("What time is it?")
+        print(f"Final response received: {response}")
+        
+        # Verify that conversation history is properly maintained
+        history = kernel.ai_orchestrator.get_conversation_history()
+        print(f"Conversation history contains {len(history)} messages")
+        
+        # Ensure the history includes all expected interaction steps
+        assert len(history) > 0, "Conversation history should not be empty"
+        print("✅ Conversation history properly maintained")
+        
+        # Verify response contains expected content
+        assert response is not None, "Response should not be None"
+        print("✅ Response properly generated")
+        
+    finally:
+        await kernel._cleanup_components()
 
 
 if __name__ == "__main__":

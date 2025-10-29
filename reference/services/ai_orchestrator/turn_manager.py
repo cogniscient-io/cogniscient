@@ -57,12 +57,31 @@ class TurnManager:
         self.registry = None  # Will be set via set_kernel_services
         self.scheduler = None  # Will be set via set_kernel_services
         self.conversation_history = []
+    
+    def get_conversation_history(self) -> list:
+        """
+        Get the current conversation history for this turn.
+        
+        Returns:
+            List of conversation messages
+        """
+        return self.conversation_history
+
+    def initialize_conversation_history(self, history: list):
+        """
+        Initialize the conversation history for this turn.
+        
+        Args:
+            history: Initial list of conversation messages
+        """
+        self.conversation_history = history if history is not None else []
 
     async def run_turn(self, 
                       prompt: str, 
                       system_context: str, 
                       available_tools: List[Dict[str, Any]], 
-                      signal: Optional[asyncio.Event] = None) -> AsyncGenerator[TurnEvent, None]:
+                      signal: Optional[asyncio.Event] = None,
+                      conversation_history_ref: list = None) -> AsyncGenerator[TurnEvent, None]:
         """
         Run a single turn of interaction with streaming events.
         
@@ -71,20 +90,22 @@ class TurnManager:
             system_context: System context to provide to the LLM
             available_tools: List of tools available to the LLM
             signal: Optional abort signal
-            
-        Yields:
-            TurnEvent objects representing different stages of the interaction
+            conversation_history_ref: Reference to the conversation history to modify directly
         """
-        # Reset conversation history to OpenAI format for this turn
-        self.conversation_history = []
-        
-        # Initialize conversation in OpenAI format
-        messages = [{"role": "user", "content": prompt}]
-        if system_context:
-            messages.insert(0, {"role": "system", "content": system_context})
-        
-        # Use the conversation history directly
-        self.conversation_history = messages
+        # Work with the provided conversation history directly
+        if conversation_history_ref is not None:
+            # Add the new user prompt to the existing conversation
+            conversation_history_ref.append({"role": "user", "content": prompt})
+            # Use the provided reference as our working history
+            self.conversation_history = conversation_history_ref
+        else:
+            # Initialize conversation in OpenAI format with a fresh history
+            messages = [{"role": "user", "content": prompt}]
+            if system_context:
+                messages.insert(0, {"role": "system", "content": system_context})
+            
+            # Use the conversation history directly
+            self.conversation_history = messages
         
         # Get initial response from LLM (potentially with tool calls)
         initial_response = await self.content_generator.generate_response(

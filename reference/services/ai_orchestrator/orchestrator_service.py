@@ -122,7 +122,8 @@ class AIOrchestratorService:
                 prompt, 
                 system_context, 
                 available_tools, 
-                abort_signal
+                abort_signal,
+                conversation_history_ref=self.conversation_history
             ):
                 if event.type == TurnEventType.CONTENT:
                     final_response += event.value
@@ -135,6 +136,9 @@ class AIOrchestratorService:
                     break
         except Exception as e:
             return f"Error during AI interaction: {str(e)}"
+        
+        # No need to synchronize since turn manager uses direct reference
+        # self.conversation_history already contains the updated history
         
         return final_response
 
@@ -167,22 +171,30 @@ class AIOrchestratorService:
                 prompt, 
                 system_context, 
                 available_tools, 
-                abort_signal
+                abort_signal,
+                conversation_history_ref=self.conversation_history
             ):
                 if event.type == TurnEventType.CONTENT:
                     yield event.value
                 elif event.type == TurnEventType.TOOL_CALL_REQUEST:
-                    # For streaming, we'll report that a tool call is being processed
-                    yield f"\n[Processing tool call: {event.value.get('name', 'unknown')}]\n"
+                    # Show more specific information about the command being executed
+                    tool_name = event.value.get('name', 'unknown')
+                    tool_args = event.value.get('arguments', {})
+                    command = tool_args.get('command', 'unknown')
+                    yield f"\n[{tool_name}: {command}]\n"
                 elif event.type == TurnEventType.TOOL_CALL_RESPONSE:
-                    # Tool result handled internally by turn manager
-                    yield f"\n[Tool call completed]\n"
+                    # Remove the "completed" message as requested for cleaner UX
+                    # The result will be shown naturally in the content response
+                    continue
                 elif event.type == TurnEventType.ERROR:
                     yield f"\nError: {event.value or str(event.error)}\n"
                 elif event.type == TurnEventType.FINISHED:
                     break
         except Exception as e:
             yield f"\nError during streaming interaction: {str(e)}\n"
+        
+        # No need to synchronize since turn manager uses direct reference
+        # self.conversation_history already contains the updated history
 
     async def _get_available_tools(self) -> List[Dict[str, Any]]:
         """

@@ -34,17 +34,18 @@ def test_tool_definition_creation():
         "required": ["param1"]
     }
     
-    tool_def = ToolDefinition(
+    # Use the class method to create ToolDefinition in OpenAI-compatible format
+    tool_def = ToolDefinition.create(
         name="test_tool",
-        display_name="Test Tool",
         description="A test tool",
-        parameter_schema=schema
+        parameters=schema,
+        display_name="Test Tool"
     )
     
     assert tool_def.name == "test_tool"
     assert tool_def.display_name == "Test Tool"
     assert tool_def.description == "A test tool"
-    assert tool_def.parameter_schema == schema
+    assert tool_def.parameters == schema
 
 
 @pytest.mark.asyncio

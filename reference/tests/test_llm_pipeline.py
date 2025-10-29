@@ -22,6 +22,17 @@ class MockProvider(BaseProvider):
         self.timeout = config.get("timeout", 60)
         self.max_retries = config.get("max_retries", 3)
         self._mock_client = mock_client  # Store the client to return
+        
+        # Initialize a converter for the mock provider
+        from services.llm_provider.providers.openai_converter import OpenAIConverter
+        self._converter = OpenAIConverter(self.model)
+    
+    @property
+    def converter(self):
+        """
+        The converter for this mock provider to transform data between kernel and provider formats.
+        """
+        return self._converter
     
     def build_headers(self):
         return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}

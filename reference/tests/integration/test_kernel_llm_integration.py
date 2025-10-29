@@ -101,8 +101,8 @@ async def test_kernel_to_llm_hello_world():
                 from services.llm_provider.pipeline import ContentGenerationPipeline
                 self.pipeline = ContentGenerationPipeline(self.provider)
                 # Also initialize the converter
-                from services.llm_provider.providers.openai_converter import ContentConverter
-                self.converter = ContentConverter(self.model)
+                from services.llm_provider.providers.openai_converter import OpenAIConverter
+                self.converter = OpenAIConverter(self.model)
         
         # Initialize the orchestrator with the mock content generator
         ai_orchestrator.set_content_generator(MockContentGenerator())
@@ -165,8 +165,8 @@ async def test_kernel_llm_streaming_hello_world():
                 from services.llm_provider.pipeline import ContentGenerationPipeline
                 self.pipeline = ContentGenerationPipeline(self.provider)
                 # Also initialize the converter
-                from services.llm_provider.providers.openai_converter import ContentConverter
-                self.converter = ContentConverter(self.model)
+                from services.llm_provider.providers.openai_converter import OpenAIConverter
+                self.converter = OpenAIConverter(self.model)
         
         # Initialize the orchestrator with the mock content generator
         ai_orchestrator.set_content_generator(MockContentGenerator())

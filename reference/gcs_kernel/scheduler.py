@@ -110,12 +110,24 @@ class ToolExecutionScheduler:
         """
         try:
             # Use the jsonschema library to validate parameters against the schema
-            validate(instance=params, schema=tool_def.parameter_schema)
+            # In the new OpenAI-compatible format, the schema should be accessible via parameters property
+            schema = tool_def.parameters
+            validate(instance=params, schema=schema)
             return True
         except ValidationError as e:
             if self.logger:
                 self.logger.error(f"Parameter validation failed: {e.message}")
             return False
+        except AttributeError:
+            # If the parameters property doesn't exist, try the old field name as fallback
+            try:
+                schema = getattr(tool_def, 'parameter_schema', {})
+                validate(instance=params, schema=schema)
+                return True
+            except ValidationError as e:
+                if self.logger:
+                    self.logger.error(f"Parameter validation failed: {e.message}")
+                return False
         except Exception as e:
             if self.logger:
                 self.logger.error(f"Unexpected error during parameter validation: {str(e)}")

@@ -54,6 +54,9 @@ class MockContentGenerator(BaseContentGenerator):
                     self.id = "call_time_1"
                     self.name = "shell_command"
                     self.parameters = {"command": "date"}
+                    import json
+                    self.arguments = self.parameters
+                    self.arguments_json = json.dumps(self.parameters)
         
             return ResponseObj(
                 content="I'll get the current time for you.",
@@ -65,13 +68,14 @@ class MockContentGenerator(BaseContentGenerator):
                 tool_calls=[]
             )
     
-    async def process_tool_result(self, tool_result, conversation_history=None):
+    async def process_tool_result(self, tool_result, conversation_history=None, available_tools=None):
         """
         Mock implementation of process_tool_result that tracks conversation history.
         """
         self.process_tool_result_calls.append({
             'tool_result': tool_result,
-            'conversation_history': conversation_history
+            'conversation_history': conversation_history,
+            'available_tools': available_tools
         })
         
         class ResponseObj:
@@ -184,6 +188,9 @@ async def test_multiple_tool_calls_maintain_conversation_history():
                         self.id = "call_1"
                         self.name = "shell_command"
                         self.parameters = {"command": "date"}
+                        import json
+                        self.arguments = self.parameters
+                        self.arguments_json = json.dumps(self.parameters)
                 
                 return ResponseObj(
                     content="Getting the current time.",
@@ -196,10 +203,11 @@ async def test_multiple_tool_calls_maintain_conversation_history():
                     tool_calls=[]
                 )
         
-        async def process_tool_result(self, tool_result, conversation_history=None):
+        async def process_tool_result(self, tool_result, conversation_history=None, available_tools=None):
             self.process_tool_result_calls.append({
                 'tool_result': tool_result,
-                'conversation_history': conversation_history
+                'conversation_history': conversation_history,
+                'available_tools': available_tools
             })
             
             class ResponseObj:

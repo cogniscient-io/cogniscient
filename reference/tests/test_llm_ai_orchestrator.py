@@ -74,6 +74,46 @@ class MockContentGenerator(BaseContentGenerator):
         Mock implementation of stream_response.
         """
         yield f"Streaming response to: {prompt}"
+    
+    async def generate_response_from_conversation(self, conversation_history: list, tools: list = None):
+        """
+        Mock implementation of generate_response_from_conversation.
+        """
+        from services.llm_provider.tool_call_processor import ToolCall
+        
+        class ResponseObj:
+            def __init__(self, content, tool_calls):
+                self.content = content
+                self.tool_calls = tool_calls if tool_calls else []
+        
+        # Check if the conversation history suggests we need to make a tool call
+        last_user_message = None
+        for msg in reversed(conversation_history):
+            if msg.get("role") == "user":
+                last_user_message = msg.get("content", "")
+                break
+        
+        # For testing purposes, return a response with a tool call sometimes
+        if last_user_message and ("use tool" in last_user_message.lower() or "tool" in last_user_message.lower()):
+            # Create a mock tool call object with the expected attributes
+            class MockToolCall:
+                def __init__(self):
+                    self.id = "call_123"
+                    self.name = "shell_command"
+                    self.arguments = {"command": "echo hello"}  # Using a real tool with valid parameters
+                    self.parameters = {"command": "echo hello"}  # For compatibility
+                    import json
+                    self.arguments_json = json.dumps(self.arguments)  # JSON string format for OpenAI compatibility
+
+            return ResponseObj(
+                content="I'll use a tool to help with that.",
+                tool_calls=[MockToolCall()]
+            )
+        else:
+            return ResponseObj(
+                content=f"Response to: {last_user_message}",
+                tool_calls=[]
+            )
 
 
 @pytest.mark.asyncio
@@ -219,9 +259,9 @@ async def test_turn_manager_with_tool_calls():
     events = []
     async for event in turn_manager.run_turn(
         "Please use a tool to help me.",
-        "System context for testing",
         [{"name": "shell_command", "description": "test", "parameters": {}}],
-        abort_signal
+        abort_signal,
+        conversation_history_ref=[{"role": "system", "content": "System context for testing"}]
     ):
         events.append(event)
     

@@ -104,11 +104,12 @@ class AIOrchestratorService:
             raise Exception("No content generator initialized")
         
         # Reset conversation history for new interaction
-        self.conversation_history = []
-        
-        # Build system context with available tools
+        # Add system context to conversation history
         system_context = await self.system_context_builder.build_system_context()
         available_tools = await self._get_available_tools()
+        
+        # Initialize conversation with system context
+        self.conversation_history = [{"role": "system", "content": system_context}]
         
         # Process the interaction using turn manager which handles the streaming/non-streaming
         # transition for tool execution
@@ -120,7 +121,6 @@ class AIOrchestratorService:
         try:
             async for event in self.turn_manager.run_turn(
                 prompt, 
-                system_context, 
                 available_tools, 
                 abort_signal,
                 conversation_history_ref=self.conversation_history
@@ -156,12 +156,12 @@ class AIOrchestratorService:
         if not self.content_generator:
             raise Exception("No content generator initialized")
         
-        # Reset conversation history for new interaction
-        self.conversation_history = []
-        
         # Build system context with available tools
         system_context = await self.system_context_builder.build_system_context()
         available_tools = await self._get_available_tools()
+        
+        # Initialize conversation with system context
+        self.conversation_history = [{"role": "system", "content": system_context}]
         
         # Create an abort signal for the turn
         abort_signal = asyncio.Event()
@@ -169,7 +169,6 @@ class AIOrchestratorService:
         try:
             async for event in self.turn_manager.run_turn(
                 prompt, 
-                system_context, 
                 available_tools, 
                 abort_signal,
                 conversation_history_ref=self.conversation_history

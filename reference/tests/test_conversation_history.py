@@ -101,6 +101,69 @@ class MockContentGenerator(BaseContentGenerator):
         Mock implementation of stream_response.
         """
         yield f"Streaming response to: {prompt}"
+    
+    async def generate_response_from_conversation(self, conversation_history: list, tools: list = None):
+        """
+        Mock implementation of generate_response_from_conversation.
+        """
+        # Track the call for verification
+        self.generate_response_calls.append({
+            'conversation_history': conversation_history,
+            'tools': tools
+        })
+        
+        class ResponseObj:
+            def __init__(self, content, tool_calls):
+                self.content = content
+                self.tool_calls = tool_calls if tool_calls else []
+        
+        # For testing purposes, check if there's a tool result in the conversation history
+        # that should trigger another response
+        has_tool_result = any(msg.get("role") == "tool" for msg in conversation_history)
+        
+        # If there's a tool result in the conversation, provide the final answer
+        if has_tool_result:
+            # Look for the tool result content
+            tool_content = None
+            for msg in reversed(conversation_history):
+                if msg.get("role") == "tool":
+                    tool_content = msg.get("content", "")
+                    break
+            
+            # Return a final response based on the tool result
+            return ResponseObj(
+                content=f"The current date/time is: {tool_content.strip()}",
+                tool_calls=[]
+            )
+        else:
+            # Otherwise, check if there's a user prompt about time/date to generate a tool call
+            last_user_message = None
+            for msg in reversed(conversation_history):
+                if msg.get("role") == "user":
+                    last_user_message = msg.get("content", "")
+                    break
+            
+            if last_user_message and ("time" in last_user_message.lower() or "date" in last_user_message.lower()):
+                # Create a mock tool call object for shell_command
+                class MockToolCall:
+                    def __init__(self):
+                        self.id = "call_time_1"
+                        self.name = "shell_command"
+                        self.parameters = {"command": "date"}
+                        import json
+                        self.arguments = self.parameters
+                        self.arguments_json = json.dumps(self.parameters)
+        
+                return ResponseObj(
+                    content="I'll get the current time for you.",
+                    tool_calls=[MockToolCall()]
+                )
+        
+        # Default response
+        return ResponseObj(
+            content="Processed conversation",
+            tool_calls=[]
+        )
 
 
 @pytest.mark.asyncio
@@ -124,27 +187,7 @@ async def test_conversation_history_with_tool_call():
     # Create orchestrator
     orchestrator = AIOrchestratorService(mock_kernel_client)
     
-    # Mock the system_context_builder to return the available tools
-    async def mock_get_available_tools():
-        return {
-            "shell_command": {
-                "name": "shell_command",
-                "description": "Execute a shell command and return the output",
-                "parameter_schema": {  # External API format from system
-                    "type": "object",
-                    "properties": {
-                        "command": {
-                            "type": "string",
-                            "description": "The shell command to execute"
-                        }
-                    },
-                    "required": ["command"]
-                }
-            }
-        }
-    
-    # Replace the system_context_builder's method with our mock
-    orchestrator.system_context_builder.get_available_tools = mock_get_available_tools
+
     
     # Use our mock content generator that tracks conversation history
     mock_provider = MockContentGenerator()
@@ -228,6 +271,37 @@ async def test_multiple_tool_calls_maintain_conversation_history():
         
         async def stream_response(self, prompt: str, system_context: str = None, tools: list = None):
             yield f"Streaming: {prompt}"
+        
+        async def generate_response_from_conversation(self, conversation_history: list, tools: list = None):
+            self.call_count += 1  # Increment call count like the original generate_response method
+            
+            class ResponseObj:
+                def __init__(self, content, tool_calls):
+                    self.content = content
+                    self.tool_calls = tool_calls if tool_calls else []
+            
+            # Return different responses depending on call count
+            if self.call_count == 1:
+                # First call returns a tool call
+                class MockToolCall:
+                    def __init__(self):
+                        self.id = "call_1"
+                        self.name = "shell_command"
+                        self.parameters = {"command": "date"}
+                        import json
+                        self.arguments = self.parameters
+                        self.arguments_json = json.dumps(self.parameters)
+                
+                return ResponseObj(
+                    content="Getting the current time.",
+                    tool_calls=[MockToolCall()]
+                )
+            else:
+                # Second call (after tool result) returns final content
+                return ResponseObj(
+                    content="Final response after processing tool result.",
+                    tool_calls=[]
+                )
     
     # Create mock kernel client
     mock_kernel_client = AsyncMock()
@@ -244,26 +318,7 @@ async def test_multiple_tool_calls_maintain_conversation_history():
     # Create orchestrator
     orchestrator = AIOrchestratorService(mock_kernel_client)
     
-    # Mock the system_context_builder
-    async def mock_get_available_tools():
-        return {
-            "shell_command": {
-                "name": "shell_command",
-                "description": "Execute a shell command and return the output",
-                "parameter_schema": {  # External API format from system
-                    "type": "object",
-                    "properties": {
-                        "command": {
-                            "type": "string",
-                            "description": "The shell command to execute"
-                        }
-                    },
-                    "required": ["command"]
-                }
-            }
-        }
-    
-    orchestrator.system_context_builder.get_available_tools = mock_get_available_tools
+
     
     # Use our multi-tool mock content generator
     mock_provider = MultiToolMockContentGenerator()
@@ -301,26 +356,7 @@ async def test_conversation_history_includes_all_messages():
     
     orchestrator = AIOrchestratorService(mock_kernel_client)
     
-    # Mock the system_context_builder
-    async def mock_get_available_tools():
-        return {
-            "shell_command": {
-                "name": "shell_command",
-                "description": "Execute a shell command and return the output",
-                "parameter_schema": {  # External API format from system
-                    "type": "object",
-                    "properties": {
-                        "command": {
-                            "type": "string",
-                            "description": "The shell command to execute"
-                        }
-                    },
-                    "required": ["command"]
-                }
-            }
-        }
-    
-    orchestrator.system_context_builder.get_available_tools = mock_get_available_tools
+
     
     mock_provider = MockContentGenerator()
     orchestrator.set_content_generator(mock_provider)
@@ -361,26 +397,7 @@ async def test_enhanced_conversation_management():
     
     orchestrator = AIOrchestratorService(mock_kernel_client)
     
-    # Mock the system_context_builder
-    async def mock_get_available_tools():
-        return {
-            "shell_command": {
-                "name": "shell_command",
-                "description": "Execute a shell command and return the output",
-                "parameter_schema": {  # External API format from system
-                    "type": "object",
-                    "properties": {
-                        "command": {
-                            "type": "string",
-                            "description": "The shell command to execute"
-                        }
-                    },
-                    "required": ["command"]
-                }
-            }
-        }
-    
-    orchestrator.system_context_builder.get_available_tools = mock_get_available_tools
+
     
     mock_provider = MockContentGenerator()
     orchestrator.set_content_generator(mock_provider)
@@ -424,26 +441,7 @@ async def test_conversation_reset_functionality():
     
     orchestrator = AIOrchestratorService(mock_kernel_client)
     
-    # Mock system context builder
-    async def mock_get_available_tools():
-        return {
-            "shell_command": {
-                "name": "shell_command",
-                "description": "Execute a shell command and return the output",
-                "parameter_schema": {  # External API format from system
-                    "type": "object",
-                    "properties": {
-                        "command": {
-                            "type": "string",
-                            "description": "The shell command to execute"
-                        }
-                    },
-                    "required": ["command"]
-                }
-            }
-        }
-    
-    orchestrator.system_context_builder.get_available_tools = mock_get_available_tools
+
     
     mock_provider = MockContentGenerator()
     orchestrator.set_content_generator(mock_provider)

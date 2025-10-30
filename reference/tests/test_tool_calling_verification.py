@@ -31,26 +31,7 @@ async def test_tool_calling_flow():
     # Create the orchestrator service
     orchestrator = AIOrchestratorService(mock_kernel_client)
 
-    # Mock the system context builder to return available tools
-    async def mock_get_available_tools():
-        return {
-            "shell_command": {
-                "name": "shell_command",
-                "description": "Execute a shell command and return the output",
-                "parameter_schema": {  # External API format from system
-                    "type": "object",
-                    "properties": {
-                        "command": {
-                            "type": "string",
-                            "description": "The shell command to execute"
-                        }
-                    },
-                    "required": ["command"]
-                }
-            }
-        }
-    
-    orchestrator.system_context_builder.get_available_tools = mock_get_available_tools
+
 
     # Create a mock content generator
     mock_content_generator = MagicMock()
@@ -69,11 +50,20 @@ async def test_tool_calling_flow():
             self.content = content
             self.tool_calls = tool_calls or []
 
-    # When generate_response is called, return a response with tool calls
-    mock_content_generator.generate_response = AsyncMock(
+    # When generate_response_from_conversation is called (new architecture), return a response with tool calls
+    # This method gets called with conversation history that includes both system and user messages
+    mock_content_generator.generate_response_from_conversation = AsyncMock(
         return_value=MockResponse(
             content="I'll get the current date for you.",
             tool_calls=[MockToolCall()]
+        )
+    )
+    
+    # Also mock generate_response for potential backward compatibility
+    mock_content_generator.generate_response = AsyncMock(
+        return_value=MockResponse(
+            content="I'll get the current date for you.",
+            tool_calls=[]
         )
     )
     
@@ -121,26 +111,7 @@ async def test_tool_calling_with_error():
     # Create the orchestrator service
     orchestrator = AIOrchestratorService(mock_kernel_client)
 
-    # Mock the system context builder to return available tools
-    async def mock_get_available_tools():
-        return {
-            "shell_command": {
-                "name": "shell_command",
-                "description": "Execute a shell command and return the output",
-                "parameter_schema": {  # External API format from system
-                    "type": "object",
-                    "properties": {
-                        "command": {
-                            "type": "string",
-                            "description": "The shell command to execute"
-                        }
-                    },
-                    "required": ["command"]
-                }
-            }
-        }
-    
-    orchestrator.system_context_builder.get_available_tools = mock_get_available_tools
+
 
     # Create a mock content generator
     mock_content_generator = MagicMock()
@@ -159,11 +130,20 @@ async def test_tool_calling_with_error():
             self.content = content
             self.tool_calls = tool_calls or []
 
-    # When generate_response is called, return a response with tool calls
-    mock_content_generator.generate_response = AsyncMock(
+    # When generate_response_from_conversation is called (new architecture), return a response with tool calls
+    # This method gets called with conversation history that includes both system and user messages
+    mock_content_generator.generate_response_from_conversation = AsyncMock(
         return_value=MockResponse(
             content="I'll execute a command for you.",
             tool_calls=[MockToolCall()]
+        )
+    )
+    
+    # Also mock generate_response for potential backward compatibility
+    mock_content_generator.generate_response = AsyncMock(
+        return_value=MockResponse(
+            content="I'll execute a command for you.",
+            tool_calls=[]
         )
     )
     

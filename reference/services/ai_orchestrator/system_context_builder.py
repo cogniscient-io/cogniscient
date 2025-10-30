@@ -122,106 +122,27 @@ class SystemContextBuilder:
             ]
         }
 
-    async def get_available_tools(self) -> Dict[str, Any]:
-        """
-        Get all available tools from the kernel.
-        
-        Returns:
-            A dictionary of available tools
-        """
-        try:
-            # Try to use direct kernel access first (for efficiency)
-            if self.kernel and hasattr(self.kernel, 'registry') and self.kernel.registry:
-                tools = self.kernel.registry.get_all_tools()
-                # Format tools to match the expected response structure
-                formatted_tools = {}
-                for name, tool in tools.items():
-                    formatted_tools[name] = {
-                        'name': getattr(tool, 'name', name),
-                        'description': getattr(tool, 'description', 'No description'),
-                        'parameters': getattr(tool, 'parameters', {}),  # Using OpenAI-compatible format
-                        'display_name': getattr(tool, 'display_name', name)
-                    }
-                return formatted_tools
-            else:
-                # Fall back to getting tools via MCP client
-                response = await self.kernel_client.list_tools()
-                # If response is a coroutine (e.g., from AsyncMock in testing), await it
-                if asyncio.iscoroutine(response):
-                    response = await response
-                # The MCP server returns tools in the format {"tools": [...]}
-                # Convert to the expected format {name: tool_info}
-                if "tools" in response:
-                    formatted_tools = {}
-                    for tool_info in response["tools"]:
-                        name = tool_info.get("name", "unknown")
-                        formatted_tools[name] = tool_info
-                    return formatted_tools
-                elif isinstance(response, dict) and all(isinstance(k, str) for k in response.keys()):
-                    # If response is already in the format {name: tool_info}, return as is
-                    return response
-                else:
-                    # Otherwise return an empty dict
-                    return {}
-        except Exception:
-            # Return empty dict if tools can't be retrieved
-            return {}
-
     async def build_system_context(self, additional_context: str = None) -> str:
         """
-        Build system context with information about available tools and capabilities.
+        Build system context with general information about capabilities.
+        Note: Specific tools are provided separately in the tools section of API requests,
+        not in the system context, to avoid duplication.
         
         Args:
             additional_context: Optional additional context to include
             
         Returns:
-            System context string with tool information and other capabilities
+            System context string with general guidance and capabilities
         """
-        # Get available tools from the kernel
-        available_tools = await self.get_available_tools()
+        # Build the system context with general guidance only (no more tool listings)
+        system_context = self._format_prompt(self.prompts["base_message_with_tools"], tool_names="available through the tools API")
         
-        # Start building the system context
-        if available_tools:
-            # Include explicit tool names in the initial system message to make them prominent
-            tool_names = ', '.join([tool_name for tool_name in available_tools.keys()])
-            base_msg = self._format_prompt(self.prompts["base_message_with_tools"], tool_names=tool_names)
-            system_context = base_msg
-            
-            system_context += self._format_prompt(self.prompts["available_tools_header"])
-            
-            for tool_name, tool_info in available_tools.items():
-                description = tool_info.get('description', 'No description')
-                schema = tool_info.get('parameters', {})
-                
-                # Format parameters if available
-                if schema:
-                    parameters_str = self._format_prompt(self.prompts["parameter_format"], parameters=schema)
-                else:
-                    parameters_str = ""
-                
-                # Add tool entry with parameters
-                tool_entry = self._format_prompt(
-                    self.prompts["tool_entry"],
-                    tool_name=tool_name,
-                    tool_description=description,
-                    tool_parameters=parameters_str
-                )
-                system_context += tool_entry
-        else:
-            system_context = self._format_prompt(self.prompts["no_tools_message"])
-        
-        # Add instructions for using tools
-        system_context += self._format_prompt(self.prompts["tool_usage_instructions"])
-        
-        # Add tool guidance
-        system_context += self._format_prompt(self.prompts["tool_guidance"])
+        # Add general guidance
+        system_context += self._format_prompt(self.prompts["general_guidance"])
         
         # Add any additional context if provided
         if additional_context:
             system_context += self._format_prompt(self.prompts["additional_context_format"], additional_context=additional_context)
-        
-        # Add general guidance
-        system_context += self._format_prompt(self.prompts["general_guidance"])
         
         return system_context
 

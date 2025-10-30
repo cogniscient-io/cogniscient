@@ -81,6 +81,57 @@ class MockContentGenerator(BaseContentGenerator):
         Mock implementation of stream_response.
         """
         yield f"Streaming response to: {prompt}"
+    
+    async def generate_response_from_conversation(self, conversation_history: list, tools: list = None):
+        """
+        Mock implementation of generate_response_from_conversation with optional failure.
+        """
+        # Track the call for verification (similar to generate_response)
+        last_user_message = None
+        for msg in reversed(conversation_history):
+            if msg.get("role") == "user":
+                last_user_message = msg.get("content", "")
+                break
+        
+        self.generate_response_calls.append({
+            'prompt': last_user_message,
+            'system_context': next((msg.get("content") for msg in conversation_history if msg.get("role") == "system"), None),
+            'tools': tools
+        })
+        
+        # Fail the first few calls if configured to do so
+        if self.current_fail_count < self.fail_count:
+            self.current_fail_count += 1
+            raise Exception(f"Simulated failure {self.current_fail_count}")
+        
+        class ResponseObj:
+            def __init__(self, content, tool_calls):
+                self.content = content
+                self.tool_calls = tool_calls if tool_calls else []
+        
+        # Check if there's a tool result in the conversation history to respond to
+        has_tool_result = any(msg.get("role") == "tool" for msg in conversation_history)
+        if has_tool_result:
+            # Create final response when tool results are present
+            return ResponseObj(
+                content="Based on the tool results, I've completed your request.",
+                tool_calls=[]
+            )
+        
+        # Otherwise, return a response with a tool call for testing
+        class MockToolCall:
+            def __init__(self):
+                self.id = "test_call_123"
+                self.name = "shell_command"
+                self.parameters = {"command": "echo hello"}
+                import json
+                self.arguments = self.parameters  # Use parameters directly as arguments
+                self.arguments_json = json.dumps(self.parameters)
+        
+        return ResponseObj(
+            content="I'll use a tool to help with that.",
+            tool_calls=[MockToolCall()] if not self.should_fail else []
+        )
 
 
 @pytest.mark.asyncio
@@ -96,26 +147,7 @@ async def test_content_generation_functionality():
     mock_provider = MockContentGenerator(should_fail=False, fail_count=0)  # No failures
     orchestrator.set_content_generator(mock_provider)
     
-    # Mock the system_context_builder
-    async def mock_get_available_tools():
-        return {
-            "shell_command": {
-                "name": "shell_command",
-                "description": "Execute a shell command and return the output",
-                "parameters": {  # Using OpenAI-compatible format
-                    "type": "object",
-                    "properties": {
-                        "command": {
-                            "type": "string",
-                            "description": "The shell command to execute"
-                        }
-                    },
-                    "required": ["command"]
-                }
-            }
-        }
-    
-    orchestrator.system_context_builder.get_available_tools = mock_get_available_tools
+
     
     # Call the orchestrator - should work properly
     response = await orchestrator.handle_ai_interaction("Test prompt")
@@ -141,26 +173,7 @@ async def test_tool_execution_error_handling():
     mock_provider = MockContentGenerator(should_fail=False, fail_count=0)
     orchestrator.set_content_generator(mock_provider)
     
-    # Mock the system_context_builder
-    async def mock_get_available_tools():
-        return {
-            "shell_command": {
-                "name": "shell_command",
-                "description": "Execute a shell command and return the output",
-                "parameters": {  # Using OpenAI-compatible format
-                    "type": "object",
-                    "properties": {
-                        "command": {
-                            "type": "string",
-                            "description": "The shell command to execute"
-                        }
-                    },
-                    "required": ["command"]
-                }
-            }
-        }
-    
-    orchestrator.system_context_builder.get_available_tools = mock_get_available_tools
+
     
     # Call the orchestrator - tool submission will fail, but should be handled gracefully
     response = await orchestrator.handle_ai_interaction("Test prompt for tool execution")

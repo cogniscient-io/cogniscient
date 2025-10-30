@@ -43,13 +43,17 @@ class LLMContentGenerator(BaseContentGenerator):
         Implements the interface expected by the ai_orchestrator.
         
         Args:
-            prompt: The input prompt
-            system_context: Optional system context/prompt to provide to the LLM
+            prompt: The input prompt (deprecated - conversation history should be used instead)
+            system_context: Optional system context (deprecated - conversation history should be used instead)
             tools: Optional list of tools to provide to the LLM for native function calling
             
         Returns:
             The generated response with potential tool calls
         """
+        # TODO: Remove this method's dependency on prompt and system_context parameters.
+        # For now, maintain compatibility by creating messages from parameters,
+        # but eventually this method should work with conversation history only.
+        
         # Prepare the request with essential content only
         # The provider will handle all configuration parameters internally
         
@@ -68,6 +72,36 @@ class LLMContentGenerator(BaseContentGenerator):
         
         # Generate content using the pipeline
         response = await self.generate_content(request, user_prompt_id=f"prompt_{id(prompt)}")
+        
+        # Use the shared helper method to format the response consistently
+        return self._format_response(response)
+    
+    async def generate_response_from_conversation(self, conversation_history: list, tools: list = None) -> Any:
+        """
+        Generate a response based on conversation history with potential tool calls.
+        This is the preferred method that works with proper conversation history.
+        
+        Args:
+            conversation_history: Full conversation history including system, user, assistant, and tool messages
+            tools: Optional list of tools to provide to the LLM for native function calling
+            
+        Returns:
+            The generated response with potential tool calls
+        """
+        # Prepare the request with essential content only
+        # The provider will handle all configuration parameters internally
+        
+        # Use conversation history directly
+        request = {
+            "messages": conversation_history
+        }
+        
+        # Add tools if provided
+        if tools:
+            request["tools"] = tools
+        
+        # Generate content using the pipeline
+        response = await self.generate_content(request, user_prompt_id=f"conversation_{id(conversation_history)}")
         
         # Use the shared helper method to format the response consistently
         return self._format_response(response)

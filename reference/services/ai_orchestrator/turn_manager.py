@@ -78,7 +78,6 @@ class TurnManager:
 
     async def run_turn(self, 
                       prompt: str, 
-                      system_context: str, 
                       available_tools: List[Dict[str, Any]], 
                       signal: Optional[asyncio.Event] = None,
                       conversation_history_ref: list = None) -> AsyncGenerator[TurnEvent, None]:
@@ -87,7 +86,6 @@ class TurnManager:
         
         Args:
             prompt: User's input prompt
-            system_context: System context to provide to the LLM
             available_tools: List of tools available to the LLM
             signal: Optional abort signal
             conversation_history_ref: Reference to the conversation history to modify directly
@@ -100,17 +98,13 @@ class TurnManager:
             self.conversation_history = conversation_history_ref
         else:
             # Initialize conversation in OpenAI format with a fresh history
-            messages = [{"role": "user", "content": prompt}]
-            if system_context:
-                messages.insert(0, {"role": "system", "content": system_context})
-            
-            # Use the conversation history directly
-            self.conversation_history = messages
+            # The system context should already be in the conversation history if needed
+            self.conversation_history = [{"role": "user", "content": prompt}]
         
         # Get initial response from LLM (potentially with tool calls)
-        initial_response = await self.content_generator.generate_response(
-            prompt,  # This will be ignored in favor of conversation history
-            system_context=system_context,  # This will be ignored in favor of conversation history
+        # Use the conversation history that was set up by the orchestrator
+        initial_response = await self.content_generator.generate_response_from_conversation(
+            conversation_history=self.conversation_history,
             tools=available_tools
         )
         
@@ -202,10 +196,6 @@ class TurnManager:
             # Add the original prompt to the conversation history if not already there
             if not any(msg.get("role") == "user" for msg in self.conversation_history):
                 self.conversation_history.append({"role": "user", "content": prompt})
-            
-            # If system context was provided and not in history, add it
-            if system_context and not any(msg.get("role") == "system" for msg in self.conversation_history):
-                self.conversation_history.insert(0, {"role": "system", "content": system_context})
             
 
             

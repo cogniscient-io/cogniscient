@@ -98,6 +98,44 @@ async def test_kernel_with_mocked_llm():
         
         async def stream_response(self, prompt: str, system_context: str = None, tools: list = None):
             yield f"Streaming: {prompt}"
+        
+        async def generate_response_from_conversation(self, conversation_history: list, tools: list = None):
+            # Check for user messages in conversation history
+            last_user_message = None
+            for msg in reversed(conversation_history):
+                if msg.get("role") == "user":
+                    last_user_message = msg.get("content", "")
+                    break
+            
+            # For specific prompts, return tool calls
+            if last_user_message and ("system status" in last_user_message.lower() or "date" in last_user_message.lower()):
+                # Create a mock tool call
+                class MockResponse:
+                    def __init__(self, content, tool_calls):
+                        self.content = content
+                        self.tool_calls = tool_calls
+
+                class MockToolCall:
+                    def __init__(self):
+                        self.name = "shell_command"
+                        self.arguments = {"command": "date"}
+                        self.parameters = {"command": "date"}
+                        self.id = "call_123"
+
+                return MockResponse(
+                    content="I'll get the system date for you.",
+                    tool_calls=[MockToolCall()]
+                )
+            else:
+                class MockResponse:
+                    def __init__(self, content, tool_calls):
+                        self.content = content
+                        self.tool_calls = []
+
+                return MockResponse(
+                    content="Hello! How can I assist you today?",
+                    tool_calls=[]
+                )
 
     # Replace the content generator with mock
     mock_generator = MockContentGenerator()

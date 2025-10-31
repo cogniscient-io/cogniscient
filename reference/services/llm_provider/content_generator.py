@@ -36,8 +36,12 @@ class LLMContentGenerator(BaseContentGenerator):
         
         # Content generator no longer needs to store or validate configuration
         # The provider handles all configuration concerns internally
+        
+        # Initialize kernel_client as None, will be set by orchestrator
+        self.kernel_client = None
+        self.kernel = None  # Will be set by orchestrator
     
-    async def generate_response(self, prompt: str, system_context: str = None, tools: list = None) -> Any:
+    async def generate_response(self, prompt: str, system_context: str = None, prompt_id: str = None) -> Any:
         """
         Generate a response to the given prompt with potential tool calls.
         Implements the interface expected by the ai_orchestrator.
@@ -45,7 +49,7 @@ class LLMContentGenerator(BaseContentGenerator):
         Args:
             prompt: The input prompt (deprecated - conversation history should be used instead)
             system_context: Optional system context (deprecated - conversation history should be used instead)
-            tools: Optional list of tools to provide to the LLM for native function calling
+            prompt_id: Optional identifier for the prompt which contains tool inclusion configuration
             
         Returns:
             The generated response with potential tool calls
@@ -66,24 +70,29 @@ class LLMContentGenerator(BaseContentGenerator):
             "messages": messages
         }
         
-        # Add tools if provided
-        if tools:
-            request["tools"] = tools
+        # Get tools if prompt_id is provided
+        if prompt_id:
+            from gcs_kernel.models import ToolInclusionConfig
+            # In a real implementation, we would fetch the tools based on the prompt_id
+            # For now, this is a placeholder
+            tools = await self._get_tools_for_prompt(prompt_id)
+            if tools:
+                request["tools"] = tools
         
-        # Generate content using the pipeline
-        response = await self.generate_content(request, user_prompt_id=f"prompt_{id(prompt)}")
+        # Generate content using the pipeline with the same prompt_id for provider tracking
+        response = await self.generate_content(request, user_prompt_id=prompt_id)
         
         # Use the shared helper method to format the response consistently
         return self._format_response(response)
     
-    async def generate_response_from_conversation(self, conversation_history: list, tools: list = None) -> Any:
+    async def generate_response_from_conversation(self, conversation_history: list, prompt_id: str = None) -> Any:
         """
         Generate a response based on conversation history with potential tool calls.
         This is the preferred method that works with proper conversation history.
         
         Args:
             conversation_history: Full conversation history including system, user, assistant, and tool messages
-            tools: Optional list of tools to provide to the LLM for native function calling
+            prompt_id: Optional identifier for the prompt which contains tool inclusion configuration
             
         Returns:
             The generated response with potential tool calls
@@ -96,24 +105,28 @@ class LLMContentGenerator(BaseContentGenerator):
             "messages": conversation_history
         }
         
-        # Add tools if provided
-        if tools:
-            request["tools"] = tools
+        # Get tools if prompt_id is provided
+        if prompt_id:
+            # In a real implementation, we would fetch the tools based on the prompt_id
+            # For now, this is a placeholder
+            tools = await self._get_tools_for_prompt(prompt_id)
+            if tools:
+                request["tools"] = tools
         
-        # Generate content using the pipeline
-        response = await self.generate_content(request, user_prompt_id=f"conversation_{id(conversation_history)}")
+        # Generate content using the pipeline with the same prompt_id for provider tracking
+        response = await self.generate_content(request, user_prompt_id=prompt_id)
         
         # Use the shared helper method to format the response consistently
         return self._format_response(response)
     
-    async def process_tool_result(self, tool_result: Any, conversation_history: list = None, available_tools: list = None) -> Any:
+    async def process_tool_result(self, tool_result: Any, conversation_history: list = None, prompt_id: str = None) -> Any:
         """
         Process a tool result and continue the conversation.
         
         Args:
             tool_result: The result from a tool execution
             conversation_history: The conversation history to maintain context
-            available_tools: List of tools available to the LLM for function calling
+            prompt_id: Optional identifier for the prompt which contains tool inclusion configuration
             
         Returns:
             The updated response after processing the tool result
@@ -132,12 +145,16 @@ class LLMContentGenerator(BaseContentGenerator):
             "messages": messages
         }
         
-        # Add tools if provided
-        if available_tools:
-            request["tools"] = available_tools
+        # Get tools if prompt_id is provided
+        if prompt_id:
+            # In a real implementation, we would fetch the tools based on the prompt_id
+            # For now, this is a placeholder
+            tools = await self._get_tools_for_prompt(prompt_id)
+            if tools:
+                request["tools"] = tools
         
-        # Generate content using the pipeline
-        response = await self.generate_content(request, user_prompt_id=f"tool_result_{id(tool_result)}")
+        # Generate content using the pipeline with the same prompt_id for provider tracking
+        response = await self.generate_content(request, user_prompt_id=prompt_id)
         
         # Use the shared helper method to format the response consistently
         return self._format_response(response)
@@ -246,3 +263,104 @@ class LLMContentGenerator(BaseContentGenerator):
                 tool_calls=processed_tool_calls
             )
     
+    async def _get_tools_for_prompt(self, prompt_id: str) -> list:
+        """
+        Get tools for a specific prompt based on the tool inclusion policy.
+        
+        Args:
+            prompt_id: The ID of the prompt
+            
+        Returns:
+            List of tools in the format expected by the LLM
+        """
+        # Get the kernel instance if available - this assumes content generator has access to kernel
+        from gcs_kernel.models import ToolInclusionPolicy
+        from gcs_kernel.mcp.client import MCPClient
+        
+        # First, check if we have access to the kernel to get the prompt config
+        if hasattr(self, 'kernel') and self.kernel:
+            # Get the tool inclusion config from the kernel
+            prompt_config = self.kernel.get_prompt_config(prompt_id)
+            
+            if prompt_config:
+                policy = prompt_config.policy
+                if policy == ToolInclusionPolicy.ALL_AVAILABLE:
+                    # Get all available tools from the kernel registry
+                    tools = self.kernel.registry.get_all_tools()
+                    # Convert tool objects to dictionary format expected by LLM
+                    llm_tools = []
+                    for tool_name, tool_obj in tools.items():
+                        llm_tool = {
+                            "name": getattr(tool_obj, 'name', tool_name),
+                            "description": getattr(tool_obj, 'description', ''),
+                            "parameters": getattr(tool_obj, 'parameters', {})  # Using OpenAI-compatible format
+                        }
+                        llm_tools.append(llm_tool)
+                    return llm_tools
+                elif policy == ToolInclusionPolicy.CUSTOM:
+                    # Return the custom tools specified in the config
+                    return prompt_config.custom_tools or []
+                elif policy == ToolInclusionPolicy.CONTEXTUAL_SUBSET:
+                    # This would require more complex logic to determine which tools to include
+                    # based on the context, but for now return all available
+                    tools = self.kernel.registry.get_all_tools()
+                    # Convert tool objects to dictionary format expected by LLM
+                    llm_tools = []
+                    for tool_name, tool_obj in tools.items():
+                        llm_tool = {
+                            "name": getattr(tool_obj, 'name', tool_name),
+                            "description": getattr(tool_obj, 'description', ''),
+                            "parameters": getattr(tool_obj, 'parameters', {})  # Using OpenAI-compatible format
+                        }
+                        llm_tools.append(llm_tool)
+                    return llm_tools
+                elif policy == ToolInclusionPolicy.NONE:
+                    # Return empty list as no tools should be available
+                    return []
+        
+        # If we don't have access to the kernel or prompt config, we need to fall back to the MCP client
+        # to get available tools, similar to the original _get_available_tools implementation
+        if hasattr(self, 'provider') and hasattr(self.provider, 'provider_factory'):
+            # Try to get tools through the provider
+            try:
+                # Use the kernel client from the provider if available
+                if hasattr(self, 'kernel_client'):
+                    tools_response = await self.kernel_client.list_tools()
+                    
+                    # Handle different response formats (same logic as the original implementation)
+                    if isinstance(tools_response, dict):
+                        if "tools" in tools_response:  # MCP response with tools array
+                            tools_list = tools_response["tools"]
+                            # Convert list of tools to dict format
+                            tools = {}
+                            for tool_info in tools_list:
+                                name = tool_info.get("name", "unknown")
+                                tools[name] = tool_info
+                        else:  # MCP response with tools as dict {name: info}
+                            tools = tools_response
+                    elif isinstance(tools_response, list):  # Direct list of tools
+                        tools = {}
+                        for tool_info in tools_response:
+                            name = tool_info.get("name", "unknown")
+                            tools[name] = tool_info
+                    else:
+                        tools = {}
+                
+                    # Convert available tools to kernel tool format to pass to LLM
+                    kernel_tools = []
+                    for tool_name, tool_info in tools.items():
+                        kernel_tool = {
+                            "name": tool_info.get("name", tool_name),
+                            "description": tool_info.get("description", ""),
+                            "parameters": tool_info.get("parameters", {})
+                        }
+                        kernel_tools.append(kernel_tool)
+                    
+                    return kernel_tools
+            except:
+                # If we can't get tools from the kernel client, return empty list
+                pass
+        
+        # Default to empty list if no method worked
+        return []
+

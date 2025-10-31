@@ -25,7 +25,7 @@ class MockContentGenerator(BaseContentGenerator):
         self.timeout = self.config.get("timeout")
         self.max_retries = self.config.get("max_retries")
     
-    async def generate_response(self, prompt: str, system_context: str = None, tools: list = None):
+    async def generate_response(self, prompt: str, system_context: str = None, prompt_id: str = None):
         """
         Mock implementation of generate_response.
         """
@@ -58,7 +58,7 @@ class MockContentGenerator(BaseContentGenerator):
                 tool_calls=[]
             )
     
-    async def process_tool_result(self, tool_result, conversation_history=None, available_tools=None):
+    async def process_tool_result(self, tool_result, conversation_history=None, prompt_id: str = None):
         """
         Mock implementation of process_tool_result.
         """
@@ -75,7 +75,7 @@ class MockContentGenerator(BaseContentGenerator):
         """
         yield f"Streaming response to: {prompt}"
     
-    async def generate_response_from_conversation(self, conversation_history: list, tools: list = None):
+    async def generate_response_from_conversation(self, conversation_history: list, prompt_id: str = None):
         """
         Mock implementation of generate_response_from_conversation.
         """
@@ -257,9 +257,11 @@ async def test_turn_manager_with_tool_calls():
     
     # Run a turn with a prompt that triggers a tool call
     events = []
+    import uuid
+    prompt_id = f"test_{str(uuid.uuid4())}"
     async for event in turn_manager.run_turn(
         "Please use a tool to help me.",
-        [{"name": "shell_command", "description": "test", "parameters": {}}],
+        prompt_id,
         abort_signal,
         conversation_history_ref=[{"role": "system", "content": "System context for testing"}]
     ):

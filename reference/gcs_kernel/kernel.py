@@ -8,7 +8,7 @@ the foundational services for the Generic Control System Kernel.
 import asyncio
 from typing import Dict, Any, Optional
 
-from gcs_kernel.models import ResourceQuota
+from gcs_kernel.models import ResourceQuota, ToolInclusionConfig
 from gcs_kernel.event_loop import EventLoop
 from gcs_kernel.scheduler import ToolExecutionScheduler
 from gcs_kernel.registry import ToolRegistry
@@ -44,6 +44,9 @@ class GCSKernel:
         self.security_layer = SecurityLayer()
         self.logger = EventLogger()
         self.mcp_client = MCPClient()
+        
+        # Initialize prompt configuration registry
+        self.prompt_config_registry = {}
         
         # Initialize AI orchestrator with direct kernel access for simplified architecture
         from services.ai_orchestrator.orchestrator_service import AIOrchestratorService
@@ -157,6 +160,38 @@ class GCSKernel:
             True if the kernel is running, False otherwise
         """
         return self._running
+
+    def register_prompt_config(self, prompt_id: str, config: 'ToolInclusionConfig'):
+        """
+        Register a prompt configuration with the kernel.
+        
+        Args:
+            prompt_id: Unique identifier for the prompt
+            config: The tool inclusion configuration for the prompt
+        """
+        self.prompt_config_registry[prompt_id] = config
+
+    def get_prompt_config(self, prompt_id: str) -> Optional['ToolInclusionConfig']:
+        """
+        Get the configuration for a specific prompt.
+        
+        Args:
+            prompt_id: Unique identifier for the prompt
+            
+        Returns:
+            The tool inclusion configuration for the prompt, or None if not found
+        """
+        return self.prompt_config_registry.get(prompt_id)
+
+    def remove_prompt_config(self, prompt_id: str):
+        """
+        Remove a prompt configuration from the registry.
+        
+        Args:
+            prompt_id: Unique identifier for the prompt
+        """
+        if prompt_id in self.prompt_config_registry:
+            del self.prompt_config_registry[prompt_id]
 
     async def send_user_prompt(self, prompt: str) -> str:
         """

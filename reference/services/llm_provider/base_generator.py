@@ -17,12 +17,14 @@ class BaseContentGenerator(ABC):
     """
     
     @abstractmethod
-    async def generate_response(self, prompt: str) -> Any:
+    async def generate_response(self, prompt: str, system_context: str = None, prompt_id: str = None) -> Any:
         """
         Generate a response to the given prompt with potential tool calls.
         
         Args:
             prompt: The input prompt
+            system_context: Optional system context
+            prompt_id: Unique identifier for the prompt which contains tool inclusion configuration
             
         Returns:
             The generated response with potential tool calls
@@ -30,14 +32,14 @@ class BaseContentGenerator(ABC):
         pass
     
     @abstractmethod
-    async def process_tool_result(self, tool_result: Any, conversation_history: list = None, available_tools: list = None) -> Any:
+    async def process_tool_result(self, tool_result: Any, conversation_history: list = None, prompt_id: str = None) -> Any:
         """
         Process a tool result and continue the conversation.
         
         Args:
             tool_result: The result from a tool execution
             conversation_history: The conversation history to maintain context
-            available_tools: List of tools available to the LLM for function calling
+            prompt_id: Unique identifier for the prompt which contains tool inclusion configuration
         
         Returns:
             The updated response after processing the tool result
@@ -54,5 +56,20 @@ class BaseContentGenerator(ABC):
             
         Yields:
             Partial response strings as they become available
+        """
+        pass
+    
+    @abstractmethod
+    async def generate_response_from_conversation(self, conversation_history: list, prompt_id: str = None) -> Any:
+        """
+        Generate a response based on conversation history with potential tool calls.
+        This is the preferred method that works with proper conversation history.
+        
+        Args:
+            conversation_history: Full conversation history including system, user, assistant, and tool messages
+            prompt_id: Unique identifier for the prompt which contains tool inclusion configuration
+            
+        Returns:
+            The generated response with potential tool calls
         """
         pass

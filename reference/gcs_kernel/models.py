@@ -133,3 +133,23 @@ class MCPConfig(BaseModel):
     client_secret: Optional[str] = Field(default=None, description="Client secret for authentication")
     connection_timeout: int = Field(default=30, description="Connection timeout in seconds")
     request_timeout: int = Field(default=60, description="Request timeout in seconds")
+
+
+class ToolInclusionPolicy(str, Enum):
+    """
+    Enum defining different strategies for tool inclusion in LLM prompts.
+    """
+    ALL_AVAILABLE = "all_available"  # Include all available tools
+    NONE = "none"  # Don't include any tools
+    CONTEXTUAL_SUBSET = "contextual_subset"  # Include tools based on contextual analysis
+    CUSTOM = "custom"  # Include a custom subset specified by the caller
+
+
+class ToolInclusionConfig(BaseModel):
+    """
+    Configuration for tool inclusion strategy.
+    """
+    prompt_id: str
+    policy: ToolInclusionPolicy
+    custom_tools: Optional[List[Dict[str, Any]]] = None
+    context_info: Optional[Dict[str, Any]] = None  # Additional context for contextual policy

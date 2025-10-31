@@ -31,14 +31,14 @@ class MockContentGenerator(BaseContentGenerator):
         self.generate_response_calls = []
         self.process_tool_result_calls = []
     
-    async def generate_response(self, prompt: str, system_context: str = None, tools: list = None):
+    async def generate_response(self, prompt: str, system_context: str = None, prompt_id: str = None):
         """
         Mock implementation of generate_response that tracks the call.
         """
         self.generate_response_calls.append({
             'prompt': prompt,
             'system_context': system_context,
-            'tools': tools
+            'prompt_id': prompt_id
         })
         
         class ResponseObj:
@@ -68,14 +68,14 @@ class MockContentGenerator(BaseContentGenerator):
                 tool_calls=[]
             )
     
-    async def process_tool_result(self, tool_result, conversation_history=None, available_tools=None):
+    async def process_tool_result(self, tool_result, conversation_history=None, prompt_id: str = None):
         """
         Mock implementation of process_tool_result that tracks conversation history.
         """
         self.process_tool_result_calls.append({
             'tool_result': tool_result,
             'conversation_history': conversation_history,
-            'available_tools': available_tools
+            'prompt_id': prompt_id
         })
         
         class ResponseObj:
@@ -102,14 +102,14 @@ class MockContentGenerator(BaseContentGenerator):
         """
         yield f"Streaming response to: {prompt}"
     
-    async def generate_response_from_conversation(self, conversation_history: list, tools: list = None):
+    async def generate_response_from_conversation(self, conversation_history: list, prompt_id: str = None):
         """
         Mock implementation of generate_response_from_conversation.
         """
         # Track the call for verification
         self.generate_response_calls.append({
             'conversation_history': conversation_history,
-            'tools': tools
+            'prompt_id': prompt_id
         })
         
         class ResponseObj:
@@ -225,7 +225,7 @@ async def test_multiple_tool_calls_maintain_conversation_history():
             self.call_count = 0
             self.process_tool_result_calls = []
         
-        async def generate_response(self, prompt: str, system_context: str = None, tools: list = None):
+        async def generate_response(self, prompt: str, system_context: str = None, prompt_id: str = None):
             self.call_count += 1
             
             class ResponseObj:
@@ -256,11 +256,11 @@ async def test_multiple_tool_calls_maintain_conversation_history():
                     tool_calls=[]
                 )
         
-        async def process_tool_result(self, tool_result, conversation_history=None, available_tools=None):
+        async def process_tool_result(self, tool_result, conversation_history=None, prompt_id: str = None):
             self.process_tool_result_calls.append({
                 'tool_result': tool_result,
                 'conversation_history': conversation_history,
-                'available_tools': available_tools
+                'prompt_id': prompt_id
             })
             
             class ResponseObj:
@@ -272,7 +272,7 @@ async def test_multiple_tool_calls_maintain_conversation_history():
         async def stream_response(self, prompt: str, system_context: str = None, tools: list = None):
             yield f"Streaming: {prompt}"
         
-        async def generate_response_from_conversation(self, conversation_history: list, tools: list = None):
+        async def generate_response_from_conversation(self, conversation_history: list, prompt_id: str = None):
             self.call_count += 1  # Increment call count like the original generate_response method
             
             class ResponseObj:

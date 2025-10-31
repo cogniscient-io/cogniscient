@@ -78,7 +78,7 @@ class TurnManager:
 
     async def run_turn(self, 
                       prompt: str, 
-                      available_tools: List[Dict[str, Any]], 
+                      prompt_id: str, 
                       signal: Optional[asyncio.Event] = None,
                       conversation_history_ref: list = None) -> AsyncGenerator[TurnEvent, None]:
         """
@@ -86,7 +86,7 @@ class TurnManager:
         
         Args:
             prompt: User's input prompt
-            available_tools: List of tools available to the LLM
+            prompt_id: Unique identifier for the prompt which contains tool inclusion configuration
             signal: Optional abort signal
             conversation_history_ref: Reference to the conversation history to modify directly
         """
@@ -105,7 +105,7 @@ class TurnManager:
         # Use the conversation history that was set up by the orchestrator
         initial_response = await self.content_generator.generate_response_from_conversation(
             conversation_history=self.conversation_history,
-            tools=available_tools
+            prompt_id=prompt_id
         )
         
         # Process the response based on whether it contains tool calls
@@ -209,7 +209,7 @@ class TurnManager:
                     return_display="Tool execution results provided."
                 ),
                 self.conversation_history,
-                available_tools  # Pass available tools so LLM knows what functions it can call
+                prompt_id  # Pass prompt_id so LLM knows what functions it can call based on policy
             )
             
             # Process recursively if there are more tool calls
@@ -299,7 +299,7 @@ class TurnManager:
                         return_display="Tool execution results provided."
                     ),
                     self.conversation_history,
-                    available_tools  # Pass available tools so LLM knows what functions it can call
+                    prompt_id  # Pass prompt_id so LLM knows what functions it can call based on policy
                 )
             
             # Yield the final content from the last response if available
@@ -309,6 +309,14 @@ class TurnManager:
             # If there were no tool calls, just return the initial content
             if initial_response.content:
                 yield TurnEvent(TurnEventType.CONTENT, initial_response.content)
+        
+        # Clean up the prompt config after the turn is completed if kernel is available
+        try:
+            if self.kernel:
+                self.kernel.remove_prompt_config(prompt_id)
+        except:
+            # If cleanup fails, just continue - this is not critical for functionality
+            pass
         
         yield TurnEvent(TurnEventType.FINISHED)
 

@@ -23,7 +23,7 @@ class MockContentGenerator(BaseContentGenerator):
         self.timeout = self.config.get("timeout")
         self.max_retries = self.config.get("max_retries")
     
-    async def generate_response(self, prompt: str, system_context: str = None, tools: list = None) -> Any:
+    async def generate_response(self, prompt: str, system_context: str = None, prompt_id: str = None) -> Any:
         """
         Mock implementation of generate_response.
         """
@@ -37,7 +37,7 @@ class MockContentGenerator(BaseContentGenerator):
             tool_calls=[]
         )
     
-    async def process_tool_result(self, tool_result: Any, conversation_history: list = None, available_tools: list = None) -> Any:
+    async def process_tool_result(self, tool_result: Any, conversation_history: list = None, prompt_id: str = None) -> Any:
         """
         Mock implementation of process_tool_result.
         """
@@ -53,7 +53,7 @@ class MockContentGenerator(BaseContentGenerator):
         """
         yield f"Streaming response to: {prompt}"
     
-    async def generate_response_from_conversation(self, conversation_history: list, tools: list = None) -> Any:
+    async def generate_response_from_conversation(self, conversation_history: list, prompt_id: str = None) -> Any:
         """
         Mock implementation of generate_response_from_conversation.
         """

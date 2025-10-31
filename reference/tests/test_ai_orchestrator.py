@@ -56,7 +56,7 @@ async def test_kernel_with_mocked_llm():
     from services.llm_provider.tool_call_processor import ToolCall
     
     class MockContentGenerator(BaseContentGenerator):
-        async def generate_response(self, prompt: str, system_context: str = None, tools: list = None):
+        async def generate_response(self, prompt: str, system_context: str = None, prompt_id: str = None):
             # For specific prompts, return tool calls
             if "system status" in prompt.lower() or "date" in prompt.lower():
                 # Create a mock tool call
@@ -88,7 +88,7 @@ async def test_kernel_with_mocked_llm():
                     tool_calls=[]
                 )
         
-        async def process_tool_result(self, tool_result, conversation_history=None):
+        async def process_tool_result(self, tool_result, conversation_history=None, prompt_id: str = None):
             class MockResponse:
                 def __init__(self, content, tool_calls=None):
                     self.content = content
@@ -97,9 +97,10 @@ async def test_kernel_with_mocked_llm():
             return MockResponse(content=f"Processed tool result: {tool_result.llm_content}")
         
         async def stream_response(self, prompt: str, system_context: str = None, tools: list = None):
+            # For compatibility with base class, tools parameter is preserved but not used
             yield f"Streaming: {prompt}"
         
-        async def generate_response_from_conversation(self, conversation_history: list, tools: list = None):
+        async def generate_response_from_conversation(self, conversation_history: list, prompt_id: str = None):
             # Check for user messages in conversation history
             last_user_message = None
             for msg in reversed(conversation_history):

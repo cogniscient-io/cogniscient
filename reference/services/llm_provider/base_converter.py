@@ -8,6 +8,7 @@ using OpenAI API standards as the default format.
 import logging
 from typing import Dict, Any, List
 from gcs_kernel.models import ToolResult
+from services.config import settings
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -39,8 +40,8 @@ class BaseConverter:
         
         # Ensure required fields are set
         provider_request.setdefault("model", self.model)
-        provider_request.setdefault("temperature", 0.7)
-        provider_request.setdefault("max_tokens", 1000)
+        provider_request.setdefault("temperature", settings.llm_temperature)
+        provider_request.setdefault("max_tokens", settings.llm_max_tokens)
         
         # Handle legacy format conversion if needed
         if "prompt" in request and "messages" not in request:

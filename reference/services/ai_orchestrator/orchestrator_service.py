@@ -86,8 +86,20 @@ class AIOrchestratorService:
         # Also update the components
         if self.turn_manager:
             self.turn_manager.content_generator = provider
+            # Update kernel reference if available
+            if self.kernel:
+                self.turn_manager.kernel = self.kernel
         if self.streaming_handler:
             self.streaming_handler.content_generator = provider
+            # Update kernel reference if available
+            if self.kernel:
+                self.streaming_handler.kernel = self.kernel
+        
+        # Also update kernel and kernel client references on the provider directly if available
+        if hasattr(provider, 'kernel') and self.kernel:
+            provider.kernel = self.kernel
+        if hasattr(provider, 'kernel_client') and self.kernel_client:
+            provider.kernel_client = self.kernel_client
 
     async def handle_ai_interaction(self, prompt: str) -> str:
         """
@@ -106,7 +118,21 @@ class AIOrchestratorService:
         # Reset conversation history for new interaction
         # Add system context to conversation history
         system_context = await self.system_context_builder.build_system_context()
-        available_tools = await self._get_available_tools()
+        
+        # Determine tool inclusion policy for this prompt and register it
+        from gcs_kernel.models import ToolInclusionPolicy
+        prompt_config = self._get_tool_inclusion_policy_for_prompt(prompt)
+        prompt_id = prompt_config.prompt_id
+        
+        # Register the prompt configuration with the kernel
+        if self.kernel:
+            self.kernel.register_prompt_config(prompt_id, prompt_config)
+        
+        # Ensure the content generator has access to the kernel and kernel client
+        if hasattr(self.content_generator, 'kernel'):
+            self.content_generator.kernel = self.kernel
+        if hasattr(self.content_generator, 'kernel_client'):
+            self.content_generator.kernel_client = self.kernel_client
         
         # Initialize conversation with system context
         self.conversation_history = [{"role": "system", "content": system_context}]
@@ -121,7 +147,7 @@ class AIOrchestratorService:
         try:
             async for event in self.turn_manager.run_turn(
                 prompt, 
-                available_tools, 
+                prompt_id, 
                 abort_signal,
                 conversation_history_ref=self.conversation_history
             ):
@@ -156,9 +182,22 @@ class AIOrchestratorService:
         if not self.content_generator:
             raise Exception("No content generator initialized")
         
-        # Build system context with available tools
+        # Build system context
         system_context = await self.system_context_builder.build_system_context()
-        available_tools = await self._get_available_tools()
+        
+        # Determine tool inclusion policy for this prompt and register it
+        prompt_config = self._get_tool_inclusion_policy_for_prompt(prompt)
+        prompt_id = prompt_config.prompt_id
+        
+        # Register the prompt configuration with the kernel
+        if self.kernel:
+            self.kernel.register_prompt_config(prompt_id, prompt_config)
+        
+        # Ensure the content generator has access to the kernel and kernel client
+        if hasattr(self.content_generator, 'kernel'):
+            self.content_generator.kernel = self.kernel
+        if hasattr(self.content_generator, 'kernel_client'):
+            self.content_generator.kernel_client = self.kernel_client
         
         # Initialize conversation with system context
         self.conversation_history = [{"role": "system", "content": system_context}]
@@ -169,7 +208,7 @@ class AIOrchestratorService:
         try:
             async for event in self.turn_manager.run_turn(
                 prompt, 
-                available_tools, 
+                prompt_id, 
                 abort_signal,
                 conversation_history_ref=self.conversation_history
             ):
@@ -195,9 +234,45 @@ class AIOrchestratorService:
         # No need to synchronize since turn manager uses direct reference
         # self.conversation_history already contains the updated history
 
+    def _get_tool_inclusion_policy_for_prompt(self, prompt: str) -> 'ToolInclusionConfig':
+        """
+        Determine the appropriate tool inclusion policy for a given prompt.
+        
+        Args:
+            prompt: The input prompt that determines the policy
+            
+        Returns:
+            A ToolInclusionConfig object with the appropriate policy
+        """
+        from gcs_kernel.models import ToolInclusionPolicy, ToolInclusionConfig
+        import uuid
+        
+        # Create a unique prompt ID
+        prompt_id = f"prompt_{str(uuid.uuid4())}"
+        
+        # Simple heuristic approach - you can make this more sophisticated
+        # For now, we'll default to ALL_AVAILABLE for most prompts
+        # In a more advanced system, this would analyze the prompt content
+        policy = ToolInclusionPolicy.ALL_AVAILABLE
+        
+        # Example of more sophisticated policy determination:
+        # if any(keyword in prompt.lower() for keyword in ["no tools", "without tools", "no function", "no functions"]):
+        #     policy = ToolInclusionPolicy.NONE
+        # elif "use specific tools" in prompt.lower():
+        #     # Could return a custom set of tools here
+        #     policy = ToolInclusionPolicy.CUSTOM
+        # elif "contextual tools" in prompt.lower():
+        #     policy = ToolInclusionPolicy.CONTEXTUAL_SUBSET
+        
+        return ToolInclusionConfig(
+            prompt_id=prompt_id,
+            policy=policy
+        )
+    
     async def _get_available_tools(self) -> List[Dict[str, Any]]:
         """
         Get available tools from the system context builder or kernel registry.
+        This method is now primarily kept for backward compatibility and testing.
         
         Returns:
             List of available tools in the format expected by the LLM
@@ -205,16 +280,16 @@ class AIOrchestratorService:
         # Get available tools to provide to the LLM natively
         if self.kernel and hasattr(self.kernel, 'registry'):
             tools = self.kernel.registry.get_all_tools()
-            # Convert tool objects to dictionary format
-            tools_dict = {}
+            # Convert tool objects to dictionary format expected by LLM
+            llm_tools = []
             for tool_name, tool_obj in tools.items():
-                tools_dict[tool_name] = {
+                llm_tool = {
                     "name": getattr(tool_obj, 'name', tool_name),
                     "description": getattr(tool_obj, 'description', ''),
-                    "parameters": getattr(tool_obj, 'parameters', {}),  # Using OpenAI-compatible format
-                    "display_name": getattr(tool_obj, 'display_name', tool_name)
+                    "parameters": getattr(tool_obj, 'parameters', {})  # Using OpenAI-compatible format
                 }
-            tools = tools_dict
+                llm_tools.append(llm_tool)
+            return llm_tools
         else:
             # Fallback to MCP client if kernel isn't available
             tools_response = await self.kernel_client.list_tools()

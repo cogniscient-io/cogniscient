@@ -8,17 +8,17 @@ import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 from services.ai_orchestrator.orchestrator_service import AIOrchestratorService
-from services.llm_provider.base_generator import BaseContentGenerator
+from services.llm_provider.test_mocks import MockContentGenerator
 from gcs_kernel.mcp.client import MCPClient
 from gcs_kernel.models import MCPConfig, ToolResult
 
 
-class MockContentGenerator(BaseContentGenerator):
+class ErrorSimulatingMockContentGenerator(MockContentGenerator):
     """
     Mock implementation of BaseContentGenerator for testing error handling.
     """
     def __init__(self, config=None, should_fail=False, fail_count=0):
-        self.config = config or {}
+        super().__init__(config)
         self.should_fail = should_fail
         self.fail_count = fail_count
         self.current_fail_count = 0
@@ -40,12 +40,15 @@ class MockContentGenerator(BaseContentGenerator):
             self.current_fail_count += 1
             raise Exception(f"Simulated failure {self.current_fail_count}")
         
+        # Use the parent implementation to generate the response
+        response = await super().generate_response(prompt, system_context, tools=tools)
+        
+        # Return a response with a tool call for testing
         class ResponseObj:
             def __init__(self, content, tool_calls):
                 self.content = content
                 self.tool_calls = tool_calls if tool_calls else []
         
-        # Return a response with a tool call for testing
         class MockToolCall:
             def __init__(self):
                 self.id = "test_call_123"
@@ -75,12 +78,6 @@ class MockContentGenerator(BaseContentGenerator):
                 self.content = content
         
         return ResponseObj(content=f"Processed: {tool_result.llm_content}")
-    
-    async def stream_response(self, prompt: str, system_context: str = None, tools: list = None):
-        """
-        Mock implementation of stream_response.
-        """
-        yield f"Streaming response to: {prompt}"
     
     async def generate_response_from_conversation(self, conversation_history: list, tools: list = None):
         """

@@ -76,6 +76,39 @@ async def test_full_tool_calling_loop():
         
         async def stream_response(self, prompt: str, system_context: str = None, tools: list = None):
             yield f"Streaming response: {prompt}"
+        
+        async def generate_response_from_conversation(self, conversation_history: list, tools: list = None):
+            # For this test, just return the same as generate_response
+            # but with the last user message from the conversation history
+            last_user_message = None
+            for msg in reversed(conversation_history):
+                if msg.get("role") == "user":
+                    last_user_message = msg.get("content", "")
+                    break
+
+            class ResponseObj:
+                def __init__(self, content, tool_calls):
+                    self.content = content
+                    self.tool_calls = tool_calls or []
+
+            # If we have a tool result in the conversation, return final response
+            has_tool_result = any(msg.get("role") == "tool" for msg in conversation_history)
+            if has_tool_result:
+                return ResponseObj(
+                    content="The current date is: Fri Oct 24 08:30:00 PM PDT 2025",
+                    tool_calls=[]
+                )
+            else:
+                # Otherwise, return a tool call for the date command
+                tool_call = ToolCall(
+                    id="call_123",
+                    name="shell_command",
+                    arguments={"command": "date"}
+                )
+                return ResponseObj(
+                    content="I'll get the system date for you.",
+                    tool_calls=[tool_call]
+                )
 
     # Replace the content generator
     test_generator = TestContentGenerator()
@@ -153,6 +186,37 @@ async def test_full_tool_loop_with_current_generator():
         
         async def stream_response(self, prompt: str, system_context: str = None, tools: list = None):
             yield f"Processing: {prompt}"
+        
+        async def generate_response_from_conversation(self, conversation_history: list, tools: list = None):
+            # For this test, just return the same as generate_response
+            # but with the last user message from the conversation history
+            last_user_message = None
+            for msg in reversed(conversation_history):
+                if msg.get("role") == "user":
+                    last_user_message = msg.get("content", "")
+                    break
+
+            # Create a response based on the conversation context
+            class ResponseObj:
+                content = ""
+                tool_calls = []
+
+            # If we have a tool result in the conversation, return final response
+            has_tool_result = any(msg.get("role") == "tool" for msg in conversation_history)
+            if has_tool_result:
+                ResponseObj.content = "The current date is now available."
+                ResponseObj.tool_calls = []
+            else:
+                # Otherwise, return a tool call for the date command
+                tool_call = ToolCall(
+                    id="call_date_2",
+                    name="shell_command",
+                    arguments={"command": "date"}
+                )
+                ResponseObj.content = "Let me get the current date for you."
+                ResponseObj.tool_calls = [tool_call]
+            
+            return ResponseObj()
 
     # Replace the content generator with our advanced test version
     test_generator = AdvancedTestContentGenerator()

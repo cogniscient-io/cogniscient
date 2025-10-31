@@ -7,12 +7,12 @@ throughout their lifecycle, similar to Qwen Code's implementation.
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from services.ai_orchestrator.orchestrator_service import AIOrchestratorService
-from services.llm_provider.base_generator import BaseContentGenerator
+from services.llm_provider.test_mocks import MockContentGenerator
 from gcs_kernel.mcp.client import MCPClient
 from gcs_kernel.models import MCPConfig, ToolResult, ToolState
 
 
-class MockContentGenerator(BaseContentGenerator):
+class StateTrackingMockContentGenerator(MockContentGenerator):
     """
     Mock implementation of BaseContentGenerator for testing tool state management.
     """
@@ -73,7 +73,7 @@ class MockContentGenerator(BaseContentGenerator):
         """
         yield f"Streaming response to: {prompt}"
     
-    async def generate_response_from_conversation(self, conversation_history: list, tools: list = None):
+    async def generate_response_from_conversation(self, conversation_history: list, prompt_id: str = None, tools: list = None):
         """
         Mock implementation of generate_response_from_conversation that returns a tool call.
         """
@@ -131,7 +131,7 @@ async def test_tool_call_state_with_mock_interaction():
 
     
     # Use our mock content generator
-    mock_provider = MockContentGenerator()
+    mock_provider = StateTrackingMockContentGenerator()
     orchestrator.set_content_generator(mock_provider)
     
     # Call the orchestrator to trigger tool call processing

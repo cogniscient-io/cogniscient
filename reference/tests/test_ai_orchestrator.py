@@ -51,43 +51,10 @@ async def test_kernel_with_mocked_llm():
     await kernel._initialize_components()
     
     # Temporarily replace the content generator with a mock
-    from unittest.mock import AsyncMock, MagicMock
-    from services.llm_provider.base_generator import BaseContentGenerator
-    from services.llm_provider.tool_call_processor import ToolCall
+    from services.llm_provider.test_mocks import ToolCallingMockContentGenerator
     
-    class MockContentGenerator(BaseContentGenerator):
-        async def generate_response(self, prompt: str, system_context: str = None, prompt_id: str = None):
-            # For specific prompts, return tool calls
-            if "system status" in prompt.lower() or "date" in prompt.lower():
-                # Create a mock tool call
-                
-                class MockResponse:
-                    def __init__(self, content, tool_calls):
-                        self.content = content
-                        self.tool_calls = tool_calls
-
-                class MockToolCall:
-                    def __init__(self):
-                        self.name = "shell_command"
-                        self.arguments = {"command": "date"}
-                        self.parameters = {"command": "date"}
-                        self.id = "call_123"
-
-                return MockResponse(
-                    content="I'll get the system date for you.",
-                    tool_calls=[MockToolCall()]
-                )
-            else:
-                class MockResponse:
-                    def __init__(self, content, tool_calls):
-                        self.content = content
-                        self.tool_calls = []
-
-                return MockResponse(
-                    content="Hello! How can I assist you today?",
-                    tool_calls=[]
-                )
-        
+    # Create a mock content generator that returns tool calls for specific prompts
+    class CustomMockContentGenerator(ToolCallingMockContentGenerator):
         async def process_tool_result(self, tool_result, conversation_history=None, prompt_id: str = None):
             class MockResponse:
                 def __init__(self, content, tool_calls=None):
@@ -95,51 +62,9 @@ async def test_kernel_with_mocked_llm():
                     self.tool_calls = tool_calls or []
 
             return MockResponse(content=f"Processed tool result: {tool_result.llm_content}")
-        
-        async def stream_response(self, prompt: str, system_context: str = None, tools: list = None):
-            # For compatibility with base class, tools parameter is preserved but not used
-            yield f"Streaming: {prompt}"
-        
-        async def generate_response_from_conversation(self, conversation_history: list, prompt_id: str = None):
-            # Check for user messages in conversation history
-            last_user_message = None
-            for msg in reversed(conversation_history):
-                if msg.get("role") == "user":
-                    last_user_message = msg.get("content", "")
-                    break
-            
-            # For specific prompts, return tool calls
-            if last_user_message and ("system status" in last_user_message.lower() or "date" in last_user_message.lower()):
-                # Create a mock tool call
-                class MockResponse:
-                    def __init__(self, content, tool_calls):
-                        self.content = content
-                        self.tool_calls = tool_calls
-
-                class MockToolCall:
-                    def __init__(self):
-                        self.name = "shell_command"
-                        self.arguments = {"command": "date"}
-                        self.parameters = {"command": "date"}
-                        self.id = "call_123"
-
-                return MockResponse(
-                    content="I'll get the system date for you.",
-                    tool_calls=[MockToolCall()]
-                )
-            else:
-                class MockResponse:
-                    def __init__(self, content, tool_calls):
-                        self.content = content
-                        self.tool_calls = []
-
-                return MockResponse(
-                    content="Hello! How can I assist you today?",
-                    tool_calls=[]
-                )
 
     # Replace the content generator with mock
-    mock_generator = MockContentGenerator()
+    mock_generator = CustomMockContentGenerator()
     kernel.ai_orchestrator.set_content_generator(mock_generator)
     
     # Now test with the mocked LLM

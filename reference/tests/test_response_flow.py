@@ -82,6 +82,54 @@ async def test_complete_flow_with_tracing():
         async def stream_response(self, prompt: str, system_context: str = None, tools: list = None):
             print(f"Streaming response for prompt: '{prompt}'")
             yield f"Streaming response to: {prompt}"
+        
+        async def generate_response_from_conversation(self, conversation_history: list, tools: list = None):
+            # For this test, just return the same as generate_response
+            # but with the last user message from the conversation history
+            last_user_message = None
+            for msg in reversed(conversation_history):
+                if msg.get("role") == "user":
+                    last_user_message = msg.get("content", "")
+                    break
+
+            print(f"Tracing generator - Received conversation with last prompt: '{last_user_message}'")
+            print(f"Tools provided: {len(tools) if tools else 0}")
+
+            self.call_count += 1
+
+            # If we have a tool result in the conversation, return final response
+            has_tool_result = any(msg.get("role") == "tool" for msg in conversation_history)
+            if has_tool_result or self.call_count > 1:
+                print("  -> Returning final response for conversation")
+                
+                class ResponseObj:
+                    def __init__(self, content, tool_calls):
+                        self.content = content
+                        self.tool_calls = tool_calls or []
+                
+                return ResponseObj(
+                    content="The system date is: Fri Oct 24 08:50:00 PM PDT 2025",
+                    tool_calls=[]
+                )
+            else:
+                print("  -> Returning tool call for conversation")
+                
+                class ResponseObj:
+                    def __init__(self, content, tool_calls):
+                        self.content = content
+                        self.tool_calls = tool_calls
+                
+                # Create a proper ToolCall object
+                tool_call = ToolCall(
+                    id="call_123",
+                    name="shell_command",
+                    arguments={"command": "date"}
+                )
+                
+                return ResponseObj(
+                    content="Getting the system date for you...",
+                    tool_calls=[tool_call]
+                )
 
     # Replace the content generator
     tracing_generator = TracingContentGenerator()
@@ -167,6 +215,44 @@ async def test_kernel_api_flow():
         
         async def stream_response(self, prompt: str, system_context: str = None, tools: list = None):
             yield f"Streaming response: {prompt}"
+        
+        async def generate_response_from_conversation(self, conversation_history: list, tools: list = None):
+            self.call_count += 1
+            
+            class ResponseObj:
+                def __init__(self, content, tool_calls):
+                    self.content = content
+                    self.tool_calls = tool_calls
+
+            # If we have a tool result in the conversation, return final response
+            has_tool_result = any(msg.get("role") == "tool" for msg in conversation_history)
+            if has_tool_result or self.call_count > 1:
+                # Return final response
+                return ResponseObj(
+                    content="The date has been retrieved successfully.",
+                    tool_calls=[]
+                )
+            else:
+                # Return a tool call - check if "date" or "time" is in any user message
+                for msg in conversation_history:
+                    if msg.get("role") == "user" and ("date" in msg.get("content", "").lower() or 
+                                                     "time" in msg.get("content", "").lower()):
+                        # Return a tool call
+                        tool_call = ToolCall(
+                            id="call_date",
+                            name="shell_command", 
+                            arguments={"command": "date"}
+                        )
+                        return ResponseObj(
+                            content="Let me get the system date for you.",
+                            tool_calls=[tool_call]
+                        )
+                
+                # Default case - return final response
+                return ResponseObj(
+                    content="The date has been retrieved successfully.",
+                    tool_calls=[]
+                )
 
     # Replace the content generator
     test_generator = APIFlowTestGenerator()

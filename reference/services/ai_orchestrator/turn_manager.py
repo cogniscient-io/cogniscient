@@ -199,15 +199,34 @@ class TurnManager:
             
 
             
-            # Continue the conversation with the tool results
-            # Process recursively until there are no more tool calls
-            current_response = await self.content_generator.process_tool_result(
-                ToolResult(
+            # Process the conversation with the tool results that are now in the conversation history
+            # Instead of creating a hardcoded ToolResult, use the actual tool results from conversation
+            # Find the most recent tool result to pass to process_tool_result
+            tool_results_in_history = [msg for msg in self.conversation_history if msg.get("role") == "tool"]
+            if tool_results_in_history:
+                # Get the most recent tool result
+                latest_tool_result = tool_results_in_history[-1]
+                from gcs_kernel.models import ToolResult as KernelToolResult
+                actual_tool_result = KernelToolResult(
+                    tool_name=latest_tool_result.get("tool_call_id", "unknown"),  # Using tool_call_id as tool name
+                    llm_content=latest_tool_result.get("content", "No content provided"),
+                    return_display=latest_tool_result.get("content", "No content provided"),
+                    success=True
+                )
+            else:
+                # Fallback if no tool results in history (shouldn't happen if we've processed tool calls)
+                from gcs_kernel.models import ToolResult as KernelToolResult
+                actual_tool_result = KernelToolResult(
                     tool_name="tool_result",
                     success=True,
                     llm_content="Tool execution results provided.",
                     return_display="Tool execution results provided."
-                ),
+                )
+            
+            # Continue the conversation with the actual tool result
+            # Process recursively until there are no more tool calls
+            current_response = await self.content_generator.process_tool_result(
+                actual_tool_result,
                 self.conversation_history,
                 prompt_id  # Pass prompt_id so LLM knows what functions it can call based on policy
             )
@@ -291,13 +310,30 @@ class TurnManager:
                         self.conversation_history.append(invalid_tool_message)
                 
                 # Get the next response after processing the current tool calls
-                current_response = await self.content_generator.process_tool_result(
-                    ToolResult(
+                # Use actual tool results from conversation history instead of hardcoded defaults
+                tool_results_in_history = [msg for msg in self.conversation_history if msg.get("role") == "tool"]
+                if tool_results_in_history:
+                    # Get the most recent tool result
+                    latest_tool_result = tool_results_in_history[-1]
+                    from gcs_kernel.models import ToolResult as KernelToolResult
+                    actual_tool_result = KernelToolResult(
+                        tool_name=latest_tool_result.get("tool_call_id", "unknown"),  # Using tool_call_id as tool name
+                        llm_content=latest_tool_result.get("content", "No content provided"),
+                        return_display=latest_tool_result.get("content", "No content provided"),
+                        success=True
+                    )
+                else:
+                    # Fallback if no tool results in history
+                    from gcs_kernel.models import ToolResult as KernelToolResult
+                    actual_tool_result = KernelToolResult(
                         tool_name="tool_result",
                         success=True,
                         llm_content="Tool execution results provided.",
                         return_display="Tool execution results provided."
-                    ),
+                    )
+                
+                current_response = await self.content_generator.process_tool_result(
+                    actual_tool_result,
                     self.conversation_history,
                     prompt_id  # Pass prompt_id so LLM knows what functions it can call based on policy
                 )

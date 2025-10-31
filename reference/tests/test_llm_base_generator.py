@@ -6,66 +6,7 @@ and its implementations.
 """
 import pytest
 from typing import Any, Dict, AsyncIterator
-from services.llm_provider.base_generator import BaseContentGenerator
-
-
-class MockContentGenerator(BaseContentGenerator):
-    """
-    Mock implementation of BaseContentGenerator for testing purposes.
-    """
-    def __init__(self, config: Dict[str, Any] = None):
-        # Store the config as an attribute for testing
-        self.config = config or {}
-        # Set up any attributes needed for testing from the config
-        self.api_key = self.config.get("api_key")
-        self.model = self.config.get("model")
-        self.base_url = self.config.get("base_url")
-        self.timeout = self.config.get("timeout")
-        self.max_retries = self.config.get("max_retries")
-    
-    async def generate_response(self, prompt: str, system_context: str = None, prompt_id: str = None) -> Any:
-        """
-        Mock implementation of generate_response.
-        """
-        class ResponseObj:
-            def __init__(self, content, tool_calls):
-                self.content = content
-                self.tool_calls = tool_calls if tool_calls else []
-        
-        return ResponseObj(
-            content=f"Response to: {prompt}",
-            tool_calls=[]
-        )
-    
-    async def process_tool_result(self, tool_result: Any, conversation_history: list = None, prompt_id: str = None) -> Any:
-        """
-        Mock implementation of process_tool_result.
-        """
-        class ResponseObj:
-            def __init__(self, content):
-                self.content = content
-        
-        return ResponseObj(content=f"Processed tool result: {tool_result}")
-    
-    async def stream_response(self, prompt: str) -> AsyncIterator[str]:
-        """
-        Mock implementation of stream_response.
-        """
-        yield f"Streaming response to: {prompt}"
-    
-    async def generate_response_from_conversation(self, conversation_history: list, prompt_id: str = None) -> Any:
-        """
-        Mock implementation of generate_response_from_conversation.
-        """
-        class ResponseObj:
-            def __init__(self, content, tool_calls):
-                self.content = content
-                self.tool_calls = tool_calls if tool_calls else []
-        
-        return ResponseObj(
-            content=f"Response to conversation with {len(conversation_history)} messages",
-            tool_calls=[]
-        )
+from services.llm_provider.test_mocks import MockContentGenerator
 
 
 def test_base_content_generator_initialization():

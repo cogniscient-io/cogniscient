@@ -8,24 +8,17 @@ meaningful responses after tool execution.
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from services.ai_orchestrator.orchestrator_service import AIOrchestratorService
-from services.llm_provider.base_generator import BaseContentGenerator
+from services.llm_provider.test_mocks import MockContentGenerator, ToolCallingMockContentGenerator
 from gcs_kernel.mcp.client import MCPClient
 from gcs_kernel.models import MCPConfig, ToolResult
 
 
-class MockContentGenerator(BaseContentGenerator):
+class TrackingMockContentGenerator(MockContentGenerator):
     """
     Mock implementation of BaseContentGenerator for testing conversation history.
     """
     def __init__(self, config=None):
-        # Initialize with an empty config to avoid errors
-        self.config = config or {}
-        # Set up any attributes needed for testing from the config
-        self.api_key = self.config.get("api_key")
-        self.model = self.config.get("model")
-        self.base_url = self.config.get("base_url")
-        self.timeout = self.config.get("timeout")
-        self.max_retries = self.config.get("max_retries")
+        super().__init__(config)
         
         # Track calls to verify conversation history is passed
         self.generate_response_calls = []
@@ -41,10 +34,8 @@ class MockContentGenerator(BaseContentGenerator):
             'prompt_id': prompt_id
         })
         
-        class ResponseObj:
-            def __init__(self, content, tool_calls):
-                self.content = content
-                self.tool_calls = tool_calls if tool_calls else []
+        # Use the parent implementation for the actual response
+        response = await super().generate_response(prompt, system_context, prompt_id)
         
         # For testing purposes, return a response with a tool call sometimes
         if "time" in prompt.lower() or "date" in prompt.lower():
@@ -189,8 +180,8 @@ async def test_conversation_history_with_tool_call():
     
 
     
-    # Use our mock content generator that tracks conversation history
-    mock_provider = MockContentGenerator()
+    # Use our mock content generator that tracks conversation history and returns tool calls for specific prompts
+    mock_provider = ToolCallingMockContentGenerator()
     orchestrator.set_content_generator(mock_provider)
     
     # Call the AI orchestrator with a prompt that should trigger a tool call
@@ -220,8 +211,9 @@ async def test_multiple_tool_calls_maintain_conversation_history():
     Test that conversation history is properly maintained across multiple tool calls.
     """
     # Create a mock content generator that will trigger two tool calls
-    class MultiToolMockContentGenerator(BaseContentGenerator):
+    class MultiToolMockContentGenerator(MockContentGenerator):
         def __init__(self):
+            super().__init__()
             self.call_count = 0
             self.process_tool_result_calls = []
         
@@ -268,9 +260,6 @@ async def test_multiple_tool_calls_maintain_conversation_history():
                     self.content = content
             
             return ResponseObj(content="Response after processing first tool result")
-        
-        async def stream_response(self, prompt: str, system_context: str = None, tools: list = None):
-            yield f"Streaming: {prompt}"
         
         async def generate_response_from_conversation(self, conversation_history: list, prompt_id: str = None):
             self.call_count += 1  # Increment call count like the original generate_response method
@@ -358,7 +347,7 @@ async def test_conversation_history_includes_all_messages():
     
 
     
-    mock_provider = MockContentGenerator()
+    mock_provider = TrackingMockContentGenerator()
     orchestrator.set_content_generator(mock_provider)
     
     # Call the orchestrator

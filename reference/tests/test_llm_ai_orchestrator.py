@@ -6,24 +6,22 @@ This module tests the AIOrchestratorService's integration with LLM providers usi
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from services.ai_orchestrator.orchestrator_service import AIOrchestratorService
-from services.llm_provider.base_generator import BaseContentGenerator
+from services.llm_provider.test_mocks import MockContentGenerator
 from gcs_kernel.mcp.client import MCPClient
 from gcs_kernel.models import MCPConfig, ToolResult
 
 
-class MockContentGenerator(BaseContentGenerator):
+class AIOrchestratorTestContentGenerator(MockContentGenerator):
     """
-    Mock implementation of BaseContentGenerator for testing purposes.
+    Mock implementation of BaseContentGenerator for testing AI orchestrator.
     """
-    def __init__(self, config=None):
-        # Initialize with an empty config to avoid errors
-        self.config = config or {}
-        # Set up any attributes needed for testing from the config
-        self.api_key = self.config.get("api_key")
-        self.model = self.config.get("model")
-        self.base_url = self.config.get("base_url")
-        self.timeout = self.config.get("timeout")
-        self.max_retries = self.config.get("max_retries")
+    def __init__(self, config=None, response_content="Mock response content", tool_calls=None, should_stream=True):
+        super().__init__(
+            config=config,
+            response_content=response_content,
+            tool_calls=tool_calls,
+            should_stream=should_stream
+        )
     
     async def generate_response(self, prompt: str, system_context: str = None, prompt_id: str = None):
         """
@@ -143,7 +141,7 @@ async def test_ai_orchestrator_set_content_generator():
     kernel_client = MCPClient(mcp_config)
     
     orchestrator = AIOrchestratorService(kernel_client)
-    mock_provider = MockContentGenerator()
+    mock_provider = AIOrchestratorTestContentGenerator()
     
     orchestrator.set_content_generator(mock_provider)
     
@@ -162,7 +160,8 @@ async def test_ai_orchestrator_handle_ai_interaction():
     kernel_client = MCPClient(mcp_config)
     
     orchestrator = AIOrchestratorService(kernel_client)
-    mock_provider = MockContentGenerator()
+    # Use mock generator with custom response content that will include the prompt
+    mock_provider = AIOrchestratorTestContentGenerator(response_content="Response to")
     orchestrator.set_content_generator(mock_provider)
     
     response = await orchestrator.handle_ai_interaction("Hello, how are you?")
@@ -208,7 +207,7 @@ async def test_ai_orchestrator_handle_ai_interaction_with_tool_call():
     orchestrator = AIOrchestratorService(mock_kernel_client)
     
     # Update the content generator reference in turn manager and other components too
-    mock_provider = MockContentGenerator()
+    mock_provider = AIOrchestratorTestContentGenerator()
     orchestrator.set_content_generator(mock_provider)
     
     response = await orchestrator.handle_ai_interaction("Please use a tool to help me.")
@@ -226,7 +225,7 @@ async def test_ai_orchestrator_stream_ai_interaction():
     kernel_client = MCPClient(mcp_config)
     
     orchestrator = AIOrchestratorService(kernel_client)
-    mock_provider = MockContentGenerator()
+    mock_provider = AIOrchestratorTestContentGenerator()
     orchestrator.set_content_generator(mock_provider)
     
     chunks = []
@@ -248,7 +247,7 @@ async def test_turn_manager_with_tool_calls():
     mcp_config = MCPConfig(server_url="http://test-url")
     kernel_client = MCPClient(mcp_config)
     
-    mock_provider = MockContentGenerator()
+    mock_provider = AIOrchestratorTestContentGenerator()
     turn_manager = TurnManager(kernel_client, mock_provider)
     
     # Create an abort signal for the turn

@@ -5,9 +5,112 @@ This module implements system-level tools that provide access to kernel function
 through the same interface as other tools.
 """
 
+import logging
 from typing import Dict, Any
 from gcs_kernel.registry import BaseTool
 from gcs_kernel.models import ToolResult
+
+
+class SetLogLevelTool:
+    """
+    System tool to change the current logging level.
+    """
+    name = "set_log_level"
+    display_name = "Set Log Level"
+    description = "Change the current application logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)"
+    parameters = {  # Following OpenAI-compatible format
+        "type": "object",
+        "properties": {
+            "level": {
+                "type": "string",
+                "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+                "description": "The logging level to set"
+            }
+        },
+        "required": ["level"]
+    }
+
+    def __init__(self, kernel):
+        """
+        Initialize the tool with a reference to the kernel.
+        
+        Args:
+            kernel: The GCSKernel instance
+        """
+        self.kernel = kernel
+
+    async def execute(self, parameters: Dict[str, Any]) -> ToolResult:
+        """
+        Execute the set log level tool.
+        
+        Args:
+            parameters: The parameters for tool execution
+            
+        Returns:
+            A ToolResult containing the execution result
+        """
+        level = parameters.get("level", "").upper()
+        
+        if not level:
+            error_msg = "Missing required parameter: level"
+            return ToolResult(
+                tool_name=self.name,
+                success=False,
+                error=error_msg,
+                llm_content=error_msg,
+                return_display=error_msg
+            )
+        
+        # Validate the log level
+        valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+        if level not in valid_levels:
+            error_msg = f"Invalid log level: {level}. Valid levels are: {', '.join(valid_levels)}"
+            return ToolResult(
+                tool_name=self.name,
+                success=False,
+                error=error_msg,
+                llm_content=error_msg,
+                return_display=error_msg
+            )
+        
+        try:
+            # Convert the log level string to the corresponding logging constant
+            numeric_level = getattr(logging, level, None)
+            if not isinstance(numeric_level, int):
+                error_msg = f"Invalid log level: {level}"
+                return ToolResult(
+                    tool_name=self.name,
+                    success=False,
+                    error=error_msg,
+                    llm_content=error_msg,
+                    return_display=error_msg
+                )
+            
+            # Update the log level of the root logger
+            logging.getLogger().setLevel(numeric_level)
+            
+            # Update the log level in our config module
+            from services.config import settings, configure_logging
+            settings.log_level = level
+            configure_logging()  # Reconfigure logging with the new level
+            
+            result = f"Log level successfully changed to {level}"
+            
+            return ToolResult(
+                tool_name=self.name,
+                success=True,
+                llm_content=result,
+                return_display=result
+            )
+        except Exception as e:
+            error_msg = f"Error setting log level to {level}: {str(e)}"
+            return ToolResult(
+                tool_name=self.name,
+                success=False,
+                error=error_msg,
+                llm_content=error_msg,
+                return_display=error_msg
+            )
 
 
 class ListToolsTool:

@@ -63,7 +63,7 @@ class ToolRegistry:
         # Import built-in tools
         from gcs_kernel.tools.file_operations import ReadFileTool, WriteFileTool, ListDirectoryTool
         from gcs_kernel.tools.shell_command import ShellCommandTool
-        from gcs_kernel.tools.system_tools import ListToolsTool, GetToolInfoTool
+        from gcs_kernel.tools.system_tools import ListToolsTool, GetToolInfoTool, SetLogLevelTool
         
         # Create instances of built-in tools
         tools_to_register = [
@@ -83,7 +83,8 @@ class ToolRegistry:
         if kernel:
             system_tools = [
                 ListToolsTool(kernel),
-                GetToolInfoTool(kernel)
+                GetToolInfoTool(kernel),
+                SetLogLevelTool(kernel)
             ]
             
             for tool in system_tools:

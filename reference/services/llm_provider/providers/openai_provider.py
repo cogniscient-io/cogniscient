@@ -6,6 +6,7 @@ This module implements the OpenAI provider following Qwen Code patterns.
 
 import httpx
 from typing import Dict, Any
+from gcs_kernel.models import PromptObject
 from services.llm_provider.providers.base_provider import BaseProvider
 from .openai_converter import OpenAIConverter
 
@@ -70,24 +71,51 @@ class OpenAIProvider(BaseProvider):
         """
         return httpx.AsyncClient(timeout=self.timeout, headers=self.build_headers())
     
-    def build_request(self, request: Dict[str, Any], user_prompt_id: str) -> Dict[str, Any]:
+    def build_request(self, prompt_obj: 'PromptObject') -> Dict[str, Any]:
         """
-        Convert and enhance the request with OpenAI-specific features.
+        Build the request with OpenAI-specific features from a PromptObject.
         
         Args:
-            request: The base request in kernel format
-            user_prompt_id: Unique identifier for the user prompt
+            prompt_obj: The PromptObject containing all necessary information
             
         Returns:
             Request with OpenAI-specific format and features
         """
-        # Convert the kernel format request to OpenAI format
-        openai_request = self.converter.convert_kernel_request_to_provider(request)
+        # Start with the messages from the prompt object
+        # OpenAI-compliant: messages should contain the complete conversation history
+        messages = prompt_obj.conversation_history.copy()
         
-        # Add provider-specific parameters
-        if "model" not in openai_request:
-            openai_request["model"] = self.model
-        if "user" not in openai_request:
-            openai_request["user"] = user_prompt_id  # OpenAI's user field for tracking
-            
+        # Create the OpenAI request from the prompt object fields
+        openai_request = {
+            "messages": messages,
+            "model": self.model
+        }
+        
+        # Add optional parameters if present in the prompt object
+        if prompt_obj.max_tokens is not None:
+            openai_request["max_tokens"] = prompt_obj.max_tokens
+        if prompt_obj.temperature:
+            openai_request["temperature"] = prompt_obj.temperature
+        
+        # Add tools if specified in the prompt object
+        if prompt_obj.tool_policy and prompt_obj.tool_policy.value != "none":
+            # In a real implementation, we would fetch tools based on policy
+            # For now, we'll use any custom tools in the prompt object
+            if prompt_obj.custom_tools:
+                openai_request["tools"] = prompt_obj.custom_tools
+        
+        # Add the user ID for tracking
+        if prompt_obj.user_id:
+            openai_request["user"] = prompt_obj.user_id
+        elif prompt_obj.prompt_id:
+            # Use prompt_id if user_id is not available
+            openai_request["user"] = prompt_obj.prompt_id
+        
+        # Add other fields that may be relevant from the prompt object
+        if prompt_obj.streaming_enabled:
+            openai_request["stream"] = True
+
+        # Convert the request to OpenAI format using the converter
+        openai_request = self.converter.convert_kernel_request_to_provider(openai_request)
+        
         return openai_request

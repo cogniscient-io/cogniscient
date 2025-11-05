@@ -22,11 +22,11 @@ class KernelAPIClient(KernelAPIProtocol):
     
     async def send_user_prompt(self, prompt: str) -> str:
         """Send a user prompt and receive a complete response."""
-        return await self.kernel.send_user_prompt(prompt)
+        return await self.kernel.submit_prompt(prompt)
     
     async def stream_user_prompt(self, prompt: str) -> AsyncGenerator[str, None]:
         """Stream a user prompt and receive chunks."""
-        async for chunk in self.kernel.stream_user_prompt(prompt):
+        async for chunk in self.kernel.stream_prompt(prompt):
             yield chunk
     
     def get_kernel_status(self) -> str:

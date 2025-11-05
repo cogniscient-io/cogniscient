@@ -67,10 +67,20 @@ class CLIUI(BaseUI):
                 elif user_input.lower().startswith('ai '):
                     # Process AI command with streaming
                     prompt = user_input[3:]  # Remove 'ai ' prefix
-                    await self.display_streaming_response(prompt)
+                    if prompt:
+                        await self.display_streaming_response(prompt)
+                    else:
+                        # Show help or just continue if ai command is empty
+                        print("Usage: ai <your question or request>")
+                        continue
                 else:
                     # Default to AI processing if not a recognized command
-                    await self.display_streaming_response(user_input)
+                    # But only if user_input is not empty
+                    if user_input:
+                        await self.display_streaming_response(user_input)
+                    else:
+                        # Skip empty input to avoid sending empty messages to the LLM
+                        continue
             except KeyboardInterrupt:
                 print("\nExiting...")
                 break

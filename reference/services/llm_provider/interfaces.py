@@ -8,59 +8,50 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Protocol, AsyncIterator
 import asyncio
 
+# Import PromptObject for type hints
+if False:  # Avoid circular import issues
+    from gcs_kernel.models import PromptObject
+
 
 class ContentGenerator(Protocol):
     """
     Protocol for AI content generation providers.
     """
     
-    async def generate_content(self, request: Dict[str, Any], user_prompt_id: str) -> Any:
+    async def generate_response(self, prompt_obj: 'PromptObject') -> None:
         """
-        Generate content based on the provided request.
+        Generate a response to the given prompt object with potential tool calls.
+        Operates on the live prompt object in place.
         
         Args:
-            request: The content generation request with prompt and context
-            user_prompt_id: Unique identifier for the user prompt
+            prompt_obj: The prompt object containing all necessary information
             
         Returns:
-            The generated content response
+            None. Updates the prompt object in place. Raises exception if there's an error.
         """
         ...
     
-    async def generate_content_stream(self, request: Dict[str, Any], user_prompt_id: str) -> AsyncIterator[Any]:
+    async def stream_response(self, prompt_obj: 'PromptObject') -> AsyncIterator[str]:
         """
-        Generate content in streaming mode following.
+        Stream a response to the given prompt object.
         
         Args:
-            request: The content generation request with prompt and context
-            user_prompt_id: Unique identifier for the user prompt
+            prompt_obj: The prompt object containing all necessary information
             
         Yields:
-            Partial content responses as they become available
+            Partial response strings as they become available
         """
         ...
     
-    async def count_tokens(self, request: Dict[str, Any]) -> Dict[str, int]:
+    def process_streaming_chunks(self, chunks: list) -> Dict[str, Any]:
         """
-        Count the number of tokens in the provided request.
+        Process accumulated streaming chunks into a complete response.
         
         Args:
-            request: The request to count tokens for
+            chunks: List of streaming response chunks
             
         Returns:
-            Token count information
-        """
-        ...
-        
-    async def embed_content(self, request: Dict[str, Any]) -> Any:
-        """
-        Generate embeddings for the provided content following.
-        
-        Args:
-            request: The embedding request with content
-            
-        Returns:
-            Embedding response
+            Complete response in OpenAI format
         """
         ...
 

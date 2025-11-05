@@ -17,18 +17,19 @@ class ToolExecutor:
     Handles both local and remote tool execution with proper error handling.
     """
     
-    def __init__(self, kernel_client: MCPClient, kernel=None):
+    def __init__(self, mcp_client: MCPClient, kernel=None):
         """
         Initialize the tool executor.
         
         Args:
-            kernel_client: MCP client for communicating with the kernel
+            mcp_client: MCP client for communicating with the MCP server
             kernel: Optional direct reference to kernel for registry access
         """
-        self.kernel_client = kernel_client
+        self.mcp_client = mcp_client
         self.kernel = kernel
         self.registry = None  # Will be set via set_kernel_services
-        self.scheduler = None  # Will be set via set_kernel_services
+        # We're fully committing to the new architecture - removing scheduler
+        self.tool_execution_manager = None  # Will be set via set_kernel_services (new architecture)
 
     async def execute_tool_call(self, 
                                tool_name: str, 
@@ -55,65 +56,15 @@ class ToolExecutor:
                     return_display="Tool execution cancelled by user"
                 )
             
-            # Use the kernel's registry to get the tool definition
-            if self.registry:
-                tool_def = await self.registry.get_tool(tool_name)
-                if tool_def:
-                    # Use the kernel's scheduler for execution
-                    if self.scheduler:
-                        # Submit the tool execution through the scheduler
-                        execution_id = await self.scheduler.submit_tool_execution(tool_def, parameters)
-                        
-                        # Wait for the execution to complete using the scheduler
-                        max_wait = 60  # seconds
-                        start_time = asyncio.get_event_loop().time()
-                        
-                        while (asyncio.get_event_loop().time() - start_time) < max_wait:
-                            result = self.scheduler.get_execution_result(execution_id)
-                            if result:
-                                return result
-                            await asyncio.sleep(0.5)  # Check every 0.5 seconds
-                        
-                        # Timeout case
-                        return ToolResult(
-                            tool_name=tool_name,
-                            success=False,
-                            error=f"Tool execution {execution_id} did not return a result within timeout",
-                            llm_content=f"Tool execution {execution_id} did not return a result within timeout",
-                            return_display=f"Tool execution {execution_id} did not return a result within timeout"
-                        )
-                    else:
-                        # Fallback: execute directly if scheduler not available
-                        return await tool_def.execute(parameters)
-                else:
-                    # Tool not found in registry
-                    return ToolResult(
-                        tool_name=tool_name,
-                        success=False,
-                        error=f"Tool '{tool_name}' not found in registry",
-                        llm_content=f"Tool '{tool_name}' not found in registry",
-                        return_display=f"Tool '{tool_name}' not found in registry"
-                    )
-            else:
-                # Use MCP client as fallback
-                execution_id = await self.kernel_client.submit_tool_execution(
-                    tool_name,
-                    parameters
-                )
-                
-                # Wait for tool execution to complete with timeout
-                result = await self._wait_for_execution_result(execution_id, timeout=60)
-                if result:
-                    return result
-                else:
-                    # Handle the case where no result was returned
-                    return ToolResult(
-                        tool_name=tool_name,
-                        success=False,
-                        error=f"Tool execution {execution_id} did not return a result within timeout",
-                        llm_content=f"Tool execution {execution_id} did not return a result within timeout",
-                        return_display=f"Tool execution {execution_id} did not return a result within timeout"
-                    )
+            # Use the ToolExecutionManager exclusively for the new architecture
+            if not self.tool_execution_manager:
+                raise Exception("ToolExecutionManager not available in ToolExecutor")
+            
+            # Use the ToolExecutionManager to handle internal tool execution
+            return await self.tool_execution_manager.execute_internal_tool(
+                tool_name,
+                parameters
+            )
                     
         except Exception as e:
             return ToolResult(
@@ -137,7 +88,7 @@ class ToolExecutor:
         """
         start_time = asyncio.get_event_loop().time()
         while asyncio.get_event_loop().time() - start_time < timeout:
-            result = await self.kernel_client.get_execution_result(execution_id)
+            result = await self.mcp_client.get_execution_result(execution_id)
             if result:
                 return result
             await asyncio.sleep(0.5)  # Check every 0.5 seconds

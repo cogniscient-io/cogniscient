@@ -43,7 +43,10 @@ class ToolRegistry:
     
     def __init__(self):
         """Initialize the tool registry with necessary components."""
-        self.tools: Dict[str, BaseTool] = {}
+        self.tools: Dict[str, BaseTool] = {}  # Local tools only
+        # Map external tool names to their MCP client configuration
+        self.external_tool_mcp_configs: Dict[str, str] = {}  # Maps tool names to MCP client server URLs
+        self.mcp_clients: Dict[str, Any] = {}  # MCP client instances by server URL
         self.logger = None  # Will be set by kernel
 
     async def initialize(self, kernel=None):
@@ -141,7 +144,7 @@ class ToolRegistry:
 
     async def get_tool(self, tool_name: str) -> Optional[BaseTool]:
         """
-        Get a tool by its name from the registry.
+        Get a local tool by its name from the registry.
         
         Args:
             tool_name: The name of the tool to retrieve
@@ -150,6 +153,117 @@ class ToolRegistry:
             The tool if found, None otherwise
         """
         return self.tools.get(tool_name)
+
+    async def has_tool(self, tool_name: str) -> bool:
+        """
+        Check if a tool exists in the registry (either local or registered external).
+        
+        Args:
+            tool_name: The name of the tool to check
+            
+        Returns:
+            True if the tool exists in either local registry or is registered as external
+        """
+        # Check if it's a local tool
+        if tool_name in self.tools:
+            return True
+        
+        # Check if it's registered as an external tool
+        return tool_name in self.external_tool_mcp_configs
+
+    async def get_tool_server_config(self, tool_name: str) -> Optional[str]:
+        """
+        Get the server config (URL) for a tool (for external tools) or None for local tools.
+        
+        Args:
+            tool_name: The name of the tool to look up
+            
+        Returns:
+            Server URL if the tool is external, None if it's local, None if not found
+        """
+        # If it's a local tool, return None
+        if tool_name in self.tools:
+            return None
+        
+        # If it's an external tool, return the server URL from the config
+        return self.external_tool_mcp_configs.get(tool_name)
+
+    async def register_external_tool(self, tool_name: str, server_url: str) -> bool:
+        """
+        Register an external tool that is available via an MCP server.
+        
+        Args:
+            tool_name: Name of the external tool
+            server_url: URL of the MCP server hosting the tool
+            
+        Returns:
+            True if registration was successful
+        """
+        try:
+            # Register the tool with its server configuration
+            self.external_tool_mcp_configs[tool_name] = server_url
+            
+            if self.logger:
+                self.logger.info(f"External tool registered: {tool_name} on {server_url}")
+            
+            return True
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Failed to register external tool {tool_name}: {e}")
+            return False
+
+    async def get_mcp_client_for_tool(self, tool_name: str) -> Optional[Any]:
+        """
+        Get the MCP client instance for a tool.
+        
+        Args:
+            tool_name: Name of the tool to get client for
+            
+        Returns:
+            MCP client instance if available, None otherwise
+        """
+        server_url = self.external_tool_mcp_configs.get(tool_name)
+        if not server_url:
+            return None
+        
+        # Return the cached client or create a new one if needed
+        if server_url not in self.mcp_clients:
+            # Create and initialize an MCP client for this server
+            from gcs_kernel.mcp.client import MCPClient
+            from gcs_kernel.models import MCPConfig
+            
+            config = MCPConfig(server_url=server_url)
+            client = MCPClient(config)
+            client.logger = self.logger
+            await client.initialize()
+            
+            self.mcp_clients[server_url] = client
+        
+        return self.mcp_clients[server_url]
+        
+    async def deregister_external_tool(self, tool_name: str) -> bool:
+        """
+        Remove an external tool from the registry.
+        
+        Args:
+            tool_name: The name of the external tool to remove
+            
+        Returns:
+            True if removal was successful, False otherwise
+        """
+        try:
+            if tool_name in self.external_tool_mcp_configs:
+                del self.external_tool_mcp_configs[tool_name]
+                
+                if self.logger:
+                    self.logger.info(f"External tool deregistered: {tool_name}")
+                
+                return True
+            return False
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Failed to deregister external tool: {e}")
+            return False
 
     def get_all_tools(self) -> Dict[str, BaseTool]:
         """

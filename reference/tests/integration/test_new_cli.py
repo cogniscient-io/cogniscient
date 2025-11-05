@@ -33,8 +33,13 @@ async def test_new_cli_architecture_hello_world():
         kernel = GCSKernel()
         
         # Mock only the external provider to simulate responses without API calls
-        async def mock_handle_interaction(prompt):
-            return f"Response for: {prompt}"
+        from gcs_kernel.models import PromptObject
+        async def mock_handle_interaction(prompt_obj):
+            response_obj = PromptObject.create(
+                content=f"Response for: {prompt_obj.content}"
+            )
+            response_obj.result_content = f"Response for: {prompt_obj.content}"
+            return response_obj
         
         # Replace the orchestrator's method with mock - need to ensure it's properly initialized
         # Also need to ensure the content_generator is not None to avoid the initialization check
@@ -81,8 +86,10 @@ async def test_new_cli_architecture_streaming():
         kernel = GCSKernel()
         
         # Mock only the external provider to simulate responses without API calls
-        async def mock_stream_interaction(prompt):
-            response = f"Streaming response for: {prompt}"
+        from gcs_kernel.models import PromptObject
+        from typing import AsyncIterator
+        async def mock_stream_interaction(prompt_obj: PromptObject) -> AsyncIterator[str]:
+            response = f"Streaming response for: {prompt_obj.content}"
             # Yield chunks to simulate streaming
             for i in range(0, len(response), 5):  # Yield every 5 characters
                 chunk = response[i:i+5]

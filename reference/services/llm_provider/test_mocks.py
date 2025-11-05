@@ -4,13 +4,20 @@ Mock Implementations for Testing LLM Provider Components
 This module provides centralized mock implementations of various LLM provider
 components that can be used across different test modules to avoid duplication
 and ensure consistency.
+
+The MockProvider implementation has been moved to the main providers directory
+where it can be enhanced and maintained as part of the core codebase.
+This file now focuses on higher-level content generator mocks that work with
+the pipeline and content generation layers.
 """
 
-import asyncio
-from typing import Any, Dict, AsyncIterator, List, Optional
+from typing import Any, Dict, AsyncIterator, List, TYPE_CHECKING
 from services.llm_provider.base_generator import BaseContentGenerator
-from services.llm_provider.providers.base_provider import BaseProvider
-from services.llm_provider.providers.openai_converter import OpenAIConverter
+# Import the enhanced main MockProvider for use in tests
+from services.llm_provider.providers.mock_provider import MockProvider as MainMockProvider
+
+if TYPE_CHECKING:
+    from gcs_kernel.models import PromptObject
 
 
 class MockContentGenerator(BaseContentGenerator):
@@ -55,19 +62,19 @@ class MockContentGenerator(BaseContentGenerator):
         self.fail_count = fail_count
         self.current_fail_count = 0
         self.generate_response_calls = []  # Track calls for testing
+        self.stream_response_calls = []  # Track streaming calls for testing
         self.process_tool_result_calls = []  # Track calls for testing
     
-    async def generate_response(self, prompt: str, system_context: str = None, prompt_id: str = None, tools: list = None) -> Any:
+    async def generate_response(self, prompt_obj: 'PromptObject') -> None:
         """
-        Mock implementation of generate_response.
-        Supports both old and new signatures for compatibility.
+        Mock implementation of generate_response taking a prompt object.
+        Operates on the live prompt object in place.
         """
-        # Track the call for testing purposes
+        # Track the call for testing purposes - extract content from prompt object
         self.generate_response_calls.append({
-            'prompt': prompt,
-            'system_context': system_context,
-            'prompt_id': prompt_id,
-            'tools': tools
+            'prompt': prompt_obj.content,
+            'system_context': next((msg.get("content") for msg in prompt_obj.conversation_history if msg.get("role") == "system"), None),
+            'prompt_id': prompt_obj.prompt_id
         })
         
         # Check if we should fail based on configuration (for error testing)
@@ -75,65 +82,58 @@ class MockContentGenerator(BaseContentGenerator):
             self.current_fail_count += 1
             raise Exception(f"Simulated failure {self.current_fail_count}")
         
-        class ResponseObj:
-            def __init__(self, content, tool_calls):
-                self.content = content
-                self.tool_calls = tool_calls if tool_calls else []
-        
-        return ResponseObj(
-            content=f"{self.response_content} to: {prompt}",
-            tool_calls=self.tool_calls
-        )
+        # Update the prompt object with result
+        prompt_obj.result_content = f"{self.response_content} to: {prompt_obj.content}"
+        prompt_obj.mark_completed(prompt_obj.result_content)
     
-    async def process_tool_result(self, tool_result: Any, conversation_history: list = None, prompt_id: str = None, available_tools: list = None) -> Any:
+    async def process_tool_result(self, tool_result: Any, prompt_obj: 'PromptObject') -> 'PromptObject':
         """
-        Mock implementation of process_tool_result.
-        Supports both old and new signatures for compatibility.
+        Mock implementation of process_tool_result taking a prompt object.
         """
         # Track the call for testing purposes
         self.process_tool_result_calls.append({
             'tool_result': tool_result,
-            'conversation_history': conversation_history,
-            'prompt_id': prompt_id,
-            'available_tools': available_tools
+            'prompt_obj': prompt_obj
         })
         
-        class ResponseObj:
-            def __init__(self, content):
-                self.content = content
+        # Update the prompt object with the result of processing the tool
+        prompt_obj.result_content = f"Processed tool result: {tool_result}"
+        prompt_obj.mark_completed(prompt_obj.result_content)
         
-        return ResponseObj(content=f"Processed tool result: {tool_result}")
+        return prompt_obj
     
-    async def stream_response(self, prompt: str, system_context: str = None, tools: list = None) -> AsyncIterator[str]:
+    async def stream_response(self, prompt_obj: 'PromptObject') -> AsyncIterator[str]:
         """
-        Mock implementation of stream_response.
-        Compatible with both old and new signatures.
+        Mock implementation of stream_response taking a prompt object.
         """
-        # Track for testing purposes
-        self.last_stream_prompt = prompt
+        # Track the call for testing purposes
+        self.stream_response_calls.append({
+            'prompt': prompt_obj.content,
+            'system_context': next((msg.get("content") for msg in prompt_obj.conversation_history if msg.get("role") == "system"), None),
+            'prompt_id': prompt_obj.prompt_id
+        })
         
+        # Stream the response content
         if self.should_stream:
-            yield f"Streaming {self.response_content} to: {prompt}"
+            yield f"Streaming {self.response_content} to: {prompt_obj.content}"
         else:
-            yield f"{self.response_content} to: {prompt}"
+            yield f"{self.response_content} to: {prompt_obj.content}"
     
-    async def generate_response_from_conversation(self, conversation_history: list, prompt_id: str = None, tools: list = None) -> Any:
+    async def generate_response_from_conversation(self, prompt_obj: 'PromptObject') -> 'PromptObject':
         """
-        Mock implementation of generate_response_from_conversation.
-        Supports both old and new signatures for compatibility.
+        Mock implementation of generate_response_from_conversation taking a prompt object.
         """
-        # Track the call for testing purposes (similar to generate_response)
+        # Track the call for testing purposes
         last_user_message = None
-        for msg in reversed(conversation_history):
+        for msg in reversed(prompt_obj.conversation_history):
             if msg.get("role") == "user":
                 last_user_message = msg.get("content", "")
                 break
         
         self.generate_response_calls.append({
             'prompt': last_user_message,
-            'system_context': next((msg.get("content") for msg in conversation_history if msg.get("role") == "system"), None),
-            'prompt_id': prompt_id,
-            'tools': tools
+            'system_context': next((msg.get("content") for msg in prompt_obj.conversation_history if msg.get("role") == "system"), None),
+            'prompt_id': prompt_obj.prompt_id
         })
         
         # Fail the first few calls if configured to do so
@@ -141,15 +141,27 @@ class MockContentGenerator(BaseContentGenerator):
             self.current_fail_count += 1
             raise Exception(f"Simulated failure {self.current_fail_count}")
         
-        class ResponseObj:
-            def __init__(self, content, tool_calls):
-                self.content = content
-                self.tool_calls = tool_calls if tool_calls else []
+        # Update the prompt object with response
+        prompt_obj.result_content = f"{self.response_content} to conversation with {len(prompt_obj.conversation_history)} messages"
+        prompt_obj.mark_completed(prompt_obj.result_content)
         
-        return ResponseObj(
-            content=f"{self.response_content} to conversation with {len(conversation_history)} messages",
-            tool_calls=self.tool_calls
-        )
+        return prompt_obj
+
+    def process_streaming_chunks(self, chunks: list):
+        """
+        Mock implementation of process_streaming_chunks.
+        """
+        # For testing purposes, just return an empty response structure
+        return {
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "Mock processed content from chunks"
+                },
+                "finish_reason": "stop"
+            }]
+        }
 
 
 class ToolCallingMockContentGenerator(MockContentGenerator):
@@ -176,21 +188,14 @@ class ToolCallingMockContentGenerator(MockContentGenerator):
             tool_calls=tool_calls or []
         )
     
-    async def process_tool_result(self, tool_result, conversation_history=None, prompt_id: str = None, available_tools: list = None) -> Any:
+    async def process_tool_result(self, tool_result, prompt_obj: 'PromptObject') -> 'PromptObject':
         """
         Override process_tool_result to return a natural response incorporating the tool result.
         """
-        class ResponseObj:
-            def __init__(self, content, tool_calls=None):
-                self.content = content
-                self.tool_calls = tool_calls or []
-
         # Track the call for testing purposes
         self.process_tool_result_calls.append({
             'tool_result': tool_result,
-            'conversation_history': conversation_history,
-            'prompt_id': prompt_id,
-            'available_tools': available_tools
+            'prompt_obj': prompt_obj
         })
         
         # Create a natural response that incorporates the tool result
@@ -202,42 +207,61 @@ class ToolCallingMockContentGenerator(MockContentGenerator):
         if "time" in tool_content_lower or "date" in tool_content_lower or \
            any(time_indicator in tool_content_lower for time_indicator in ["utc", "gmt", "am", "pm", 
              ":00", ":15", ":30", ":45", ":60"]):
-            return ResponseObj(
-                content=f"The current time is: {tool_content.strip()}",
-                tool_calls=[]  # No more tool calls needed
-            )
+            response_content = f"The current time is: {tool_content.strip()}"
         else:
-            return ResponseObj(
-                content=f"Based on the tool results: {tool_content.strip()}",
-                tool_calls=[]  # No more tool calls needed
-            )
+            response_content = f"Based on the tool results: {tool_content.strip()}"
+        
+        # Update the prompt object with the response
+        prompt_obj.result_content = response_content
+        prompt_obj.mark_completed(response_content)
+        
+        return prompt_obj
     
-    async def generate_response(self, prompt: str, system_context: str = None, prompt_id: str = None, tools: list = None) -> Any:
+    async def generate_response(self, prompt_obj: 'PromptObject') -> None:
         """
-        Mock implementation that returns tool calls for specific prompts.
-        Supports both old and new signatures for compatibility.
+        Mock implementation that returns tool calls for specific prompts or responses based on tool results.
+        Operates on the live prompt object in place.
         """
         # Track the call for testing purposes
         self.generate_response_calls.append({
-            'prompt': prompt,
-            'system_context': system_context,
-            'prompt_id': prompt_id,
-            'tools': tools
+            'prompt': prompt_obj.content,
+            'system_context': next((msg.get("content") for msg in prompt_obj.conversation_history if msg.get("role") == "system"), None),
+            'prompt_id': prompt_obj.prompt_id
         })
         
         # Check if we should fail based on configuration (for error testing)
         if self.should_fail and self.current_fail_count < self.fail_count:
             self.current_fail_count += 1
             raise Exception(f"Simulated failure {self.current_fail_count}")
+
+        # Check if there are already tool results in the conversation history to respond to
+        has_tool_result = any(msg.get("role") == "tool" for msg in prompt_obj.conversation_history)
         
-        class ResponseObj:
-            def __init__(self, content, tool_calls):
-                self.content = content
-                self.tool_calls = tool_calls if tool_calls else []
-        
-        # For specific prompts, return tool calls
-        if "system status" in prompt.lower() or "date" in prompt.lower() or "time" in prompt.lower():
-            # Create a mock tool call with actual tool call structure
+        if has_tool_result:
+            # Create final response when tool results are present
+            # Find the tool result content to include in the response
+            tool_content = None
+            for msg in reversed(prompt_obj.conversation_history):  # Look from most recent backwards
+                if msg.get("role") == "tool":
+                    tool_content = msg.get("content", "")
+                    break
+            
+            if tool_content:
+                # Determine the type of response based on the tool result content
+                tool_content_lower = tool_content.lower()
+                if "time" in tool_content_lower or "date" in tool_content_lower or \
+                   any(time_indicator in tool_content_lower for time_indicator in ["utc", "gmt", "am", "pm", 
+                     ":00", ":15", ":30", ":45", ":60"]):
+                    response_content = f"The current time is: {tool_content.strip()}"
+                else:
+                    response_content = f"Based on the tool results: {tool_content.strip()}"
+                
+                prompt_obj.result_content = response_content
+            else:
+                # Fallback response if we can't find the tool content
+                prompt_obj.result_content = "Based on the tool results, I've completed your request."
+        elif "system status" in prompt_obj.content.lower() or "date" in prompt_obj.content.lower() or "time" in prompt_obj.content.lower():
+            # Create a mock tool call with actual tool call structure for specific prompts
             class MockToolCall:
                 def __init__(self):
                     self.id = "call_123"
@@ -246,30 +270,104 @@ class ToolCallingMockContentGenerator(MockContentGenerator):
                     import json
                     self.arguments = self.parameters  # Use parameters directly as arguments
                     self.arguments_json = json.dumps(self.parameters)
-            
-            return ResponseObj(
-                content="I'll get the system date for you.",
-                tool_calls=[MockToolCall()]
-            )
+                    
+            # Update the prompt object with content and tool calls
+            prompt_obj.result_content = "I'll get the system date for you."
+            prompt_obj.add_tool_call({
+                "id": "call_123",
+                "function": {
+                    "name": "shell_command", 
+                    "arguments": {"command": "date"}
+                }
+            })
         else:
-            return ResponseObj(
-                content=self.response_content,
-                tool_calls=self.tool_calls
-            )
-    
-    async def generate_response_from_conversation(self, conversation_history: list, prompt_id: str = None, tools: list = None) -> Any:
+            # Update the prompt object with regular content
+            prompt_obj.result_content = self.response_content
+        
+        prompt_obj.mark_completed(prompt_obj.result_content)
+
+    async def stream_response(self, prompt_obj: 'PromptObject') -> AsyncIterator[str]:
+        """
+        Mock implementation of stream_response that handles tool calls in streaming context.
+        """
+        # Track for testing purposes
+        self.last_stream_prompt = prompt_obj.content
+        
+        # Check if there are already tool results in the conversation history to respond to
+        has_tool_result = any(msg.get("role") == "tool" for msg in prompt_obj.conversation_history)
+        
+        if has_tool_result:
+            # Create final response when tool results are present
+            # Find the tool result content to include in the response
+            tool_content = None
+            for msg in reversed(prompt_obj.conversation_history):  # Look from most recent backwards
+                if msg.get("role") == "tool":
+                    tool_content = msg.get("content", "")
+                    break
+            
+            if tool_content:
+                # Determine the type of response based on the tool result content
+                tool_content_lower = tool_content.lower()
+                if "time" in tool_content_lower or "date" in tool_content_lower or \
+                   any(time_indicator in tool_content_lower for time_indicator in ["utc", "gmt", "am", "pm", 
+                     ":00", ":15", ":30", ":45", ":60"]):
+                    response_content = f"The current time is: {tool_content.strip()}"
+                else:
+                    response_content = f"Based on the tool results: {tool_content.strip()}"
+                
+                # Yield the response content in chunks
+                chunk_size = len(response_content) // 3 if len(response_content) > 3 else len(response_content)
+                for i in range(0, len(response_content), chunk_size):
+                    yield response_content[i:i+chunk_size]
+                
+                prompt_obj.result_content = response_content
+            else:
+                # Fallback response if we can't find the tool content
+                fallback_content = "Based on the tool results, I've completed your request."
+                prompt_obj.result_content = fallback_content
+                chunk_size = len(fallback_content) // 3 if len(fallback_content) > 3 else len(fallback_content)
+                for i in range(0, len(fallback_content), chunk_size):
+                    yield fallback_content[i:i+chunk_size]
+        elif "system status" in prompt_obj.content.lower() or "date" in prompt_obj.content.lower() or "time" in prompt_obj.content.lower():
+            # For specific prompts, initiate tool calls
+            response_content = "I'll get the system date for you."
+            
+            # Add tool call to the prompt object for the turn manager to process
+            prompt_obj.add_tool_call({
+                "id": "call_123",
+                "function": {
+                    "name": "shell_command", 
+                    "arguments": {"command": "date"}
+                }
+            })
+            
+            # Yield the initial response in chunks
+            chunk_size = len(response_content) // 3 if len(response_content) > 3 else len(response_content)
+            for i in range(0, len(response_content), chunk_size):
+                yield response_content[i:i+chunk_size]
+            
+            # Update result content to indicate tool was called
+            prompt_obj.result_content = response_content
+        else:
+            # Stream the default response content
+            response_content = "I'll help you with that using a tool."  # Use the default response
+            prompt_obj.result_content = response_content
+            
+            # Stream in chunks
+            chunk_size = len(response_content) // 3 if len(response_content) > 3 else len(response_content)
+            for i in range(0, len(response_content), chunk_size):
+                yield response_content[i:i+chunk_size]
+        
+        # Mark as completed at the end
+        prompt_obj.mark_completed(prompt_obj.result_content)
+
+    async def generate_response_from_conversation(self, prompt_obj: 'PromptObject') -> 'PromptObject':
         """
         Mock implementation that returns tool calls for specific conversation patterns.
-        Supports both old and new signatures for compatibility.
         """
-        class ResponseObj:
-            def __init__(self, content, tool_calls):
-                self.content = content
-                self.tool_calls = tool_calls if tool_calls else []
-        
         # Check for user messages in conversation history
         last_user_message = None
-        for msg in reversed(conversation_history):
+        for msg in reversed(prompt_obj.conversation_history):
             if msg.get("role") == "user":
                 last_user_message = msg.get("content", "")
                 break
@@ -277,16 +375,15 @@ class ToolCallingMockContentGenerator(MockContentGenerator):
         # Track the call for testing purposes
         self.generate_response_calls.append({
             'prompt': last_user_message,
-            'system_context': next((msg.get("content") for msg in conversation_history if msg.get("role") == "system"), None),
-            'prompt_id': prompt_id,
-            'tools': tools
+            'system_context': next((msg.get("content") for msg in prompt_obj.conversation_history if msg.get("role") == "system"), None),
+            'prompt_id': prompt_obj.prompt_id
         })
         
         # Check if we should fail based on configuration (for error testing)
         if self.should_fail and self.current_fail_count < self.fail_count:
             self.current_fail_count += 1
             raise Exception(f"Simulated failure {self.current_fail_count}")
-        
+
         # For specific prompts, return tool calls
         if last_user_message and ("system status" in last_user_message.lower() or 
                                   "date" in last_user_message.lower() or 
@@ -301,119 +398,31 @@ class ToolCallingMockContentGenerator(MockContentGenerator):
                     self.arguments = self.parameters  # Use parameters directly as arguments
                     self.arguments_json = json.dumps(self.parameters)
 
-            return ResponseObj(
-                content="I'll get the system date for you.",
-                tool_calls=[MockToolCall()]
-            )
+            # Update the prompt object with content and tool call
+            prompt_obj.result_content = "I'll get the system date for you."
+            prompt_obj.add_tool_call({
+                "id": "call_123",
+                "function": {
+                    "name": "shell_command", 
+                    "arguments": {"command": "date"}
+                }
+            })
         else:
             # Check if there's a tool result in the conversation history to respond to
-            has_tool_result = any(msg.get("role") == "tool" for msg in conversation_history)
+            has_tool_result = any(msg.get("role") == "tool" for msg in prompt_obj.conversation_history)
             if has_tool_result:
                 # Create final response when tool results are present
                 # Find the tool result content to include in the response
-                for msg in conversation_history:
+                for msg in prompt_obj.conversation_history:
                     if msg.get("role") == "tool":
                         tool_content = msg.get("content", "")
-                        return ResponseObj(
-                            content=f"Based on the tool results: {tool_content}",
-                            tool_calls=[]
-                        )
-                
-                # Fallback response if we can't find the tool content
-                return ResponseObj(
-                    content="Based on the tool results, I've completed your request.",
-                    tool_calls=[]
-                )
+                        prompt_obj.result_content = f"Based on the tool results: {tool_content}"
+                        break
+                else:
+                    # Fallback response if we can't find the tool content
+                    prompt_obj.result_content = "Based on the tool results, I've completed your request."
             else:
-                return ResponseObj(
-                    content=self.response_content,
-                    tool_calls=self.tool_calls
-                )
+                prompt_obj.result_content = self.response_content
 
-
-class MockProvider(BaseProvider):
-    """
-    Mock provider implementation for integration testing.
-    (This is a copy of the existing mock provider, to keep all mocks together)
-    """
-    
-    def __init__(self, config: Dict[str, Any]):
-        """
-        Initialize the mock provider with configuration.
-        
-        Args:
-            config: Dictionary containing provider configuration
-        """
-        # Call the parent constructor
-        super().__init__(config)
-        
-        # Initialize a converter for this provider
-        self._converter = OpenAIConverter(self.model)
-    
-    @property
-    def converter(self):
-        """
-        The converter for this mock provider to transform data between kernel and provider formats.
-        This returns an OpenAI-compatible converter suitable for testing.
-        """
-        return self._converter
-    
-    def build_headers(self) -> Dict[str, str]:
-        """
-        Build headers for mock API requests.
-
-        Returns:
-            Dictionary of headers for mock API requests
-        """
-        return {"Content-Type": "application/json"}
-
-    def build_client(self):
-        """
-        Build a mock client that doesn't make actual API calls.
-
-        Returns:
-            A mock client (simulated object)
-        """
-        class MockClient:
-            async def post(self, url, json=None, headers=None):
-                # Simulate an API response
-                class MockResponse:
-                    async def json(self):
-                        # Return a mock response that includes a "hello world" message
-                        return {
-                            "choices": [
-                                {
-                                    "message": {
-                                        "role": "assistant",
-                                        "content": "Hello, this is a test response from the LLM!"
-                                    }
-                                }
-                            ]
-                        }
-                    
-                    @property
-                    def status_code(self):
-                        return 200
-                
-                await asyncio.sleep(0.1)  # Simulate network delay
-                return MockResponse()
-        
-        return MockClient()
-    
-    def build_request(self, request: Dict[str, Any], user_prompt_id: str) -> Dict[str, Any]:
-        """
-        Convert and build a mock request based on the input.
-        
-        Args:
-            request: The base request in kernel format
-            user_prompt_id: Unique identifier for the user prompt
-            
-        Returns:
-            Mock request structure in OpenAI-compatible format
-        """
-        # Convert the kernel format request to OpenAI format (for consistency with testing)
-        openai_request = self.converter.convert_kernel_request_to_provider(request)
-        
-        # Add user prompt ID for tracking
-        openai_request["user_prompt_id"] = user_prompt_id
-        return openai_request
+        prompt_obj.mark_completed(prompt_obj.result_content)
+        return prompt_obj

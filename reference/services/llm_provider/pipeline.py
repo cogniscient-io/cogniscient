@@ -9,6 +9,7 @@ import httpx
 import logging
 from typing import Dict, Any, AsyncIterator
 from unittest.mock import MagicMock
+from gcs_kernel.models import PromptObject
 from services.llm_provider.providers.base_provider import BaseProvider
 
 # Set up logging
@@ -31,277 +32,136 @@ class ContentGenerationPipeline:
         self.client = provider.build_client()
         # Use the converter provided by the provider
         self.converter = provider.converter
-        
-        # Store the last complete streaming response for retrieval after streaming completes
-        self._last_streaming_response = None
     
-    async def execute(self, request: Dict[str, Any], user_prompt_id: str) -> Any:
+    async def execute(self, prompt_obj: 'PromptObject') -> Any:
         """
-        Execute a content generation request through the pipeline.
-        Returns raw OpenAI-compliant response which is then processed by the content generator
-        and converter as needed for internal compatibility.
+        Execute a content generation request through the pipeline using a PromptObject.
         
         Args:
-            request: The content generation request
-            user_prompt_id: Unique identifier for the user prompt
+            prompt_obj: The PromptObject containing all necessary information
             
         Returns:
             The content generation response in OpenAI format
         """
-        logger.debug(f"Pipeline execute - request before build_request: {request}")
-        # Build the final request using the provider (conversion handled internally)
-        final_request = self.provider.build_request(request, user_prompt_id)
+        # Build the final request directly from the prompt object using provider's method
+        final_request = self.provider.build_request(prompt_obj)
+        
+        import logging
+        logger = logging.getLogger(__name__)
         
         logger.debug(f"Pipeline execute - final_request sent to LLM: {final_request}")
         
         # Determine the URL for content generation
+        # TODO: Adjust endpoint as needed based on provider specifics
         url = f"{self.provider.base_url}/chat/completions"
-        
 
         
-        # In test environments where httpx.AsyncClient is patched, 
-        # we might need to get an updated client from the provider
-        # Check if httpx.AsyncClient has been patched (has _spec_ or _patch attribute)
-        import httpx
-        if (hasattr(httpx, 'AsyncClient') and 
-            (hasattr(httpx.AsyncClient, '_spec') or 
-             hasattr(httpx.AsyncClient, '__wrapped__'))):
-            # httpx.AsyncClient has been patched, get a fresh client from provider
-            client = self.provider.build_client()
-        else:
-            # Use the stored client
-            client = self.client
+        # Use the stored client in the pipeline to allow for test mocking
+        # Add detailed logging for debugging
+
         
+        logger.debug(f"Pipeline execute - sending request to {url} with data: {final_request}")
+        
+        response = await self.client.post(url, json=final_request)
+        
+        # Log response details for debugging
+        # Handle the case where response.headers might be mocked and behave differently
         try:
-            response = await client.post(url, json=final_request)
-        except TypeError:
-            # If the response from client.post can't be awaited (e.g., it's a mock), 
-            # try calling it without await
-            response = client.post(url, json=final_request)
+            # Check if response.headers is a property mock that might have been set as an AsyncMock
+            from unittest.mock import PropertyMock, AsyncMock
+            if isinstance(response.headers, AsyncMock):
+                # If headers is an AsyncMock, await it to get the actual headers
+                headers_obj = await response.headers
+                headers_dict = dict(headers_obj) if hasattr(headers_obj, '__iter__') else 'N/A'
+            elif hasattr(response.headers, '__iter__'):
+                # If headers is a regular iterable
+                headers_dict = dict(response.headers)
+            else:
+                headers_dict = 'N/A'
+        except (TypeError, AttributeError):
+            # If headers is not accessible as expected, handle gracefully
+            headers_dict = 'N/A'
+        except RuntimeError:
+            # If there's a RuntimeError (like "no running event loop"), handle gracefully
+            headers_dict = 'N/A'
         
-        # Handle the response based on its type
-        # First, try to determine if we have a mock response by checking the type and attributes
+        logger.debug(f"Pipeline execute - response status: {response.status_code}, headers: {headers_dict}")
         
-
-        
-        # Handle the response based on its type
-        # First, try to determine if we have a mock response by checking the type and attributes
-        
-        
-
-        if (hasattr(response, '_spec_class') or 
-            type(response).__name__ in ['MagicMock', 'AsyncMock']):
-            # This is definitely a MagicMock or AsyncMock
-            # Check if the json method returns a coroutine (async method)
+        # Handle the response - for mock responses, json() might be a coroutine
+        if response.status_code == 200:
+            # Process the JSON response - check if json() returns a coroutine
             json_result = response.json()
             if asyncio.iscoroutine(json_result):
                 # If json() returns a coroutine, await it
                 result = await json_result
             else:
-                # If json() returns a direct value, use it
+                # Otherwise, use the result directly
                 result = json_result
             
-            content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-            tool_calls = result.get("choices", [{}])[0].get("message", {}).get("tool_calls", [])
+            # Return the full response in OpenAI format, not a custom format
+            logger.debug(f"Pipeline execute - raw response from LLM: {result}")
             
-            logger.debug(f"Pipeline execute - content: '{content}', tool_calls: {tool_calls}")
-            
-            return {
-                "content": content,
-                "tool_calls": tool_calls
-            }
-        elif hasattr(response, 'status_code') and hasattr(response, 'json'):
-            # Both status_code and json exist, need to determine if it's a real response or mock
-            # Try to check if json is an async method by testing it (safely)
-            try:
-                # Try calling the json method to see if it returns a coroutine
-                json_result = response.json()
-                if asyncio.iscoroutine(json_result):
-                    # If json() returns a coroutine, await it
-                    result = await json_result
-                    content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-                    tool_calls = result.get("choices", [{}])[0].get("message", {}).get("tool_calls", [])
-                    
-                    return {
-                        "content": content,
-                        "tool_calls": tool_calls
-                    }
-                else:
-                    # This is a real httpx response object (status_code is not a mock)
-                    if response.status_code == 200:
-                        # For httpx responses, json() is typically synchronous
-                        result = json_result  # Use the result we already have
-                        content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-                        tool_calls = result.get("choices", [{}])[0].get("message", {}).get("tool_calls", [])
-                        
-                        return {
-                            "content": content,
-                            "tool_calls": tool_calls
-                        }
-                    else:
-                        raise Exception(f"Provider returned status code {response.status_code}")
-            except Exception:
-                # If there's an error accessing the json attribute or awaiting it,
-                # treat it as a real response object (status_code is not a mock)
-                if response.status_code == 200:
-                    result = response.json()
-                    content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-                    tool_calls = result.get("choices", [{}])[0].get("message", {}).get("tool_calls", [])
-                    
-                    return {
-                        "content": content,
-                        "tool_calls": tool_calls
-                    }
-                else:
-                    raise Exception(f"Provider returned status code {response.status_code}")
+            return result  # Return the full OpenAI-compliant response
         else:
-            # Direct return in case of other mock scenarios
-            content = getattr(response, 'content', "Test response content")
-            tool_calls = getattr(response, 'tool_calls', [])
+            # Log detailed response information for debugging
+            error_content = None
+            try:
+                error_content = response.json()
+            except:
+                error_content = await response.aread() if hasattr(response, 'aread') else str(response.content)
             
-            return {
-                "content": content,
-                "tool_calls": tool_calls
-            }
+            logger.error(f"Provider returned status code {response.status_code}")
+            # Handle the case where response.headers might be mocked and behave differently
+            try:
+                error_headers_dict = dict(response.headers) if hasattr(response.headers, '__iter__') else 'N/A'
+            except (TypeError, AttributeError):
+                # If headers is a coroutine or doesn't behave as expected, handle gracefully
+                error_headers_dict = 'N/A'
+            logger.error(f"Response headers: {error_headers_dict}")
+            logger.error(f"Response content: {error_content}")
+            
+            raise Exception(f"Provider returned status code {response.status_code}: {error_content}")
 
-    async def execute_stream(self, request: Dict[str, Any], user_prompt_id: str) -> AsyncIterator[str]:
+    async def execute_stream(self, prompt_obj: 'PromptObject') -> AsyncIterator[Dict[str, Any]]:
         """
-        Execute a streaming content generation request through the pipeline.
-        NOTE: Streaming serves dual purposes:
-        1. UX purposes (real-time content display to the user) - yielding content chunks
-        2. Full response assembly for potential tool calls that may appear in streaming responses.
-        
-        In OpenAI's API, tool calls in streaming responses come as deltas that need to be
-        accumulated. The complete response is stored internally and can be retrieved using
-        get_last_streaming_response() after streaming completes.
+        Execute a streaming content generation request through the pipeline using a PromptObject.
+        This method focuses only on streaming delivery, yielding raw chunks without accumulating content.
         
         Args:
-            request: The content generation request
-            user_prompt_id: Unique identifier for the user prompt
+            prompt_obj: The prompt object containing all necessary information
             
         Yields:
-            Partial content responses as they become available
+            Raw response chunks from the LLM provider as they become available
         """
-        logger.debug(f"Pipeline execute_stream - request before build_request: {request}")
-        # Build the final request using the provider (conversion handled internally)
-        final_request = self.provider.build_request(request, user_prompt_id)
+        # Build the final request directly from the prompt object using provider's method
+        final_request = self.provider.build_request(prompt_obj)
         
-        # Add stream=True to the request
+        # Ensure stream is enabled in the request
         final_request["stream"] = True
         
+        logger.debug(f"Pipeline execute_stream - final_request sent to LLM: {final_request}")
+        
         # Determine the URL for content generation
+        # TODO: Adjust endpoint as needed based on provider specifics
         url = f"{self.provider.base_url}/chat/completions"
         
-        # Initialize variables to collect the full response for potential tool calls
-        # This accumulates tool call information that might be sent in chunks
-        accumulated_tool_calls = []
-        accumulated_content = ""
-        
-        # Check if the client has stream method (real httpx client) or not (mock)
-        if hasattr(self.client, 'stream'):
-            # For real HTTP clients with stream support, use the stream method
-            try:
-                async with self.client.stream("POST", url, json=final_request) as response:
-                    async for line in response.aiter_lines():
-                        # Process server-sent events format
-                        line = line.strip()
-                        if line.startswith("data: "):
-                            data_content = line[6:]  # Remove "data: " prefix
-                            if data_content == "[DONE]":
-                                break  # End of stream
-                            try:
-                                import json
-                                parsed_data = json.loads(data_content)
-                                
-                                # Extract the content from the delta and yield it for immediate display
-                                choices = parsed_data.get("choices", [])
-                                if choices:
-                                    delta = choices[0].get("delta", {})
-                                    
-                                    # Handle content chunks
-                                    content = delta.get("content", "")
-                                    if content:
-                                        yield content
-                                        accumulated_content += content
-                                    
-                                    # Handle tool call chunks - OpenAI streams tool calls as deltas too
-                                    tool_calls_delta = delta.get("tool_calls")
-                                    if tool_calls_delta:
-                                        # Process tool call deltas
-                                        for tool_call_delta in tool_calls_delta:
-                                            index = tool_call_delta.get("index")
-                                            # Ensure we have enough slots in accumulated_tool_calls
-                                            while len(accumulated_tool_calls) <= index:
-                                                accumulated_tool_calls.append({
-                                                    "id": "",
-                                                    "type": "",
-                                                    "function": {"name": "", "arguments": ""}
-                                                })
-                                            
-                                            # Update the appropriate tool call slot with the delta info
-                                            current_tc = accumulated_tool_calls[index]
-                                            if "id" in tool_call_delta:
-                                                current_tc["id"] = tool_call_delta["id"]
-                                            if "type" in tool_call_delta:
-                                                current_tc["type"] = tool_call_delta["type"]
-                                            if "function" in tool_call_delta:
-                                                function_delta = tool_call_delta["function"]
-                                                if "name" in function_delta:
-                                                    current_tc["function"]["name"] += function_delta["name"]
-                                                if "arguments" in function_delta:
-                                                    current_tc["function"]["arguments"] += function_delta["arguments"]
-                            except json.JSONDecodeError:
-                                # If JSON parsing fails, just continue
-                                continue
-            except Exception as e:
-                raise Exception(f"Error during streaming content generation: {str(e)}")
-        else:
-            # For mock clients without stream method, simulate streaming
-            content = "Hello, this is a test response from the LLM!"
-            for i in range(0, len(content), 5):
-                chunk = content[i:i+5]
-                await asyncio.sleep(0.01)  # Small delay to simulate streaming
-                yield chunk
-                accumulated_content += chunk
-
-        # After streaming completes, construct and store the full response for retrieval
-        # This response is assumed to be in raw OpenAI format for consistency with the execute method
-        full_response = {
-            "choices": []
-        }
-        
-        # Add the message to the choices
-        message_obj = {
-            "role": "assistant"
-        }
-        if accumulated_content:
-            message_obj["content"] = accumulated_content
-        if accumulated_tool_calls:
-            message_obj["tool_calls"] = accumulated_tool_calls
-        
-        finish_reason = "tool_calls" if accumulated_tool_calls else "stop"
-        
-        full_response["choices"].append({
-            "index": 0,
-            "message": message_obj,
-            "finish_reason": finish_reason
-        })
-        
-        logger.debug(f"Pipeline execute_stream - accumulated_content: '{accumulated_content}', accumulated_tool_calls: {accumulated_tool_calls}")
-        
-        # Store the complete response internally for retrieval by content generator
-        self._last_streaming_response = full_response
-
-    def get_last_streaming_response(self) -> Dict[str, Any]:
-        """
-        Get the complete response from the last streaming call.
-        This includes both content and any accumulated tool calls.
-        
-        Returns:
-            The complete response in OpenAI format from the last streaming call,
-            or None if no streaming call has been made or it's already been retrieved
-        """
-        response = self._last_streaming_response
-        logger.debug(f"Pipeline get_last_streaming_response - response: {response}")
-        self._last_streaming_response = None  # Clear after retrieval to avoid reuse
-        return response
+        # Use the stored client in the pipeline's stream method
+        async with self.client.stream("POST", url, json=final_request) as response:
+            async for line in response.aiter_lines():
+                # Process server-sent events format
+                line = line.strip()
+                if line.startswith("data: "):
+                    data_content = line[6:]  # Remove "data: " prefix
+                    if data_content == "[DONE]":
+                        break  # End of stream
+                    try:
+                        import json
+                        # Check if data_content is not empty before parsing
+                        if data_content and data_content.strip():
+                            parsed_data = json.loads(data_content)
+                            
+                            # Yield the raw chunk data
+                            yield parsed_data
+                    except json.JSONDecodeError:
+                        # If JSON parsing fails, just continue
+                        continue

@@ -55,7 +55,7 @@ async def test_kernel_initialization():
     
     kernel = GCSKernel()
     assert kernel.event_loop is not None
-    assert kernel.scheduler is not None
+    assert kernel.tool_execution_manager is not None
     assert kernel.registry is not None
     assert kernel.resource_manager is not None
     assert kernel.security_layer is not None

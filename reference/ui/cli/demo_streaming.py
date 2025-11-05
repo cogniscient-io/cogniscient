@@ -63,7 +63,7 @@ async def demo_streaming():
                     asyncio.set_event_loop(new_loop)
                     try:
                         result_container[0] = asyncio.run(
-                            self.kernel.send_user_prompt(prompt)
+                            self.kernel.submit_prompt(prompt)
                         )
                     except Exception as e:
                         exception_container[0] = e
@@ -90,7 +90,7 @@ async def demo_streaming():
 
                     async def stream_async():
                         try:
-                            async for chunk in self.kernel.stream_user_prompt(prompt):
+                            async for chunk in self.kernel.stream_prompt(prompt):
                                 chunk_queue.put(('chunk', chunk))
                             chunk_queue.put(('done', None))
                         except Exception as e:

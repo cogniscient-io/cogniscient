@@ -6,6 +6,7 @@ This module implements the base provider following Qwen Code patterns.
 
 from abc import ABC, abstractmethod
 from typing import Dict, Any
+from gcs_kernel.models import PromptObject
 
 
 class BaseProvider(ABC):
@@ -59,13 +60,12 @@ class BaseProvider(ABC):
         pass
     
     @abstractmethod
-    def build_request(self, request: Dict[str, Any], user_prompt_id: str) -> Dict[str, Any]:
+    def build_request(self, prompt_obj: 'PromptObject') -> Dict[str, Any]:
         """
-        Build the request with provider-specific features.
+        Build the request with provider-specific features from a PromptObject.
         
         Args:
-            request: The base request
-            user_prompt_id: Unique identifier for the user prompt
+            prompt_obj: The PromptObject containing all necessary information
             
         Returns:
             Enhanced request with provider-specific features

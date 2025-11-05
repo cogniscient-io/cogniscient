@@ -43,11 +43,18 @@ async def test_base_content_generator_generate_response():
     }
     
     generator = MockContentGenerator(config)
-    response = await generator.generate_response("Test prompt")
+    from gcs_kernel.models import PromptObject
+    prompt_obj = PromptObject.create(content="Test prompt")
+    response = await generator.generate_response(prompt_obj)
     
-    assert hasattr(response, 'content')
-    assert hasattr(response, 'tool_calls')
-    assert "Test prompt" in response.content
+    # In the new architecture, the generator operates on the live prompt object in place
+    # and returns None or raises an exception if there's an error
+    assert response is None  # Confirm it returns None as per new design
+    
+    # The prompt object should have been updated in place
+    assert hasattr(prompt_obj, 'result_content')
+    assert hasattr(prompt_obj, 'tool_calls')
+    assert "Test prompt" in prompt_obj.result_content
 
 
 @pytest.mark.asyncio
@@ -61,11 +68,13 @@ async def test_base_content_generator_process_tool_result():
     }
     
     generator = MockContentGenerator(config)
+    from gcs_kernel.models import PromptObject
     tool_result_mock = "test_tool_result"
-    response = await generator.process_tool_result(tool_result_mock)
+    prompt_obj = PromptObject.create(content="Test prompt")
+    response = await generator.process_tool_result(tool_result_mock, prompt_obj)
     
-    assert hasattr(response, 'content')
-    assert "test_tool_result" in response.content
+    assert hasattr(response, 'result_content')
+    assert "test_tool_result" in response.result_content
 
 
 @pytest.mark.asyncio
@@ -79,8 +88,10 @@ async def test_base_content_generator_stream_response():
     }
     
     generator = MockContentGenerator(config)
+    from gcs_kernel.models import PromptObject
+    prompt_obj = PromptObject.create(content="Test prompt")
     chunks = []
-    async for chunk in generator.stream_response("Test prompt"):
+    async for chunk in generator.stream_response(prompt_obj):
         chunks.append(chunk)
     
     assert len(chunks) > 0

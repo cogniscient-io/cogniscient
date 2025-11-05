@@ -10,8 +10,9 @@ import asyncio
 import json
 import logging
 import os
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from gcs_kernel.mcp.client import MCPClient
+from gcs_kernel.models import PromptObject
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -23,15 +24,15 @@ class SystemContextBuilder:
     information about its environment, capabilities, and available tools.
     """
     
-    def __init__(self, kernel_client: MCPClient, kernel=None):
+    def __init__(self, mcp_client: MCPClient, kernel=None):
         """
         Initialize the system context builder.
         
         Args:
-            kernel_client: MCP client for communicating with the kernel server
+            mcp_client: MCP client for communicating with the MCP server
             kernel: Optional direct reference to the kernel instance for direct access to registry
         """
-        self.kernel_client = kernel_client
+        self.mcp_client = mcp_client
         self.kernel = kernel
         self.prompts = self._load_prompts()
     
@@ -122,29 +123,37 @@ class SystemContextBuilder:
             ]
         }
 
-    async def build_system_context(self, additional_context: str = None) -> str:
+    async def build_and_apply_system_context(self, prompt_obj: PromptObject, additional_context: str = None) -> bool:
         """
-        Build system context with general information about capabilities.
+        Build system context with general information about capabilities and apply it to the prompt object.
         Note: Specific tools are provided separately in the tools section of API requests,
         not in the system context, to avoid duplication.
         
         Args:
+            prompt_obj: The PromptObject to apply the system context to
             additional_context: Optional additional context to include
             
         Returns:
-            System context string with general guidance and capabilities
+            Boolean indicating success or failure
         """
-        # Build the system context with general guidance only (no more tool listings)
-        system_context = self._format_prompt(self.prompts["base_message_with_tools"], tool_names="available through the tools API")
-        
-        # Add general guidance
-        system_context += self._format_prompt(self.prompts["general_guidance"])
-        
-        # Add any additional context if provided
-        if additional_context:
-            system_context += self._format_prompt(self.prompts["additional_context_format"], additional_context=additional_context)
-        
-        return system_context
+        try:
+            # Build the system context with general guidance only (no more tool listings)
+            system_context = self._format_prompt(self.prompts["base_message_with_tools"], tool_names="available through the tools API")
+            
+            # Add general guidance
+            system_context += self._format_prompt(self.prompts["general_guidance"])
+            
+            # Add any additional context if provided
+            if additional_context:
+                system_context += self._format_prompt(self.prompts["additional_context_format"], additional_context=additional_context)
+            
+            # Add the system context to the prompt object's conversation history
+            prompt_obj.add_system_message(system_context)
+            
+            return True
+        except Exception as e:
+            logger.error(f"Error building and applying system context: {str(e)}")
+            return False
 
     def _format_prompt(self, prompt_data, **kwargs) -> str:
         """

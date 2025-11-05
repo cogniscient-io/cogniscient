@@ -5,7 +5,7 @@ import pytest
 import pytest_asyncio
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
-from gcs_kernel.scheduler import ToolExecutionScheduler
+from gcs_kernel.tool_execution_manager import ToolExecutionManager
 from gcs_kernel.models import ToolDefinition, ToolState, ToolApprovalMode
 from gcs_kernel.registry import ToolRegistry
 
@@ -35,18 +35,18 @@ class MockTool:
 
 @pytest.mark.asyncio
 class TestToolExecutionScheduler:
-    """Test cases for the ToolExecutionScheduler class."""
+    """Test cases for the ToolExecutionManager class."""
     
     @pytest_asyncio.fixture
     async def scheduler(self):
-        """Create a ToolExecutionScheduler instance for testing."""
-        scheduler = ToolExecutionScheduler()
-        await scheduler.initialize()
-        
-        # Create a mock registry and attach it to the scheduler
+        """Create a ToolExecutionManager instance for testing."""
+        # Create a mock registry first
         registry = ToolRegistry()
         await registry.initialize()
-        scheduler.tool_registry = registry
+        
+        # Create the scheduler with the registry
+        scheduler = ToolExecutionManager(kernel_registry=registry)
+        await scheduler.initialize()
         
         # Register the mock tool
         mock_tool = MockTool()
@@ -58,56 +58,27 @@ class TestToolExecutionScheduler:
     
     async def test_submit_tool_execution_with_valid_params(self, scheduler):
         """Test submitting a tool execution with valid parameters."""
-        tool_def = ToolDefinition.create(
-            name="mock_tool",
-            description="A mock tool for testing",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "param1": {"type": "string"}
-                },
-                "required": ["param1"]
-            },
-            display_name="Mock Tool",
-            approval_required=False  # Set to not require approval for this test
-        )
+        # The new API doesn't need ToolDefinition to execute a tool
+        # We just call execute_internal_tool with the tool name and parameters
+        result = await scheduler.execute_internal_tool("mock_tool", {"param1": "test_value"})
         
-        execution_id = await scheduler.submit_tool_execution(tool_def, {"param1": "test_value"})
-        
-        # Check that execution was scheduled
-        execution = scheduler.get_execution(execution_id)
-        assert execution is not None
-        assert execution.tool_name == "mock_tool"
-        assert execution.parameters == {"param1": "test_value"}
-        
-        # Should be completed or scheduled since approval_required=False
-        # If approval is not required, the state should move to SCHEDULED or COMPLETED
-        assert execution.state in [ToolState.COMPLETED, ToolState.SCHEDULED]
+        # Check that execution was successful
+        assert result is not None
+        assert result.success is True
+        assert result.tool_name == "mock_tool"
+        assert f"param1=test_value" in result.return_display  # From MockTool implementation
     
     async def test_submit_tool_execution_with_invalid_params(self, scheduler):
         """Test submitting a tool execution with invalid parameters."""
-        tool_def = ToolDefinition.create(
-            name="mock_tool",
-            description="A mock tool for testing",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "param1": {"type": "string"}
-                },
-                "required": ["param1"]
-            },
-            display_name="Mock Tool"
-        )
+        # The new API doesn't need ToolDefinition to execute a tool
+        # We just call execute_internal_tool with the tool name and parameters
+        result = await scheduler.execute_internal_tool("mock_tool", {"param2": "test_value"})
         
-        execution_id = await scheduler.submit_tool_execution(tool_def, {"param2": "test_value"})
-        
-        # Check that execution failed validation
-        execution = scheduler.get_execution(execution_id)
-        assert execution is not None
-        assert execution.state == ToolState.COMPLETED
-        assert execution.result is not None
-        assert execution.result.success is False
-        assert "Invalid parameters" in execution.result.error
+        # Check that execution failed validation 
+        assert result is not None
+        assert result.success is False
+        assert result.tool_name == "mock_tool"
+        assert "Invalid parameters" in result.error  # From validation in execute_internal_tool
     
     async def test_determine_approval_mode(self, scheduler):
         """Test determining approval mode for tool execution."""

@@ -5,17 +5,20 @@ This module implements the core GCSKernel class which provides
 the foundational services for the Generic Control System Kernel.
 """
 
-import asyncio
+import uuid
 from typing import Dict, Any, Optional
 
-from gcs_kernel.models import ResourceQuota, ToolInclusionConfig
+from gcs_kernel.models import ResourceQuota, PromptObject
 from gcs_kernel.event_loop import EventLoop
-from gcs_kernel.scheduler import ToolExecutionScheduler
 from gcs_kernel.registry import ToolRegistry
 from gcs_kernel.resource_manager import ResourceAllocationManager
 from gcs_kernel.security import SecurityLayer
 from gcs_kernel.logger import EventLogger
 from gcs_kernel.mcp.client import MCPClient
+from gcs_kernel.tool_execution_manager import ToolExecutionManager
+from services.ai_orchestrator.orchestrator_service import AIOrchestratorService
+from services.llm_provider.content_generator import LLMContentGenerator
+from services.config import settings
 
 
 class GCSKernel:
@@ -23,7 +26,7 @@ class GCSKernel:
     Core GCS Kernel class implementing the main orchestration functionality.
     
     The GCS Kernel provides operating-system-like services for streaming AI agent
-    orchestration, including event loop management, tool execution scheduling,
+    orchestration, including event loop management, tool execution via ToolExecutionManager,
     resource allocation, and security enforcement.
     """
     
@@ -38,36 +41,37 @@ class GCSKernel:
         
         # Initialize core services
         self.event_loop = EventLoop()
-        self.scheduler = ToolExecutionScheduler()
         self.registry = ToolRegistry()
         self.resource_manager = ResourceAllocationManager()
         self.security_layer = SecurityLayer()
         self.logger = EventLogger()
         self.mcp_client = MCPClient()
         
-        # Initialize prompt configuration registry
-        self.prompt_config_registry = {}
+        # Initialize prompt object registry
+        self.prompt_object_registry = {}
+        
+        # Initialize the unified ToolExecutionManager for handling all tool execution scenarios
+        self.tool_execution_manager = ToolExecutionManager(
+            kernel_registry=self.registry,
+            mcp_client=self.mcp_client,
+            logger=self.logger
+        )
         
         # Initialize AI orchestrator with direct kernel access for simplified architecture
-        from services.ai_orchestrator.orchestrator_service import AIOrchestratorService
-        from services.llm_provider.content_generator import LLMContentGenerator
-        from services.config import settings
         # Create content generator using settings
         content_generator = LLMContentGenerator()
         # Initialize orchestrator as the primary AI interaction handler
         self.ai_orchestrator = AIOrchestratorService(
-            kernel_client=self.mcp_client,
+            self.mcp_client,
             content_generator=content_generator,
             kernel=self
         )
         # Set kernel services for direct access by orchestrator
         self.ai_orchestrator.set_kernel_services(
             registry=self.registry,
-            scheduler=self.scheduler
+            # Use the tool_execution_manager instead of the old scheduler
+            tool_execution_manager=self.tool_execution_manager
         )
-        
-        # Connect scheduler to the registry so it can execute tools
-        self.scheduler.tool_registry = self.registry
         
         # Initialize with resource quotas
         self.resource_quota = ResourceQuota(**self.config.get('resource_quota', {}))
@@ -123,8 +127,8 @@ class GCSKernel:
         # Initialize registry with reference to kernel for system tools
         await self.registry.initialize(kernel=self)
         
-        # Initialize scheduler
-        await self.scheduler.initialize()
+        # Initialize tool execution manager
+        # No initialization needed as it happens in the constructor
         
         # Initialize logger
         await self.logger.initialize()
@@ -147,7 +151,10 @@ class GCSKernel:
         # Clean up components in reverse order
         await self.mcp_client.shutdown()
         await self.logger.shutdown()
-        await self.scheduler.shutdown()
+        
+        # Shutdown the tool execution manager
+        await self.tool_execution_manager.shutdown()
+        
         await self.registry.shutdown()
         await self.resource_manager.shutdown()
         await self.security_layer.shutdown()
@@ -161,59 +168,104 @@ class GCSKernel:
         """
         return self._running
 
-    def register_prompt_config(self, prompt_id: str, config: 'ToolInclusionConfig'):
-        """
-        Register a prompt configuration with the kernel.
-        
-        Args:
-            prompt_id: Unique identifier for the prompt
-            config: The tool inclusion configuration for the prompt
-        """
-        self.prompt_config_registry[prompt_id] = config
 
-    def get_prompt_config(self, prompt_id: str) -> Optional['ToolInclusionConfig']:
+
+    def create_prompt_object(self, content: str, **kwargs) -> PromptObject:
+        """Create a new prompt object with the given content and additional properties."""
+        # Apply system defaults if not provided in kwargs
+        if kwargs.get('max_tokens') is None:
+            kwargs['max_tokens'] = settings.llm_max_tokens
+        if kwargs.get('temperature') is None:
+            kwargs['temperature'] = settings.llm_temperature
+        
+        prompt_obj = PromptObject.create(
+            content=content,
+            **kwargs
+        )
+        # Register the prompt object
+        self.prompt_object_registry[prompt_obj.prompt_id] = prompt_obj
+        return prompt_obj
+
+    def get_prompt_object(self, prompt_id: str) -> Optional[PromptObject]:
         """
-        Get the configuration for a specific prompt.
+        Get a prompt object by its ID.
         
         Args:
-            prompt_id: Unique identifier for the prompt
+            prompt_id: The ID of the prompt object
             
         Returns:
-            The tool inclusion configuration for the prompt, or None if not found
+            The prompt object if found, None otherwise
         """
-        return self.prompt_config_registry.get(prompt_id)
+        return self.prompt_object_registry.get(prompt_id)
 
-    def remove_prompt_config(self, prompt_id: str):
+    async def submit_prompt(self, content: str, **kwargs) -> str:
         """
-        Remove a prompt configuration from the registry.
+        Submit a new prompt for processing using the new architecture.
         
         Args:
-            prompt_id: Unique identifier for the prompt
-        """
-        if prompt_id in self.prompt_config_registry:
-            del self.prompt_config_registry[prompt_id]
-
-    async def send_user_prompt(self, prompt: str) -> str:
-        """
-        Handle a user prompt through the AI orchestrator.
-        
-        Args:
-            prompt: The user's input prompt
+            content: The prompt content
+            **kwargs: Additional properties to set on the prompt object
             
         Returns:
-            The AI response string
+            The processed result content
         """
-        return await self.ai_orchestrator.handle_ai_interaction(prompt)
+        # Apply system defaults if not provided in kwargs
+        if kwargs.get('max_tokens') is None:
+            kwargs['max_tokens'] = settings.llm_max_tokens
+        if kwargs.get('temperature') is None:
+            kwargs['temperature'] = settings.llm_temperature
+        
+        # Create a prompt object from the input using the factory method
+        prompt_obj = PromptObject.create(
+            content=content,
+            streaming_enabled=False,
+            **kwargs
+        )
+        
+        # Register the prompt object
+        self.prompt_object_registry[prompt_obj.prompt_id] = prompt_obj
+        
+        # Process through the orchestrator using prompt object
+        if self.ai_orchestrator:
+            # Use the orchestrator method that works with prompt objects directly
+            result_prompt_obj = await self.ai_orchestrator.handle_ai_interaction(prompt_obj)
+            
+            # Update the registry with the processed prompt object
+            self.prompt_object_registry[prompt_obj.prompt_id] = result_prompt_obj
+            
+            # Return the result content
+            return result_prompt_obj.result_content
 
-    async def stream_user_prompt(self, prompt: str):
+    async def stream_prompt(self, content: str, **kwargs):
         """
-        Stream a user prompt through the AI orchestrator.
+        Stream a prompt for processing using the new architecture.
         
         Args:
-            prompt: The user's input prompt
+            content: The prompt content
+            **kwargs: Additional properties to set on the prompt object
             
         Yields:
             Partial response strings as they become available
         """
-        async for chunk in self.ai_orchestrator.stream_ai_interaction(prompt):
-            yield chunk
+        # Apply system defaults if not provided in kwargs
+        if kwargs.get('max_tokens') is None:
+            kwargs['max_tokens'] = settings.llm_max_tokens
+        if kwargs.get('temperature') is None:
+            kwargs['temperature'] = settings.llm_temperature
+        
+        # Create a prompt object from the input using the factory method
+        prompt_obj = PromptObject.create(
+            content=content,
+            streaming_enabled=True,
+            **kwargs
+        )
+        
+        # Register the prompt object
+        self.prompt_object_registry[prompt_obj.prompt_id] = prompt_obj
+        
+        # Stream through the orchestrator using prompt object
+        if self.ai_orchestrator:
+            # For streaming, we use the orchestrator method that works with prompt objects
+            async for chunk in self.ai_orchestrator.stream_ai_interaction(prompt_obj):
+                yield chunk
+

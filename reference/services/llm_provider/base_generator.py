@@ -6,7 +6,10 @@ the ai_orchestrator will depend on, providing proper abstraction.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, AsyncIterator
+from typing import AsyncIterator, Dict, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from gcs_kernel.models import PromptObject
 
 
 class BaseContentGenerator(ABC):
@@ -17,59 +20,52 @@ class BaseContentGenerator(ABC):
     """
     
     @abstractmethod
-    async def generate_response(self, prompt: str, system_context: str = None, prompt_id: str = None) -> Any:
+    async def generate_response(self, prompt_obj: 'PromptObject') -> None:
         """
-        Generate a response to the given prompt with potential tool calls.
+        Generate a response to the given prompt object with potential tool calls.
+        Operates on the live prompt object in place.
         
         Args:
-            prompt: The input prompt
-            system_context: Optional system context
-            prompt_id: Unique identifier for the prompt which contains tool inclusion configuration
+            prompt_obj: The prompt object containing all necessary information
             
         Returns:
-            The generated response with potential tool calls
+            None. Updates the prompt object in place. Raises exception if there's an error.
         """
         pass
     
     @abstractmethod
-    async def process_tool_result(self, tool_result: Any, conversation_history: list = None, prompt_id: str = None) -> Any:
+    async def stream_response(self, prompt_obj: 'PromptObject') -> AsyncIterator[str]:
         """
-        Process a tool result and continue the conversation.
+        Stream a response to the given prompt object.
         
         Args:
-            tool_result: The result from a tool execution
-            conversation_history: The conversation history to maintain context
-            prompt_id: Unique identifier for the prompt which contains tool inclusion configuration
-        
-        Returns:
-            The updated response after processing the tool result
-        """
-        pass
-    
-    @abstractmethod
-    async def stream_response(self, prompt: str) -> AsyncIterator[str]:
-        """
-        Stream a response to the given prompt.
-        
-        Args:
-            prompt: The input prompt
+            prompt_obj: The prompt object containing all necessary information
             
         Yields:
             Partial response strings as they become available
         """
         pass
     
-    @abstractmethod
-    async def generate_response_from_conversation(self, conversation_history: list, prompt_id: str = None) -> Any:
+    def process_streaming_chunks(self, chunks: list) -> Dict[str, Any]:
         """
-        Generate a response based on conversation history with potential tool calls.
-        This is the preferred method that works with proper conversation history.
+        Process accumulated streaming chunks into a complete response.
         
         Args:
-            conversation_history: Full conversation history including system, user, assistant, and tool messages
-            prompt_id: Unique identifier for the prompt which contains tool inclusion configuration
+            chunks: List of streaming response chunks
             
         Returns:
-            The generated response with potential tool calls
+            Complete response in OpenAI format
         """
-        pass
+        # Default implementation that just returns an empty response
+        # Subclasses should override this with their specific logic
+        return {
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": ""
+                },
+                "finish_reason": "stop"
+            }]
+        }
+    

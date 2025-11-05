@@ -38,10 +38,8 @@ class BaseConverter:
         # Start with the incoming request - it's likely already mostly in OpenAI format
         provider_request = request.copy()
         
-        # Ensure required fields are set
+        # Ensure model is set
         provider_request.setdefault("model", self.model)
-        provider_request.setdefault("temperature", settings.llm_temperature)
-        provider_request.setdefault("max_tokens", settings.llm_max_tokens)
         
         # Handle legacy format conversion if needed
         if "prompt" in request and "messages" not in request:

@@ -23,15 +23,15 @@ async def test_ai_orchestrator():
     try:
         # Try to send a simple prompt directly to the kernel
         print("Sending 'hello' prompt to kernel...")
-        response = await kernel.send_user_prompt("Hello")
+        response = await kernel.submit_prompt("Hello")
         print(f"Response to 'hello': {response}")
         
         print("\nSending 'what is the current date?' prompt to kernel...")
-        response = await kernel.send_user_prompt("What is the current date?")
+        response = await kernel.submit_prompt("What is the current date?")
         print(f"Response to 'what is the current date?': {response}")
         
         print("\nSending 'get system status' prompt to kernel...")
-        response = await kernel.send_user_prompt("Get system status")
+        response = await kernel.submit_prompt("Get system status")
         print(f"Response to 'get system status': {response}")
         
     finally:
@@ -70,11 +70,11 @@ async def test_kernel_with_mocked_llm():
     # Now test with the mocked LLM
     try:
         print("Sending 'what is the date?' with mocked LLM...")
-        response = await kernel.send_user_prompt("What is the date?")
+        response = await kernel.submit_prompt("What is the date?")
         print(f"Response with mocked LLM: {response}")
         
         print("Sending 'hello' with mocked LLM...")
-        response = await kernel.send_user_prompt("Hello")
+        response = await kernel.submit_prompt("Hello")
         print(f"Response with mocked LLM: {response}")
         
     finally:
@@ -97,7 +97,9 @@ async def test_turn_based_interaction():
         print("Testing streaming interaction...")
         response_chunks = []
         
-        async for chunk in kernel.ai_orchestrator.stream_ai_interaction("Hello"):
+        from gcs_kernel.models import PromptObject
+        prompt_obj = PromptObject.create(content="Hello")
+        async for chunk in kernel.ai_orchestrator.stream_ai_interaction(prompt_obj):
             response_chunks.append(chunk)
             
         full_response = "".join(response_chunks)

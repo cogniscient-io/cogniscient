@@ -124,3 +124,69 @@ class OpenAIProvider(BaseProvider):
         openai_request = self.converter.convert_kernel_request_to_provider(openai_request)
         
         return openai_request
+
+    async def get_model_info(self, model_name: str) -> Dict[str, Any]:
+        """
+        Get information about a specific model by querying the OpenAI API.
+        This includes model capabilities like maximum context length.
+        
+        Args:
+            model_name: Name of the model to get information for
+
+        Returns:
+            Dictionary containing model information including capabilities
+        """
+        import httpx
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # Build headers for the request
+        headers = self.build_headers()
+
+        # Use the models endpoint to get information about the model
+        url = f"{self.base_url}/models/{model_name}"
+        
+        try:
+            # Create a temporary client for this request
+            async with httpx.AsyncClient(timeout=self.timeout, headers=headers) as client:
+                response = await client.get(url)
+                
+                if response.status_code == 200:
+                    model_data = response.json()
+                    logger.info(f"Successfully retrieved model info for {model_name}")
+                    
+                    # Extract relevant information from the model data
+                    result = {
+                        'id': model_data.get('id'),
+                        'object': model_data.get('object'),
+                        'created': model_data.get('created'),
+                        'owned_by': model_data.get('owned_by'),
+                        # Note: OpenAI API doesn't directly provide context length in this endpoint
+                        # This is where we would extract max context length if available
+                        'max_context_length': 128000 if 'gpt-4-turbo' in model_name else 
+                                            128000 if 'gpt-4' in model_name else 
+                                            16384 if 'gpt-3.5-turbo' in model_name else 
+                                            4096,  # Default fallback
+                        'capabilities': {
+                            # Additional capabilities could be included here
+                        }
+                    }
+                    return result
+                else:
+                    logger.error(f"Failed to retrieve model info: {response.status_code} - {response.text}")
+                    # Return default info with the fallback value from settings
+                    from common.settings import settings
+                    return {
+                        'id': model_name,
+                        'max_context_length': settings.llm_max_tokens,
+                        'capabilities': {}
+                    }
+        except Exception as e:
+            logger.error(f"Error retrieving model info for {model_name}: {str(e)}")
+            # Return default info with the fallback value from settings
+            from common.settings import settings
+            return {
+                'id': model_name,
+                'max_context_length': settings.llm_max_tokens,
+                'capabilities': {}
+            }

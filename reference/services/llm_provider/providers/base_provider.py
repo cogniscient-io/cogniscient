@@ -14,11 +14,11 @@ class BaseProvider(ABC):
     Abstract base class for LLM providers following Qwen Code patterns.
     Provides common configuration and properties for all LLM providers.
     """
-    
+
     def __init__(self, config: Dict[str, Any]):
         """
         Initialize the base provider with configuration.
-        
+
         Args:
             config: Dictionary containing provider configuration
                    Expected keys: api_key, model, base_url, timeout, max_retries
@@ -29,7 +29,7 @@ class BaseProvider(ABC):
         self.base_url = config.get("base_url", "https://api.default-llm-provider.com/v1")
         self.timeout = config.get("timeout", 60)
         self.max_retries = config.get("max_retries", 3)
-        
+
     @property
     @abstractmethod
     def converter(self):
@@ -38,36 +38,49 @@ class BaseProvider(ABC):
         Each provider implementation should return a converter appropriate for its API format.
         """
         pass
-    
+
     @abstractmethod
     def build_headers(self) -> Dict[str, str]:
         """
         Build headers for API requests following Qwen Code patterns.
-        
+
         Returns:
             Dictionary of headers to include in API requests
         """
         pass
-    
+
     @abstractmethod
     def build_client(self):
         """
         Build the API client following Qwen Code patterns.
-        
+
         Returns:
             Initialized API client instance
         """
         pass
-    
+
     @abstractmethod
     def build_request(self, prompt_obj: 'PromptObject') -> Dict[str, Any]:
         """
         Build the request with provider-specific features from a PromptObject.
-        
+
         Args:
             prompt_obj: The PromptObject containing all necessary information
-            
+
         Returns:
             Enhanced request with provider-specific features
+        """
+        pass
+
+    @abstractmethod
+    async def get_model_info(self, model_name: str) -> Dict[str, Any]:
+        """
+        Get information about a specific model including its capabilities.
+
+        Args:
+            model_name: Name of the model to get information for
+
+        Returns:
+            Dictionary containing model information including capabilities
         """
         pass

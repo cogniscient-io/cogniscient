@@ -28,7 +28,8 @@ class GlobalSettings(BaseSettings):
     llm_timeout: int = 60
     llm_max_retries: int = 3
     llm_temperature: float = 0.7
-    llm_max_tokens: int = 1000
+    llm_max_tokens: int = 1000  # Max tokens for the response/output
+    llm_max_context_length: int = 128000  # Max total tokens for context (input + output)
 
     # Application settings
     log_level: str = "INFO"

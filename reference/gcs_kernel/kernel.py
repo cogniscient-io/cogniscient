@@ -73,6 +73,7 @@ class GCSKernel:
         # Initialize AI orchestrator with direct kernel access for simplified architecture
         # Create content generator using settings
         content_generator = LLMContentGenerator()
+        content_generator.kernel = self  # Set kernel reference for model info updates
         # Initialize orchestrator as the primary AI interaction handler
         self.ai_orchestrator = AIOrchestratorService(
             self.mcp_client_manager,
@@ -98,6 +99,47 @@ class GCSKernel:
         self._running = False
         # Set up initialization flag
         self._fully_initialized = False
+
+    async def fetch_model_info_and_update_settings(self):
+        """
+        Fetch model information from the provider and update system settings accordingly.
+        Uses .env setting as fallback if model information cannot be retrieved.
+        """
+        # Try to get the provider from the content generator
+        if self.ai_orchestrator and self.ai_orchestrator.content_generator:
+            provider = self.ai_orchestrator.content_generator.provider
+            model_name = self.ai_orchestrator.content_generator.provider.model
+            
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            try:
+                # Fetch model information
+                model_info = await provider.get_model_info(model_name)
+                
+                # Extract max context length from model information
+                max_context_length = model_info.get('max_context_length', settings.llm_max_context_length)
+                
+                logger.info(f"Model {model_name} has max context length: {max_context_length}")
+                
+                # Update the settings value with the actual model capability
+                old_max_context_length = settings.llm_max_context_length
+                settings.llm_max_context_length = max_context_length
+                
+                logger.info(f"Updated llm_max_context_length from {old_max_context_length} to {max_context_length}")
+                
+                # Return the actual model context length for immediate use
+                return max_context_length
+            except Exception as e:
+                logger.error(f"Failed to fetch model info for {model_name}: {str(e)}")
+                # Fallback to .env setting
+                logger.info(f"Using fallback max_context_length: {settings.llm_max_context_length}")
+                return settings.llm_max_context_length
+        else:
+            logger.error("Could not access provider to fetch model information")
+            return settings.llm_max_context_length
+
+
 
     async def run(self):
         """
@@ -334,6 +376,7 @@ class GCSKernel:
         """Create a new prompt object with the given content and additional properties."""
         # Apply system defaults if not provided in kwargs
         if kwargs.get('max_tokens') is None:
+            # Use settings value directly (which can be updated at runtime)
             kwargs['max_tokens'] = settings.llm_max_tokens
         if kwargs.get('temperature') is None:
             kwargs['temperature'] = settings.llm_temperature
@@ -409,6 +452,7 @@ class GCSKernel:
         """
         # Apply system defaults if not provided in kwargs
         if kwargs.get('max_tokens') is None:
+            # Use settings value directly (which can be updated at runtime)
             kwargs['max_tokens'] = settings.llm_max_tokens
         if kwargs.get('temperature') is None:
             kwargs['temperature'] = settings.llm_temperature

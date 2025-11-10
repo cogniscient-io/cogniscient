@@ -13,7 +13,7 @@ from gcs_kernel.kernel import GCSKernel
 from services.ai_orchestrator.orchestrator_service import AIOrchestratorService
 from services.llm_provider.content_generator import LLMContentGenerator
 from services.llm_provider.providers.mock_provider import MockProvider
-from services.config import settings
+from common.settings import settings
 
 
 class MockMCPClient:
@@ -210,16 +210,21 @@ async def test_kernel_llm_tool_calling_integration():
             def __init__(self, mcp_client):
                 self.mcp_client = mcp_client
             
-            async def execute_internal_tool(self, tool_name, arguments):
+            async def execute_tool_call(self, tool_call):
                 import json
                 try:
-                    params = json.loads(arguments) if isinstance(arguments, str) else arguments
+                    params = json.loads(tool_call.arguments) if isinstance(tool_call.arguments, str) else tool_call.arguments
                 except:
                     params = {}
-                
-                execution_id = await self.mcp_client.submit_tool_execution(tool_name, params)
+
+                execution_id = await self.mcp_client.submit_tool_execution(tool_call.name, params)
                 result = await self.mcp_client.get_execution_result(execution_id)
-                return result
+                return {
+                    "tool_call_id": tool_call.id,
+                    "tool_name": tool_call.name,
+                    "result": result,
+                    "success": result.success if hasattr(result, 'success') else True
+                }
         
         # Set the tool execution manager to enable tool execution in the turn manager
         mock_tool_execution_manager = MockToolExecutionManager(mock_kernel_client)
@@ -389,16 +394,21 @@ async def test_kernel_llm_streaming_tool_calling_integration():
             def __init__(self, mcp_client):
                 self.mcp_client = mcp_client
             
-            async def execute_internal_tool(self, tool_name, arguments):
+            async def execute_tool_call(self, tool_call):
                 import json
                 try:
-                    params = json.loads(arguments) if isinstance(arguments, str) else arguments
+                    params = json.loads(tool_call.arguments) if isinstance(tool_call.arguments, str) else tool_call.arguments
                 except:
                     params = {}
-                
-                execution_id = await self.mcp_client.submit_tool_execution(tool_name, params)
+
+                execution_id = await self.mcp_client.submit_tool_execution(tool_call.name, params)
                 result = await self.mcp_client.get_execution_result(execution_id)
-                return result
+                return {
+                    "tool_call_id": tool_call.id,
+                    "tool_name": tool_call.name,
+                    "result": result,
+                    "success": result.success if hasattr(result, 'success') else True
+                }
         
         # Set the tool execution manager to enable tool execution in the turn manager
         mock_tool_execution_manager = MockToolExecutionManager(mock_kernel_client)

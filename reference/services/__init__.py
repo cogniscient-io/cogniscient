@@ -7,7 +7,7 @@ This package contains all the services for the GCS Kernel, including:
 - Configuration Management
 """
 
-from .config import settings
+from common.settings import settings
 from .llm_provider import (
     BaseContentGenerator,
     LLMContentGenerator,

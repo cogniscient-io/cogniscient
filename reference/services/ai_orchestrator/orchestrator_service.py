@@ -13,8 +13,6 @@ from gcs_kernel.models import PromptObject, ToolInclusionConfig
 from services.llm_provider.base_generator import BaseContentGenerator
 from .system_context_builder import SystemContextBuilder
 from .turn_manager import TurnManager, TurnEventType
-from .tool_executor import ToolExecutor
-
 
 
 class AIOrchestratorService:
@@ -44,7 +42,6 @@ class AIOrchestratorService:
         
         # Initialize components based on Qwen architecture
         self.turn_manager = TurnManager(mcp_client, content_generator)
-        self.tool_executor = ToolExecutor(mcp_client, kernel)
 
         
         # Initialize system context builder for creating system context with prompts
@@ -72,10 +69,6 @@ class AIOrchestratorService:
             self.turn_manager.registry = registry
             # Use the new tool execution manager
             self.turn_manager.tool_execution_manager = tool_execution_manager
-        if self.tool_executor:
-            self.tool_executor.registry = registry
-            # Use the new tool execution manager
-            self.tool_executor.tool_execution_manager = tool_execution_manager
 
 
     def set_content_generator(self, provider: 'BaseContentGenerator'):

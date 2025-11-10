@@ -90,7 +90,7 @@ class SetLogLevelTool:
             logging.getLogger().setLevel(numeric_level)
             
             # Update the log level in our config module
-            from services.config import settings, configure_logging
+            from common.settings import settings, configure_logging
             settings.log_level = level
             configure_logging()  # Reconfigure logging with the new level
             
@@ -281,3 +281,55 @@ class GetToolInfoTool:
                 llm_content=error_msg,
                 return_display=error_msg
             )
+
+
+async def register_system_tools(kernel) -> bool:
+    """
+    Register all system tools with the kernel registry.
+    This should be called after the kernel and registry are initialized.
+    
+    Args:
+        kernel: The GCSKernel instance
+        
+    Returns:
+        True if registration was successful, False otherwise
+    """
+    import time
+    start_time = time.time()
+    
+    from gcs_kernel.registry import ToolRegistry
+    
+    # Check if the kernel and registry are available
+    if not kernel or not hasattr(kernel, 'registry'):
+        if hasattr(kernel, 'logger') and kernel.logger:
+            kernel.logger.error("Kernel registry not available for system tool registration")
+        return False
+
+    registry = kernel.registry
+    
+    if hasattr(kernel, 'logger') and kernel.logger:
+        kernel.logger.debug("Starting system tools registration...")
+    
+    # List of system tools to register
+    system_tools = [
+        ListToolsTool(kernel),
+        GetToolInfoTool(kernel),
+        SetLogLevelTool(kernel)
+    ]
+    
+    # Register each system tool
+    for tool in system_tools:
+        if hasattr(kernel, 'logger') and kernel.logger:
+            kernel.logger.debug(f"Registering system tool: {tool.name}")
+        
+        success = await registry.register_tool(tool)
+        if not success:
+            if hasattr(kernel, 'logger') and kernel.logger:
+                kernel.logger.error(f"Failed to register system tool: {tool.name}")
+            return False
+    
+    elapsed = time.time() - start_time
+    if hasattr(kernel, 'logger') and kernel.logger:
+        kernel.logger.info(f"Successfully registered {len(system_tools)} system tools (elapsed: {elapsed:.2f}s)")
+    
+    return True

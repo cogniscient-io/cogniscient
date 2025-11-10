@@ -5,7 +5,7 @@ This module tests the Pydantic Settings class.
 """
 import os
 import pytest
-from services.config import Settings
+from common.settings import GlobalSettings as Settings
 
 
 def test_config_default_values():
@@ -14,7 +14,7 @@ def test_config_default_values():
     """
     # Just test that the Settings class can be instantiated properly
     # The defaults are tested indirectly via other tests
-    from services.config import settings
+    from common.settings import settings
     
     # Simply verify that settings has the required properties
     assert hasattr(settings, 'host')

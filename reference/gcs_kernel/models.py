@@ -133,6 +133,8 @@ class MCPConfig(BaseModel):
     client_secret: Optional[str] = Field(default=None, description="Client secret for authentication")
     connection_timeout: int = Field(default=30, description="Connection timeout in seconds")
     request_timeout: int = Field(default=60, description="Request timeout in seconds")
+    runtime_data_directory: str = Field(default="./runtime_data", description="Directory to store runtime data including MCP server registry")
+    server_registry_filename: str = Field(default="mcp_servers.json", description="Filename for the MCP server registry file")
 
 
 class ToolInclusionPolicy(str, Enum):

@@ -1,0 +1,41 @@
+[
+  {
+    "server_id": "87a70ce46ea04de7c28dd1e4da31904c",
+    "server_url": "http://localhost:3000",
+    "name": "http://localhost:3000",
+    "description": "MCP server at http://localhost:3000",
+    "capabilities": [
+      "example_tool",
+      "date_tool",
+      "echo_tool"
+    ],
+    "last_connected": "2025-11-06T15:48:59.055505",
+    "status": "error"
+  },
+  {
+    "server_id": "5c838815efa2b58489cdfbdfba7550b4",
+    "server_url": "http://192.168.0.191:8051/mcp",
+    "name": "http://192.168.0.191:8051/mcp",
+    "description": "MCP server at http://192.168.0.191:8051/mcp",
+    "capabilities": [
+      "health_check",
+      "session_info",
+      "rag_get_available_sources",
+      "rag_search_knowledge_base",
+      "rag_search_code_examples",
+      "rag_list_pages_for_source",
+      "rag_read_full_page",
+      "find_projects",
+      "manage_project",
+      "find_tasks",
+      "manage_task",
+      "find_documents",
+      "manage_document",
+      "find_versions",
+      "manage_version",
+      "get_project_features"
+    ],
+    "last_connected": "2025-11-10T10:36:59.119418",
+    "status": "active"
+  }
+]

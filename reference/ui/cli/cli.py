@@ -6,9 +6,11 @@ This module implements the CLI using new common UI components with proper async 
 """
 
 import asyncio
+import hashlib
 from gcs_kernel.kernel import GCSKernel
 from gcs_kernel.models import MCPConfig
 from gcs_kernel.mcp.client import MCPClient
+from gcs_kernel.mcp.client_manager import MCPClientManager
 from ui.common.kernel_api import KernelAPIClient
 from ui.common.cli_ui import CLIUI
 
@@ -46,11 +48,6 @@ def main():
                 
                 if elapsed >= max_wait:
                     print(f"Warning: Kernel initialization took longer than {max_wait} seconds, proceeding anyway...")
-                
-                # Initialize MCP client for kernel communication
-                mcp_config = MCPConfig(server_url="http://localhost:8000")
-                mcp_client = MCPClient(mcp_config)
-                await mcp_client.initialize()
                 
                 # Create the new clean kernel API client
                 kernel_api_client = KernelAPIClient(kernel)

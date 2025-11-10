@@ -5,7 +5,7 @@ This module implements the provider factory following Qwen Code patterns.
 """
 
 from typing import Dict, Any, Type
-from services.config import settings
+from common.settings import settings
 from services.llm_provider.providers.base_provider import BaseProvider
 from services.llm_provider.providers.openai_provider import OpenAIProvider
 from services.llm_provider.providers.mock_provider import MockProvider

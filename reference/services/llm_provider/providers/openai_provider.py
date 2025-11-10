@@ -85,6 +85,11 @@ class OpenAIProvider(BaseProvider):
         # OpenAI-compliant: messages should contain the complete conversation history
         messages = prompt_obj.conversation_history.copy()
         
+        # Log the messages for debugging to see if system message is present
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.debug(f"OpenAIProvider build_request - conversation history: {messages}")
+        
         # Create the OpenAI request from the prompt object fields
         openai_request = {
             "messages": messages,

@@ -92,7 +92,19 @@ async def test_turn_level_conversation_history_with_tool_call():
     
     # Create mock tool execution manager for the test
     mock_tool_execution_manager = AsyncMock()
-    mock_tool_execution_manager.execute_internal_tool.return_value = tool_result
+
+    from gcs_kernel.tool_call_model import ToolCall
+
+    # Mock the unified execute_tool_call method 
+    async def mock_execute_tool_call(tool_call: ToolCall):
+        return {
+            "tool_call_id": tool_call.id,
+            "tool_name": tool_call.name,
+            "result": tool_result,
+            "success": tool_result.success
+        }
+
+    mock_tool_execution_manager.execute_tool_call = AsyncMock(side_effect=mock_execute_tool_call)
     mock_tool_execution_manager.registry = None  # Mock registry as None for test
     
     # Create orchestrator

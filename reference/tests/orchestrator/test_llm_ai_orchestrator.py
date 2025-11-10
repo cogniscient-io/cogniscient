@@ -197,8 +197,14 @@ async def test_ai_orchestrator_initialization():
     """
     Test that AIOrchestratorService initializes properly with MCP client.
     """
-    mcp_config = MCPConfig(server_url="http://test-url")
-    kernel_client = MCPClient(mcp_config)
+    from unittest.mock import AsyncMock
+    
+    # In the new architecture, MCPClient expects a session and server URL
+    mock_session = AsyncMock()
+    # Mock the list_tools method to return an empty list to avoid the warning
+    mock_session.list_tools.return_value = []
+    server_url = "http://test-url"
+    kernel_client = MCPClient(mock_session, server_url)
     
     orchestrator = AIOrchestratorService(kernel_client)
     
@@ -206,7 +212,6 @@ async def test_ai_orchestrator_initialization():
     assert orchestrator.content_generator is None
     # Ensure all new components are initialized
     assert orchestrator.turn_manager is not None
-    assert orchestrator.tool_executor is not None
 
 
 @pytest.mark.asyncio
@@ -214,8 +219,14 @@ async def test_ai_orchestrator_set_content_generator():
     """
     Test that AIOrchestratorService can have its content generator set.
     """
-    mcp_config = MCPConfig(server_url="http://test-url")
-    kernel_client = MCPClient(mcp_config)
+    from unittest.mock import AsyncMock
+    
+    # In the new architecture, MCPClient expects a session and server URL
+    mock_session = AsyncMock()
+    # Mock the list_tools method to return an empty list to avoid the warning
+    mock_session.list_tools.return_value = []
+    server_url = "http://test-url"
+    kernel_client = MCPClient(mock_session, server_url)
     
     orchestrator = AIOrchestratorService(kernel_client)
     mock_provider = AIOrchestratorTestContentGenerator()
@@ -232,8 +243,14 @@ async def test_ai_orchestrator_handle_ai_interaction():
     """
     Test that AIOrchestratorService can handle an AI interaction.
     """
-    mcp_config = MCPConfig(server_url="http://test-url")
-    kernel_client = MCPClient(mcp_config)
+    from unittest.mock import AsyncMock
+    
+    # In the new architecture, MCPClient expects a session and server URL
+    mock_session = AsyncMock()
+    # Mock the list_tools method to return an empty list to avoid the warning
+    mock_session.list_tools.return_value = []
+    server_url = "http://test-url"
+    kernel_client = MCPClient(mock_session, server_url)
     
     orchestrator = AIOrchestratorService(kernel_client)
     # Use mock generator with custom response content that will include the prompt
@@ -285,7 +302,7 @@ async def test_ai_orchestrator_handle_ai_interaction_with_tool_call():
     
     # Create a mock tool execution manager for the test
     mock_tool_execution_manager = AsyncMock()
-    mock_tool_execution_manager.execute_internal_tool.return_value = tool_result
+    mock_tool_execution_manager._execute_internal_tool.return_value = tool_result
     mock_tool_execution_manager.registry = None  # Mock registry as None for test
     
     orchestrator = AIOrchestratorService(mock_kernel_client)
@@ -312,8 +329,14 @@ async def test_ai_orchestrator_stream_ai_interaction():
     """
     Test that AIOrchestratorService can stream an AI interaction.
     """
-    mcp_config = MCPConfig(server_url="http://test-url")
-    kernel_client = MCPClient(mcp_config)
+    from unittest.mock import AsyncMock
+    
+    # In the new architecture, MCPClient expects a session and server URL
+    mock_session = AsyncMock()
+    # Mock the list_tools method to return an empty list to avoid the warning
+    mock_session.list_tools.return_value = []
+    server_url = "http://test-url"
+    kernel_client = MCPClient(mock_session, server_url)
     
     orchestrator = AIOrchestratorService(kernel_client)
     mock_provider = AIOrchestratorTestContentGenerator()
@@ -336,6 +359,7 @@ async def test_turn_manager_with_tool_calls():
     Test that the TurnManager properly handles tool calls in a turn.
     """
     from services.ai_orchestrator.turn_manager import TurnManager
+    from unittest.mock import AsyncMock
     
     # Create mock tool execution manager
     mock_tool_execution_manager = AsyncMock()
@@ -345,14 +369,17 @@ async def test_turn_manager_with_tool_calls():
         return_display="hello\n",
         success=True
     )
-    mock_tool_execution_manager.execute_internal_tool.return_value = tool_result
+    mock_tool_execution_manager._execute_internal_tool.return_value = tool_result
     mock_tool_execution_manager.registry = None  # Mock registry as None for test
     
     # Create mock kernel client (using MCPClient class structure)
     from gcs_kernel.mcp.client import MCPClient
     from gcs_kernel.models import MCPConfig
-    mcp_config = MCPConfig(server_url="http://test-url")
-    kernel_client = MCPClient(mcp_config)
+    
+    # In the new architecture, MCPClient expects a session and server URL
+    mock_session = AsyncMock()
+    server_url = "http://test-url"
+    kernel_client = MCPClient(mock_session, server_url)
     
     mock_provider = AIOrchestratorTestContentGenerator()
     turn_manager = TurnManager(kernel_client, mock_provider)

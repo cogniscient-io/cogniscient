@@ -8,7 +8,7 @@ using OpenAI API standards as the default format.
 import logging
 from typing import Dict, Any, List
 from gcs_kernel.models import ToolResult
-from services.config import settings
+from common.settings import settings
 
 # Set up logging
 logger = logging.getLogger(__name__)

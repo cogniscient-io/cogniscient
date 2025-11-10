@@ -1,5 +1,8 @@
 """
-Configuration settings for the GCS Kernel application.
+Global Configuration Settings for GCS Reference Architecture.
+
+This module defines application-wide configuration settings that are used
+across all components of the system.
 """
 
 import logging
@@ -9,8 +12,8 @@ from typing import Optional
 from pydantic import ConfigDict
 
 
-class Settings(BaseSettings):
-    """Application configuration settings."""
+class GlobalSettings(BaseSettings):
+    """Global application configuration settings."""
 
     # Server settings
     host: str = "0.0.0.0"
@@ -30,6 +33,10 @@ class Settings(BaseSettings):
     # Application settings
     log_level: str = "INFO"
 
+    # MCP settings
+    mcp_runtime_data_directory: str = "./runtime_data"
+    mcp_server_registry_filename: str = "mcp_servers.json"
+
     model_config = ConfigDict(
         env_file=".env",
         case_sensitive=False
@@ -37,7 +44,7 @@ class Settings(BaseSettings):
 
 
 # Create a global settings instance
-settings = Settings()
+settings = GlobalSettings()
 
 
 def configure_logging():

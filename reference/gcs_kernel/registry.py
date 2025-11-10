@@ -41,12 +41,13 @@ class ToolRegistry:
     and discovery (command-based and MCP-based).
     """
     
-    def __init__(self):
+    def __init__(self, mcp_client_manager=None):
         """Initialize the tool registry with necessary components."""
         self.tools: Dict[str, BaseTool] = {}  # Local tools only
         # Map external tool names to their MCP client configuration
         self.external_tool_mcp_configs: Dict[str, str] = {}  # Maps tool names to MCP client server URLs
         self.mcp_clients: Dict[str, Any] = {}  # MCP client instances by server URL
+        self.mcp_client_manager = mcp_client_manager  # Reference to MCP client manager
         self.logger = None  # Will be set by kernel
 
     async def initialize(self, kernel=None):
@@ -60,35 +61,10 @@ class ToolRegistry:
 
     async def _register_built_in_tools(self, kernel=None):
         """Register built-in tools available to the kernel."""
-        # Import built-in tools
-        from gcs_kernel.tools.file_operations import ReadFileTool, WriteFileTool, ListDirectoryTool
-        from gcs_kernel.tools.shell_command import ShellCommandTool
-        from gcs_kernel.tools.system_tools import ListToolsTool, GetToolInfoTool, SetLogLevelTool
-        
-        # Create instances of built-in tools
-        tools_to_register = [
-            ReadFileTool(),
-            WriteFileTool(),
-            ListDirectoryTool(),
-            ShellCommandTool()
-        ]
-        
-        # Register each built-in tool
-        for tool in tools_to_register:
-            # Use the default approval mode for built-in tools
-            # In a real system, you might want to set different approval modes based on tool risk
-            await self.register_tool(tool)
-        
-        # Register system tools that need access to the kernel
-        if kernel:
-            system_tools = [
-                ListToolsTool(kernel),
-                GetToolInfoTool(kernel),
-                SetLogLevelTool(kernel)
-            ]
-            
-            for tool in system_tools:
-                await self.register_tool(tool)
+        # For now, keep a minimal initialization that doesn't register specific tools
+        # All tools will be registered after the registry initialization is complete
+        if self.logger:
+            self.logger.info("Registry initialized with no pre-registered tools - all tools will be registered post-initialization")
 
     async def register_tool(self, tool: BaseTool) -> bool:
         """
@@ -119,7 +95,7 @@ class ToolRegistry:
                 self.logger.error(f"Failed to register tool: {e}")
             return False
 
-    async def deregister_tool(self, tool_name: str) -> bool:
+    async def unregister_tool(self, tool_name: str) -> bool:
         """
         Remove a tool from the registry.
         
@@ -130,18 +106,66 @@ class ToolRegistry:
             True if removal was successful, False otherwise
         """
         try:
+            # Try to remove from both local tools and external tools
+            removed = False
             if tool_name in self.tools:
                 del self.tools[tool_name]
+                removed = True
                 
-                if self.logger:
-                    self.logger.info(f"Tool deregistered: {tool_name}")
+            if tool_name in self.external_tool_mcp_configs:
+                del self.external_tool_mcp_configs[tool_name]
+                removed = True
                 
-                return True
-            return False
+            if removed and self.logger:
+                self.logger.info(f"Tool unregistered: {tool_name}")
+            
+            return removed
         except Exception as e:
             if self.logger:
-                self.logger.error(f"Failed to deregister tool: {e}")
+                self.logger.error(f"Failed to unregister tool: {e}")
             return False
+
+    async def update_tool(self, tool_definition: ToolDefinition) -> bool:
+        """
+        Update an existing tool in the registry.
+        
+        Args:
+            tool_definition: The updated tool definition
+            
+        Returns:
+            True if update was successful, False otherwise
+        """
+        try:
+            # Check if tool exists
+            if tool_definition.name not in self.tools:
+                # If tool doesn't exist, register it
+                await self.register_tool(tool_definition)
+                return True
+            
+            # Update the existing tool
+            self.tools[tool_definition.name] = tool_definition
+            
+            if self.logger:
+                self.logger.info(f"Tool updated: {tool_definition.name}")
+            
+            return True
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Failed to update tool: {e}")
+            return False
+
+    async def deregister_tool(self, tool_name: str) -> bool:
+        """
+        Remove a tool from the registry.
+        
+        Args:
+            tool_name: The name of the tool to remove
+            
+        Returns:
+            True if removal was successful, False otherwise
+        """
+        # This is an alias for unregister_tool to maintain backward compatibility
+        return await self.unregister_tool(tool_name)
 
     async def get_tool(self, tool_name: str) -> Optional[BaseTool]:
         """
@@ -182,12 +206,16 @@ class ToolRegistry:
         Returns:
             Server URL if the tool is external, None if it's local, None if not found
         """
-        # If it's a local tool, return None
+        # If it's an external tool (exists in external_tool_mcp_configs), return the server URL
+        if tool_name in self.external_tool_mcp_configs:
+            return self.external_tool_mcp_configs[tool_name]
+
+        # If it's only in the local tools registry, return None (indicating local tool)
         if tool_name in self.tools:
             return None
-        
-        # If it's an external tool, return the server URL from the config
-        return self.external_tool_mcp_configs.get(tool_name)
+
+        # If it doesn't exist at all, return None
+        return None
 
     async def register_external_tool(self, tool_name: str, server_url: str) -> bool:
         """
@@ -204,6 +232,13 @@ class ToolRegistry:
             # Register the tool with its server configuration
             self.external_tool_mcp_configs[tool_name] = server_url
             
+            # Create a dynamic external tool instance that routes calls to the MCP server
+            # This tool instance will be added to the main tools registry
+            external_tool_instance = self._create_external_tool_wrapper(tool_name, server_url)
+            
+            # Add the external tool to the main tools registry so it appears in get_all_tools()
+            self.tools[tool_name] = external_tool_instance
+            
             if self.logger:
                 self.logger.info(f"External tool registered: {tool_name} on {server_url}")
             
@@ -212,6 +247,42 @@ class ToolRegistry:
             if self.logger:
                 self.logger.error(f"Failed to register external tool {tool_name}: {e}")
             return False
+
+    def _create_external_tool_wrapper(self, tool_name: str, server_url: str):
+        """
+        Create a wrapper tool instance for an external tool that routes execution to the MCP server.
+        
+        Args:
+            tool_name: Name of the external tool
+            server_url: URL of the server hosting the tool
+            
+        Returns:
+            A tool instance that wraps external tool execution
+        """
+        # Create a dynamic class that implements BaseTool for the external tool
+        class MCPExternalToolWrapper:
+            def __init__(self, wrapper_tool_name, wrapper_server_url, registry_instance):
+                self.name = wrapper_tool_name
+                self.display_name = f"{wrapper_tool_name} (external)"
+                self.description = f"External tool '{wrapper_tool_name}' available via MCP server at {wrapper_server_url}"
+                # Default parameters schema - in real implementation, this would come from the actual tool schema
+                self.parameters = {"type": "object", "properties": {}, "required": []}
+                self._server_url = wrapper_server_url
+                self._registry = registry_instance  # Keep reference to registry for MCP client access
+
+            async def execute(self, parameters):
+                # This execution should be handled by the ToolExecutionManager with proper MCP routing
+                # For the registry's purposes, we return a result indicating it's an external tool
+                from gcs_kernel.models import ToolResult
+                return ToolResult(
+                    tool_name=self.name,
+                    success=False,
+                    error=f"External tool '{self.name}' execution must be handled by ToolExecutionManager with proper MCP routing",
+                    llm_content=f"External tool '{self.name}' available but requires MCP client routing for execution",
+                    return_display=f"External tool '{self.name}' available on server but requires proper routing"
+                )
+        
+        return MCPExternalToolWrapper(tool_name, server_url, self)
 
     async def get_mcp_client_for_tool(self, tool_name: str) -> Optional[Any]:
         """
@@ -227,19 +298,30 @@ class ToolRegistry:
         if not server_url:
             return None
         
-        # Return the cached client or create a new one if needed
+        # First try to get client from the client manager, if available
+        if self.mcp_client_manager:
+            try:
+                # Use the client manager's method to get client for a specific tool
+                client = await self.mcp_client_manager.get_client_for_tool(tool_name)
+                if client:
+                    return client
+            except Exception:
+                # If client manager method fails, fall back to manual client creation
+                pass
+
+        # If client manager isn't available or doesn't have the client, use cached or create new one
         if server_url not in self.mcp_clients:
-            # Create and initialize an MCP client for this server
+            # Create and initialize an MCP client for this server using the new architecture
             from gcs_kernel.mcp.client import MCPClient
-            from gcs_kernel.models import MCPConfig
-            
-            config = MCPConfig(server_url=server_url)
-            client = MCPClient(config)
+            from gcs_kernel.mcp.client_manager import MCPConnection
+
+            # Create a direct connection using the new pattern
+            connection = MCPConnection(server_url)
+            client = await connection.connect()
             client.logger = self.logger
-            await client.initialize()
-            
+
             self.mcp_clients[server_url] = client
-        
+
         return self.mcp_clients[server_url]
         
     async def deregister_external_tool(self, tool_name: str) -> bool:
@@ -253,14 +335,20 @@ class ToolRegistry:
             True if removal was successful, False otherwise
         """
         try:
+            success = False
+            # Remove from external tool configurations
             if tool_name in self.external_tool_mcp_configs:
                 del self.external_tool_mcp_configs[tool_name]
+                success = True
                 
-                if self.logger:
-                    self.logger.info(f"External tool deregistered: {tool_name}")
+            # Also remove from main tools registry if present
+            if tool_name in self.tools:
+                del self.tools[tool_name]
                 
-                return True
-            return False
+            if self.logger and success:
+                self.logger.info(f"External tool deregistered: {tool_name}")
+            
+            return success
         except Exception as e:
             if self.logger:
                 self.logger.error(f"Failed to deregister external tool: {e}")

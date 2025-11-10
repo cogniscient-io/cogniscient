@@ -9,12 +9,14 @@ and streams responses in real-time.
 import asyncio
 import sys
 import os
+import hashlib
 
 # Add the project root to the path so imports work
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from gcs_kernel.kernel import GCSKernel
 from gcs_kernel.mcp.client import MCPClient
+from gcs_kernel.mcp.client_manager import MCPClientManager
 from gcs_kernel.models import MCPConfig
 from ui.cli.cli import CLIInterface
 
@@ -33,10 +35,22 @@ async def demo_streaming():
         # Wait a moment for the kernel to initialize
         await asyncio.sleep(0.5)
         
-        # Create MCP client
+        # Create MCP client manager
         mcp_config = MCPConfig(server_url="http://localhost:8000")
-        mcp_client = MCPClient(mcp_config)
-        await mcp_client.initialize()
+        from gcs_kernel.mcp.client_manager import MCPClientManager
+        client_manager = MCPClientManager(mcp_config)
+        await client_manager.initialize()
+        
+        # Connect to the kernel
+        success = await client_manager.connect_to_server("http://localhost:8000", server_name="local_kernel")
+        if not success:
+            print("Failed to connect to kernel via MCP")
+            return
+        
+        # Get the client for the kernel
+        server_id = next(iter(client_manager.clients.keys()))
+        client_data = client_manager.clients[server_id]
+        mcp_client = client_data['client']
         
         # Create API client that connects to kernel
         class KernelAPIClient:

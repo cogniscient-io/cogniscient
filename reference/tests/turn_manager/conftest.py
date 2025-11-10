@@ -39,7 +39,26 @@ def mock_content_generator():
 def mock_tool_execution_manager():
     """Mock tool execution manager for testing."""
     manager = AsyncMock()
-    manager.execute_internal_tool = AsyncMock()
+    from gcs_kernel.tool_call_model import ToolCall
+    from gcs_kernel.models import ToolResult
+    
+    # Create a mock for execute_tool_call instead of the direct method
+    async def mock_execute_tool_call(tool_call: ToolCall):
+        # Return a mock result in the expected format
+        result = ToolResult(
+            tool_name=tool_call.name,
+            success=True,
+            llm_content=f"Mock result for {tool_call.name}",
+            return_display=f"Mock result for {tool_call.name}"
+        )
+        return {
+            "tool_call_id": tool_call.id,
+            "tool_name": tool_call.name,
+            "result": result,
+            "success": True
+        }
+    
+    manager.execute_tool_call = AsyncMock(side_effect=mock_execute_tool_call)
     manager.registry = AsyncMock()
     manager.registry.has_tool = AsyncMock(return_value=True)
     manager.registry.get_tool_server_config = AsyncMock(return_value=None)

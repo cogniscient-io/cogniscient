@@ -60,4 +60,4 @@ async def test_kernel_initialization():
     assert kernel.resource_manager is not None
     assert kernel.security_layer is not None
     assert kernel.logger is not None
-    assert kernel.mcp_client is not None
+    assert kernel.mcp_client_manager is not None

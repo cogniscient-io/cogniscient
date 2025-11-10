@@ -253,3 +253,55 @@ class ListDirectoryTool:
                 llm_content=error_msg,
                 return_display=error_msg
             )
+
+
+async def register_file_operation_tools(kernel) -> bool:
+    """
+    Register all file operation tools with the kernel registry.
+    This should be called after the kernel and registry are initialized.
+    
+    Args:
+        kernel: The GCSKernel instance
+        
+    Returns:
+        True if registration was successful, False otherwise
+    """
+    import time
+    start_time = time.time()
+    
+    from gcs_kernel.registry import ToolRegistry
+    
+    # Check if the kernel and registry are available
+    if not kernel or not hasattr(kernel, 'registry'):
+        if hasattr(kernel, 'logger') and kernel.logger:
+            kernel.logger.error("Kernel registry not available for file operation tool registration")
+        return False
+
+    registry = kernel.registry
+    
+    if hasattr(kernel, 'logger') and kernel.logger:
+        kernel.logger.debug("Starting file operation tools registration...")
+    
+    # List of file operation tools to register
+    file_operation_tools = [
+        ReadFileTool(),
+        WriteFileTool(),
+        ListDirectoryTool()
+    ]
+    
+    # Register each file operation tool
+    for tool in file_operation_tools:
+        if hasattr(kernel, 'logger') and kernel.logger:
+            kernel.logger.debug(f"Registering file operation tool: {tool.name}")
+        
+        success = await registry.register_tool(tool)
+        if not success:
+            if hasattr(kernel, 'logger') and kernel.logger:
+                kernel.logger.error(f"Failed to register file operation tool: {tool.name}")
+            return False
+    
+    elapsed = time.time() - start_time
+    if hasattr(kernel, 'logger') and kernel.logger:
+        kernel.logger.info(f"Successfully registered {len(file_operation_tools)} file operation tools (elapsed: {elapsed:.2f}s)")
+    
+    return True

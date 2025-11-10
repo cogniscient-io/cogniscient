@@ -93,3 +93,53 @@ class ShellCommandTool:
                 llm_content=error_msg,
                 return_display=error_msg
             )
+
+
+async def register_shell_command_tools(kernel) -> bool:
+    """
+    Register all shell command tools with the kernel registry.
+    This should be called after the kernel and registry are initialized.
+    
+    Args:
+        kernel: The GCSKernel instance
+        
+    Returns:
+        True if registration was successful, False otherwise
+    """
+    import time
+    start_time = time.time()
+    
+    from gcs_kernel.registry import ToolRegistry
+    
+    # Check if the kernel and registry are available
+    if not kernel or not hasattr(kernel, 'registry'):
+        if hasattr(kernel, 'logger') and kernel.logger:
+            kernel.logger.error("Kernel registry not available for shell command tool registration")
+        return False
+
+    registry = kernel.registry
+    
+    if hasattr(kernel, 'logger') and kernel.logger:
+        kernel.logger.debug("Starting shell command tools registration...")
+    
+    # List of shell command tools to register
+    shell_command_tools = [
+        ShellCommandTool()
+    ]
+    
+    # Register each shell command tool
+    for tool in shell_command_tools:
+        if hasattr(kernel, 'logger') and kernel.logger:
+            kernel.logger.debug(f"Registering shell command tool: {tool.name}")
+        
+        success = await registry.register_tool(tool)
+        if not success:
+            if hasattr(kernel, 'logger') and kernel.logger:
+                kernel.logger.error(f"Failed to register shell command tool: {tool.name}")
+            return False
+    
+    elapsed = time.time() - start_time
+    if hasattr(kernel, 'logger') and kernel.logger:
+        kernel.logger.info(f"Successfully registered {len(shell_command_tools)} shell command tools (elapsed: {elapsed:.2f}s)")
+    
+    return True

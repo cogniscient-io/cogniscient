@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gcs-kernel"
-version = "0.2.0"
+version = "0.3.0"
 description = "GCS - Generic Control System for AI agent orchestration"
 readme = "README.md"
 authors = [{name = "Cogniscient Team"}]
@@ -29,6 +29,7 @@ dependencies = [
     "uv>=0.1.0",
     "ruff>=0.1.6",
     "mypy>=1.8.0",
+    "mcp>=1.16.0",
 ]
 
 [project.optional-dependencies]
@@ -45,7 +46,17 @@ Repository = "https://github.com/cogniscient/gcs-kernel"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["gcs_kernel*", "services*", "ui*"]
+include = ["gcs_kernel*", "services*", "ui*", "common*"]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+asyncio_mode = "strict"
+testpaths = [
+    "tests",
+]
+addopts = [
+    "--import-mode=importlib",
+]
 
 [project.scripts]
 gcs = "ui.cli.cli:main"

@@ -30,8 +30,21 @@ async def main():
             # Run CLI interface
             mcp_config = MCPConfig(server_url="http://localhost:8000")
             from gcs_kernel.mcp.client import MCPClient
-            mcp_client = MCPClient(mcp_config)
-            await mcp_client.initialize()
+            from gcs_kernel.mcp.client_manager import MCPClientManager
+            import hashlib
+            
+            # Create client manager and connect to kernel
+            client_manager = MCPClientManager(mcp_config)
+            await client_manager.initialize()
+            success = await client_manager.connect_to_server("http://localhost:8000", server_name="local_kernel")
+            if not success:
+                print("Failed to connect to kernel via MCP")
+                return
+            
+            # Get the client for the kernel
+            server_id = next(iter(client_manager.clients.keys()))
+            client_data = client_manager.clients[server_id]
+            mcp_client = client_data['client']
             
             # Create a simple API client for CLI that communicates with the kernel via MCP
             # The kernel handles everything else including LLM interaction

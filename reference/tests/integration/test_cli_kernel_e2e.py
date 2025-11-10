@@ -6,7 +6,7 @@ This test verifies the kernel's initialization sequence works properly.
 import asyncio
 import pytest
 from gcs_kernel.kernel import GCSKernel
-from services.config import settings
+from common.settings import settings
 
 
 @pytest.mark.asyncio 

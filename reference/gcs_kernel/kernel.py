@@ -8,17 +8,23 @@ the foundational services for the Generic Control System Kernel.
 import uuid
 from typing import Dict, Any, Optional
 
-from gcs_kernel.models import ResourceQuota, PromptObject
+from gcs_kernel.models import ResourceQuota, PromptObject, MCPConfig
 from gcs_kernel.event_loop import EventLoop
 from gcs_kernel.registry import ToolRegistry
 from gcs_kernel.resource_manager import ResourceAllocationManager
 from gcs_kernel.security import SecurityLayer
 from gcs_kernel.logger import EventLogger
-from gcs_kernel.mcp.client import MCPClient
+from gcs_kernel.mcp.client_manager import MCPClientManager
 from gcs_kernel.tool_execution_manager import ToolExecutionManager
 from services.ai_orchestrator.orchestrator_service import AIOrchestratorService
 from services.llm_provider.content_generator import LLMContentGenerator
-from services.config import settings
+from common.settings import settings
+
+# Tool registration imports (all consolidated at top of file)
+from gcs_kernel.tools.file_operations import register_file_operation_tools
+from gcs_kernel.tools.shell_command import register_shell_command_tools
+from gcs_kernel.tools.system_tools import register_system_tools
+from gcs_kernel.tools.mcp_tools import register_mcp_tools
 
 
 class GCSKernel:
@@ -41,11 +47,18 @@ class GCSKernel:
         
         # Initialize core services
         self.event_loop = EventLoop()
-        self.registry = ToolRegistry()
+        # Initialize MCP client manager first - use config if provided, otherwise default
+        mcp_config = config.get('mcp_config', None) if config else None
+        if mcp_config is None:
+            mcp_config = MCPConfig(server_url="http://localhost:8000")
+        self.mcp_client_manager = MCPClientManager(mcp_config)
+        
+        # Initialize registry with access to the MCP client manager
+        self.registry = ToolRegistry(mcp_client_manager=self.mcp_client_manager)
+        
         self.resource_manager = ResourceAllocationManager()
         self.security_layer = SecurityLayer()
         self.logger = EventLogger()
-        self.mcp_client = MCPClient()
         
         # Initialize prompt object registry
         self.prompt_object_registry = {}
@@ -53,7 +66,7 @@ class GCSKernel:
         # Initialize the unified ToolExecutionManager for handling all tool execution scenarios
         self.tool_execution_manager = ToolExecutionManager(
             kernel_registry=self.registry,
-            mcp_client=self.mcp_client,
+            mcp_client=self.mcp_client_manager,  # Use manager instead of single client
             logger=self.logger
         )
         
@@ -62,7 +75,7 @@ class GCSKernel:
         content_generator = LLMContentGenerator()
         # Initialize orchestrator as the primary AI interaction handler
         self.ai_orchestrator = AIOrchestratorService(
-            self.mcp_client,
+            self.mcp_client_manager,
             content_generator=content_generator,
             kernel=self
         )
@@ -75,7 +88,12 @@ class GCSKernel:
         
         # Initialize with resource quotas
         self.resource_quota = ResourceQuota(**self.config.get('resource_quota', {}))
-        
+
+        # Initialize the Tool Discovery Service
+        from services.tool_discovery.mcp_discovery import ToolDiscoveryService
+        self.tool_discovery_service = ToolDiscoveryService(self.registry)
+        self.tool_discovery_service.logger = self.logger  # Set logger
+
         # Set up shutdown flag
         self._running = False
         # Set up initialization flag
@@ -92,6 +110,12 @@ class GCSKernel:
         
         # Initialize all components
         await self._initialize_components()
+        
+        # Connect the kernel registry to the MCP manager so external tools can be registered
+        await self._connect_registry_to_mcp()
+        
+        # Set up logger for MCP manager after initialization
+        self.mcp_client_manager.logger = self.logger
         
         # Start the event loop
         await self.event_loop.run()
@@ -118,28 +142,164 @@ class GCSKernel:
         This method initializes each component in the required order to ensure
         proper dependencies are met.
         """
+        import time
+        start_time = time.time()
+        
+        if self.logger:
+            self.logger.debug("Starting kernel component initialization")
+        
         # Initialize security first
+        if self.logger:
+            self.logger.debug("Initializing security layer...")
         await self.security_layer.initialize()
+        if self.logger:
+            elapsed = time.time() - start_time
+            self.logger.debug(f"Security layer initialized (elapsed: {elapsed:.2f}s)")
         
         # Initialize resource manager
+        if self.logger:
+            self.logger.debug("Initializing resource manager...")
         await self.resource_manager.initialize()
+        if self.logger:
+            elapsed = time.time() - start_time
+            self.logger.debug(f"Resource manager initialized (elapsed: {elapsed:.2f}s)")
+        
+        # Initialize logger
+        if self.logger:
+            self.logger.debug("Initializing logger...")
+        await self.logger.initialize()
+        if self.logger:
+            elapsed = time.time() - start_time
+            self.logger.debug(f"Logger initialized (elapsed: {elapsed:.2f}s)")
+        
+        # Initialize MCP manager with logger reference
+        self.mcp_client_manager.logger = self.logger
+        if self.logger:
+            self.logger.debug("Initializing MCP manager...")
+        await self.mcp_client_manager.initialize()
+        if self.logger:
+            elapsed = time.time() - start_time
+            self.logger.debug(f"MCP manager initialized (elapsed: {elapsed:.2f}s)")
+        
+        # Connect the MCP client manager to the tool discovery service
+        self.mcp_client_manager._tool_discovery_service = self.tool_discovery_service
         
         # Initialize registry with reference to kernel for system tools
+        if self.logger:
+            self.logger.debug("Initializing registry...")
         await self.registry.initialize(kernel=self)
+        if self.logger:
+            elapsed = time.time() - start_time
+            self.logger.debug(f"Registry initialized (elapsed: {elapsed:.2f}s)")
+        
+        # Register all tools after the registry is initialized
+        if self.logger:
+            self.logger.debug("Starting tool registration...")
+        
+        tool_start_time = time.time()
+        await register_file_operation_tools(self)
+        if self.logger:
+            elapsed = time.time() - tool_start_time
+            total_elapsed = time.time() - start_time
+            self.logger.debug(f"File operation tools registered (step: {elapsed:.2f}s, total: {total_elapsed:.2f}s)")
+        
+        await register_shell_command_tools(self)
+        if self.logger:
+            elapsed = time.time() - tool_start_time
+            total_elapsed = time.time() - start_time
+            self.logger.debug(f"Shell command tools registered (step: {elapsed:.2f}s, total: {total_elapsed:.2f}s)")
+        
+        await register_system_tools(self)
+        if self.logger:
+            elapsed = time.time() - tool_start_time
+            total_elapsed = time.time() - start_time
+            self.logger.debug(f"System tools registered (step: {elapsed:.2f}s, total: {total_elapsed:.2f}s)")
+        
+        await register_mcp_tools(self)
+        if self.logger:
+            elapsed = time.time() - tool_start_time
+            total_elapsed = time.time() - start_time
+            self.logger.debug(f"MCP tools registered (step: {elapsed:.2f}s, total: {total_elapsed:.2f}s)")
+        
+        if self.logger:
+            elapsed = time.time() - start_time
+            self.logger.debug(f"All tools registered (elapsed: {elapsed:.2f}s)")
         
         # Initialize tool execution manager
         # No initialization needed as it happens in the constructor
-        
-        # Initialize logger
-        await self.logger.initialize()
-        
-        # Initialize MCP client
-        await self.mcp_client.initialize()
         
         # AI orchestrator is initialized with content generator in constructor
         
         # Set a readiness flag that works across async/sync boundaries
         self._fully_initialized = True
+        if self.logger:
+            elapsed = time.time() - start_time
+            self.logger.debug(f"Kernel fully initialized (elapsed: {elapsed:.2f}s)")
+
+    async def _connect_registry_to_mcp(self):
+        """
+        Connect the kernel registry to the MCP manager so external tools can be registered.
+        """
+        # Register notification handlers to manage tools dynamically
+        self.mcp_client_manager.register_notification_handler("tool_added", self._on_tool_added)
+        self.mcp_client_manager.register_notification_handler("tool_removed", self._on_tool_removed)
+        self.mcp_client_manager.register_notification_handler("tool_updated", self._on_tool_updated)
+    
+    def _on_tool_added(self, server_id: str, tool_data: dict):
+        """
+        Handle when an external server notifies that a tool has been added.
+        """
+        if self.logger:
+            self.logger.info(f"Kernel: Tool added notification from server {server_id}: {tool_data.get('tool_name', 'Unknown')}")
+        
+        # Pass the event to the tool discovery service
+        try:
+            tool_name = tool_data.get('tool_name')
+            server_url = tool_data.get('server_url')  # Assuming server_url is passed in tool_data
+            if tool_name and server_url:
+                if self.logger:
+                    self.logger.info(f"Kernel: Scheduling tool addition - {tool_name} from server {server_id}")
+                # This is an async method, so we'll schedule it
+                import asyncio
+                asyncio.create_task(self.tool_discovery_service.handle_tool_added(server_id, tool_name, server_url, tool_data))
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Kernel: Error handling tool added notification: {e}")
+    
+    def _on_tool_removed(self, server_id: str, tool_data: dict):
+        """
+        Handle when an external server notifies that a tool has been removed.
+        """
+        if self.logger:
+            self.logger.info(f"Tool removed notification from server {server_id}: {tool_data.get('tool_name', 'Unknown')}")
+        
+        # Pass the event to the tool discovery service
+        try:
+            tool_name = tool_data.get('tool_name')
+            if tool_name:
+                import asyncio
+                asyncio.create_task(self.tool_discovery_service.handle_tool_removed(server_id, tool_name))
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Error handling tool removed notification: {e}")
+    
+    def _on_tool_updated(self, server_id: str, tool_data: dict):
+        """
+        Handle when an external server notifies that a tool has been updated.
+        """
+        if self.logger:
+            self.logger.info(f"Tool updated notification from server {server_id}: {tool_data.get('tool_name', 'Unknown')}")
+        
+        # Pass the event to the tool discovery service
+        try:
+            tool_name = tool_data.get('tool_name')
+            server_url = tool_data.get('server_url')  # Assuming server_url is passed in tool_data
+            if tool_name and server_url:
+                import asyncio
+                asyncio.create_task(self.tool_discovery_service.handle_tool_updated(server_id, tool_name, server_url, tool_data))
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Error handling tool updated notification: {e}")
 
     async def _cleanup_components(self):
         """
@@ -149,7 +309,7 @@ class GCSKernel:
         order of initialization.
         """
         # Clean up components in reverse order
-        await self.mcp_client.shutdown()
+        await self.mcp_client_manager.shutdown()
         await self.logger.shutdown()
         
         # Shutdown the tool execution manager

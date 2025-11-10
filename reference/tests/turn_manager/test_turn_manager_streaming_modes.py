@@ -195,7 +195,7 @@ async def test_turn_manager_with_tool_calls_streaming():
         return_display="Tool execution result", 
         success=True
     )
-    mock_tool_execution_manager.execute_internal_tool = AsyncMock(return_value=tool_result)
+    mock_tool_execution_manager._execute_internal_tool = AsyncMock(return_value=tool_result)
     
     # Create content generator that returns tool calls
     content_generator = StreamingTestContentGenerator(
@@ -254,7 +254,19 @@ async def test_turn_manager_with_tool_calls_non_streaming():
         return_display="Tool execution result",
         success=True
     )
-    mock_tool_execution_manager.execute_internal_tool = AsyncMock(return_value=tool_result)
+    
+    from gcs_kernel.tool_call_model import ToolCall
+    
+    # Mock the unified execute_tool_call method instead of execute_internal_tool
+    async def mock_execute_tool_call(tool_call: ToolCall):
+        return {
+            "tool_call_id": tool_call.id,
+            "tool_name": tool_call.name,
+            "result": tool_result,
+            "success": tool_result.success
+        }
+    
+    mock_tool_execution_manager.execute_tool_call = AsyncMock(side_effect=mock_execute_tool_call)
     
     # Create content generator that returns tool calls
     content_generator = StreamingTestContentGenerator(

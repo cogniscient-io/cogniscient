@@ -139,7 +139,18 @@ class TestRunTurn:
         
         mock_content_generator.stream_response = mock_stream_response
         
-        mock_tool_execution_manager.execute_internal_tool = AsyncMock(return_value=sample_tool_result)
+        from gcs_kernel.tool_call_model import ToolCall
+        
+        # Mock the unified execute_tool_call method instead of execute_internal_tool
+        async def mock_execute_tool_call(tool_call: ToolCall):
+            return {
+                "tool_call_id": tool_call.id,
+                "tool_name": tool_call.name,
+                "result": sample_tool_result,
+                "success": sample_tool_result.success
+            }
+        
+        mock_tool_execution_manager.execute_tool_call = AsyncMock(side_effect=mock_execute_tool_call)
         
         # Execute the turn and collect events
         events = []
@@ -196,7 +207,18 @@ class TestRunTurn:
         
         mock_content_generator.stream_response = mock_stream_response
         
-        mock_tool_execution_manager.execute_internal_tool = AsyncMock(return_value=sample_tool_result)
+        from gcs_kernel.tool_call_model import ToolCall
+        
+        # Mock the unified execute_tool_call method instead of execute_internal_tool
+        async def mock_execute_tool_call(tool_call: ToolCall):
+            return {
+                "tool_call_id": tool_call.id,
+                "tool_name": tool_call.name,
+                "result": sample_tool_result,
+                "success": sample_tool_result.success
+            }
+        
+        mock_tool_execution_manager.execute_tool_call = AsyncMock(side_effect=mock_execute_tool_call)
         
         # Execute the turn and collect events
         events = []
@@ -254,10 +276,13 @@ class TestRunTurn:
         
         mock_content_generator.stream_response = mock_stream_response
         
-        # Make tool execution raise an exception
-        mock_tool_execution_manager.execute_internal_tool = AsyncMock(
-            side_effect=Exception("Tool execution failed")
-        )
+        from gcs_kernel.tool_call_model import ToolCall
+        
+        # Make tool execution raise an exception using the unified interface
+        async def mock_execute_tool_call(tool_call: ToolCall):
+            raise Exception("Tool execution failed")
+        
+        mock_tool_execution_manager.execute_tool_call = AsyncMock(side_effect=mock_execute_tool_call)
         
         # Execute the turn and collect events
         events = []
@@ -374,7 +399,18 @@ class TestRunTurn:
         mock_content_generator.stream_response = mock_stream_response
         mock_content_generator.generate_response = mock_generate_response
         
-        mock_tool_execution_manager.execute_internal_tool = AsyncMock(return_value=sample_tool_result)
+        from gcs_kernel.tool_call_model import ToolCall
+        
+        # Mock the unified execute_tool_call method instead of execute_internal_tool
+        async def mock_execute_tool_call(tool_call: ToolCall):
+            return {
+                "tool_call_id": tool_call.id,
+                "tool_name": tool_call.name,
+                "result": sample_tool_result,
+                "success": sample_tool_result.success
+            }
+        
+        mock_tool_execution_manager.execute_tool_call = AsyncMock(side_effect=mock_execute_tool_call)
         
         # Execute the turn and collect events
         events = []

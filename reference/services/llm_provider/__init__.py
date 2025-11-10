@@ -7,7 +7,7 @@ with streaming support and kernel integration.
 
 from .base_generator import BaseContentGenerator
 from .content_generator import LLMContentGenerator
-from ..config import settings
+from common.settings import settings
 from .providers.provider_factory import ProviderFactory
 from .providers.openai_provider import OpenAIProvider
 

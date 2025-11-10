@@ -7,9 +7,12 @@ logging of all kernel operations and tool interactions.
 
 import asyncio
 import json
+import logging
+import sys
 from datetime import datetime
 from typing import Dict, Any, Optional
 from enum import Enum
+from common.settings import settings
 
 
 class LogLevel(Enum):
@@ -70,16 +73,38 @@ class EventLogger:
                 continue
 
     async def _write_log_entry(self, log_entry: Dict[str, Any]):
-        """Write a log entry to the log file."""
+        """Write a log entry to the log file and potentially to console."""
         # Ensure log directory exists
         import os
         log_dir = os.path.dirname(self.log_file)
         if log_dir and not os.path.exists(log_dir):
             os.makedirs(log_dir)
         
-        # Write the log entry as JSON
+        # Write the log entry as JSON to file
         with open(self.log_file, 'a', encoding='utf-8') as f:
             f.write(json.dumps(log_entry) + '\n')
+
+        # Additionally, output to console for INFO and above levels (matching standard practice)
+        level = log_entry.get("level", "INFO")
+        message = log_entry.get("message", "")
+        timestamp = log_entry.get("timestamp", "")
+        
+        # Map log levels to numeric values for comparison
+        level_values = {
+            "DEBUG": 10,
+            "INFO": 20,
+            "WARNING": 30,
+            "ERROR": 40,
+            "CRITICAL": 50
+        }
+        
+        # Map log level from settings to numeric value for comparison
+        settings_level = settings.log_level.upper()
+        settings_level_value = level_values.get(settings_level, 20)  # Default to INFO if invalid
+
+        # Output to console if the message level is at or above the configured log level
+        if level_values.get(level, 20) >= settings_level_value:
+            print(f"{timestamp} - kernel - {level} - {message}")
 
     def _create_log_entry(self, level: LogLevel, message: str, 
                          extra_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:

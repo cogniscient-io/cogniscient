@@ -58,27 +58,47 @@ class TestToolExecutionScheduler:
     
     async def test_submit_tool_execution_with_valid_params(self, scheduler):
         """Test submitting a tool execution with valid parameters."""
-        # The new API doesn't need ToolDefinition to execute a tool
-        # We just call execute_internal_tool with the tool name and parameters
-        result = await scheduler.execute_internal_tool("mock_tool", {"param1": "test_value"})
-        
+        # Using the new public interface execute_tool_call with a ToolCall object
+        from gcs_kernel.tool_call_model import ToolCall
+        import json
+
+        tool_call = ToolCall(
+            id="call_test1",
+            function={
+                "name": "mock_tool",
+                "arguments": json.dumps({"param1": "test_value"})
+            }
+        )
+
+        result = await scheduler.execute_tool_call(tool_call)
+
         # Check that execution was successful
         assert result is not None
-        assert result.success is True
-        assert result.tool_name == "mock_tool"
-        assert f"param1=test_value" in result.return_display  # From MockTool implementation
+        assert result["success"] is True
+        assert result["tool_name"] == "mock_tool"
+        assert f"param1=test_value" in result["result"].return_display  # From MockTool implementation
     
     async def test_submit_tool_execution_with_invalid_params(self, scheduler):
         """Test submitting a tool execution with invalid parameters."""
-        # The new API doesn't need ToolDefinition to execute a tool
-        # We just call execute_internal_tool with the tool name and parameters
-        result = await scheduler.execute_internal_tool("mock_tool", {"param2": "test_value"})
-        
+        # Using the new public interface execute_tool_call with a ToolCall object
+        from gcs_kernel.tool_call_model import ToolCall
+        import json
+
+        tool_call = ToolCall(
+            id="call_test2",
+            function={
+                "name": "mock_tool",
+                "arguments": json.dumps({"param2": "test_value"})  # Invalid param
+            }
+        )
+
+        result = await scheduler.execute_tool_call(tool_call)
+
         # Check that execution failed validation 
         assert result is not None
-        assert result.success is False
-        assert result.tool_name == "mock_tool"
-        assert "Invalid parameters" in result.error  # From validation in execute_internal_tool
+        assert result["success"] is False
+        assert result["tool_name"] == "mock_tool"
+        assert "Invalid parameters" in result["result"].error  # From validation in execute_internal_tool
     
     async def test_determine_approval_mode(self, scheduler):
         """Test determining approval mode for tool execution."""

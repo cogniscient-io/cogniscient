@@ -64,7 +64,7 @@ class ToolExecutionManager:
         pass
 
     # Scenario 1: Internal service directly calling tools
-    async def execute_internal_tool(self, 
+    async def _execute_internal_tool(self, 
                                    tool_name: str, 
                                    parameters: Dict[str, Any],
                                    approval_mode: ToolApprovalMode = ToolApprovalMode.DEFAULT) -> ToolResult:
@@ -144,7 +144,7 @@ class ToolExecutionManager:
         )
 
     # Scenario 2: Internal service calling external tool via MCP
-    async def execute_external_tool_via_mcp(self, 
+    async def _execute_external_tool_via_mcp(self, 
                                           tool_name: str, 
                                           parameters: Dict[str, Any],
                                           mcp_client: Optional[Any] = None) -> ToolResult:
@@ -173,18 +173,8 @@ class ToolExecutionManager:
             )
         
         try:
-            # Validate the tool parameters against the schema via MCP
-            is_valid = await client_to_use.validate_tool_schema(tool_name, parameters)
-            if not is_valid:
-                return ToolResult(
-                    tool_name=tool_name,
-                    success=False,
-                    error="Invalid tool parameters",
-                    llm_content="Invalid tool parameters",
-                    return_display="Invalid tool parameters"
-                )
-            
             # Submit the tool execution to the MCP client
+            # (No validation needed in MCP world - tools are discovered from servers)
             execution_id = await client_to_use.submit_tool_execution(tool_name, parameters)
             
             # Poll for the result of the execution
@@ -247,7 +237,7 @@ class ToolExecutionManager:
         """
         # This is essentially the same as internal execution but specifically 
         # called from an MCP client context
-        return await self.execute_internal_tool(tool_name, parameters)
+        return await self._execute_internal_tool(tool_name, parameters)
 
     # Helper methods for the internal execution flow
     async def _validate_parameters(self, tool_def: ToolDefinition, params: Dict[str, Any]) -> bool:
@@ -451,62 +441,19 @@ class ToolExecutionManager:
         else:
             return None
 
-    # Additional methods to handle raw tool calls from LLM responses
-    # (migrating functionality from ToolCallProcessor)
-    def process_tool_calls_in_response(self, response_content: str, raw_tool_calls: List[Dict[str, Any]]):
+    async def execute_tool_call(self, tool_call: ToolCall) -> Dict[str, Any]:
         """
-        Process raw tool calls from LLM response and convert them to proper ToolCall objects.
-        Now expects raw_tool_calls in OpenAI format with 'function' field.
-        
+        Execute a single ToolCall object, determining if it's internal or external.
+        This serves as the single entry point for executing tool calls, deciding whether 
+        to route to internal or external execution based on tool configuration.
+
         Args:
-            response_content: The content from the LLM response
-            raw_tool_calls: Raw tool call dictionaries from the LLM response in OpenAI format
-            
+            tool_call: The ToolCall object to execute
+
         Returns:
-            Tuple of (content, processed_tool_calls)
+            Dictionary containing the result of the tool execution
         """
-        # Convert raw tool call dictionaries to ToolCall objects (OpenAI format)
-        processed_tool_calls = []
-        for tool_call_data in raw_tool_calls:
-            # Check if this is already in OpenAI format with 'function' key
-            if "function" in tool_call_data:
-                # Already in OpenAI format - check if arguments are JSON string or dict
-                function_data = tool_call_data.get("function", {})
-                args = function_data.get("arguments", "{}")
-                
-                # Normalize to ensure arguments are JSON strings as per OpenAI spec
-                if isinstance(args, dict):
-                    # Convert dict to JSON string to match OpenAI format
-                    normalized_function = {
-                        "name": function_data.get("name", ""),
-                        "arguments": json.dumps(args)
-                    }
-                else:
-                    # Already a string, keep as-is
-                    normalized_function = function_data.copy()
-                
-                tool_call = ToolCall(
-                    id=tool_call_data.get("id", ""),
-                    function=normalized_function,
-                    type=tool_call_data.get("type", "function")
-                )
-            else:
-                # Not in OpenAI format, create using compatibility method
-                args = tool_call_data.get("arguments", {})
-                # Convert to JSON string if it's a dict to match OpenAI format
-                if isinstance(args, dict):
-                    args = json.dumps(args)
-                
-                tool_call = ToolCall(
-                    id=tool_call_data.get("id", ""),
-                    function={
-                        "name": tool_call_data.get("name", ""),
-                        "arguments": args
-                    }
-                )
-            processed_tool_calls.append(tool_call)
-        
-        return response_content, processed_tool_calls
+        return await self._execute_tool_call(tool_call)
 
     async def execute_tool_calls(self, tool_calls: List[ToolCall]) -> List[Dict[str, Any]]:
         """
@@ -521,7 +468,7 @@ class ToolExecutionManager:
         """
         results = []
         for tool_call in tool_calls:
-            result = await self._execute_tool_call(tool_call)
+            result = await self.execute_tool_call(tool_call)
             results.append(result)
         return results
 
@@ -560,7 +507,7 @@ class ToolExecutionManager:
             if mcp_client:
                 # Execute using the specific MCP client for this tool
                 try:
-                    result = await self.execute_external_tool_via_mcp(
+                    result = await self._execute_external_tool_via_mcp(
                         tool_call.name,
                         tool_call.arguments,
                         mcp_client=mcp_client
@@ -593,7 +540,7 @@ class ToolExecutionManager:
                 if self.mcp_client:
                     # Execute using the default MCP client
                     try:
-                        result = await self.execute_external_tool_via_mcp(
+                        result = await self._execute_external_tool_via_mcp(
                             tool_call.name,
                             tool_call.arguments,
                             mcp_client=self.mcp_client
@@ -637,8 +584,8 @@ class ToolExecutionManager:
                         "success": False
                     }
         else:
-            # This is a local tool, use execute_internal_tool
-            result = await self.execute_internal_tool(
+            # This is a local tool, use _execute_internal_tool
+            result = await self._execute_internal_tool(
                 tool_call.name,
                 tool_call.arguments,
                 ToolApprovalMode.DEFAULT  # Use default approval mode
@@ -652,3 +599,41 @@ class ToolExecutionManager:
                 "success": result.success,
                 "execution_id": f"internal_{tool_call.id}"
             }
+
+    async def execute_tool_by_name(self, tool_name: str, parameters: Dict[str, Any]) -> ToolResult:
+        """
+        Execute a tool by name and parameters, letting the system decide if it's internal or external.
+        This creates a ToolCall object internally and routes to the appropriate execution method.
+        
+        Args:
+            tool_name: The name of the tool to execute
+            parameters: Parameters for the tool execution
+            
+        Returns:
+            ToolResult containing the execution result
+        """
+        # Create an internal ToolCall object to use the unified routing logic
+        from gcs_kernel.tool_call_model import ToolCall
+        import uuid
+        
+        # Convert parameters to JSON string if it's a dict, to match OpenAI format
+        import json
+        params_str = parameters if isinstance(parameters, str) else json.dumps(parameters)
+        
+        tool_call = ToolCall(
+            id=f"internal_{uuid.uuid4().hex[:8]}",
+            function={
+                "name": tool_name,
+                "arguments": params_str
+            }
+        )
+        
+        # Use the unified execution method which handles routing internally
+        execution_result = await self.execute_tool_call(tool_call)
+        return execution_result.get('result', ToolResult(
+            tool_name=tool_name,
+            success=False,
+            error="Tool execution returned unexpected format",
+            llm_content="Tool execution returned unexpected format",
+            return_display="Tool execution returned unexpected format"
+        ))

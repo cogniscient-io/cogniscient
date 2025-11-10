@@ -10,7 +10,7 @@ import pytest
 from gcs_kernel.kernel import GCSKernel
 from ui.common.kernel_api import KernelAPIClient
 from ui.common.cli_ui import CLIUI
-from services.config import settings
+from common.settings import settings
 
 
 @pytest.mark.asyncio

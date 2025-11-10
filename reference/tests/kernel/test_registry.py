@@ -74,48 +74,69 @@ class TestToolRegistry:
     
     async def test_get_all_tools(self, registry):
         """Test getting all registered tools."""
-        # Check initial state - should have 4 built-in tools
+        # Check initial state - should have no built-in tools by default (new architecture)
         initial_tools = registry.get_all_tools()
         initial_count = len(initial_tools)
-        assert initial_count == 4  # read_file, write_file, list_directory, shell_command
+        assert initial_count == 0  # No built-in tools in new architecture
         
         mock_tool = MockTool()
         await registry.register_tool(mock_tool)
         
         all_tools = registry.get_all_tools()
         
-        assert len(all_tools) == initial_count + 1  # Should now have 5 tools
+        assert len(all_tools) == initial_count + 1  # Should now have 1 tool
         assert mock_tool.name in all_tools
     
     async def test_register_builtin_tools(self, registry):
-        """Test that built-in tools are registered during initialization."""
+        """Test that built-in tools can be registered manually."""
         tools = registry.get_all_tools()
-        
-        # Check that built-in tools are registered
+        # Initially, no tools are registered in the new architecture
+        assert len(tools) == 0
+
+        # Register the built-in tools manually to test functionality
+        from gcs_kernel.tools.file_operations import ReadFileTool, WriteFileTool, ListDirectoryTool
+        from gcs_kernel.tools.shell_command import ShellCommandTool
+
+        await registry.register_tool(ReadFileTool())
+        await registry.register_tool(WriteFileTool())
+        await registry.register_tool(ListDirectoryTool())
+        await registry.register_tool(ShellCommandTool())
+
+        tools = registry.get_all_tools()
+
+        # Check that built-in tools are now registered
         expected_tools = ["read_file", "write_file", "list_directory", "shell_command"]
         for tool_name in expected_tools:
             assert tool_name in tools.keys()
     
     async def test_read_file_tool_registration(self, registry):
         """Test that ReadFileTool is properly registered."""
+        # First register the tool
+        await registry.register_tool(ReadFileTool())
         tools = registry.get_all_tools()
         assert "read_file" in tools.keys()
         assert isinstance(tools["read_file"], ReadFileTool)
     
     async def test_write_file_tool_registration(self, registry):
         """Test that WriteFileTool is properly registered."""
+        # First register the tool
+        await registry.register_tool(WriteFileTool())
         tools = registry.get_all_tools()
         assert "write_file" in tools.keys()
         assert isinstance(tools["write_file"], WriteFileTool)
     
     async def test_list_directory_tool_registration(self, registry):
         """Test that ListDirectoryTool is properly registered."""
+        # First register the tool
+        await registry.register_tool(ListDirectoryTool())
         tools = registry.get_all_tools()
         assert "list_directory" in tools.keys()
         assert isinstance(tools["list_directory"], ListDirectoryTool)
     
     async def test_shell_command_tool_registration(self, registry):
         """Test that ShellCommandTool is properly registered."""
+        # First register the tool
+        await registry.register_tool(ShellCommandTool())
         tools = registry.get_all_tools()
         assert "shell_command" in tools.keys()
         assert isinstance(tools["shell_command"], ShellCommandTool)

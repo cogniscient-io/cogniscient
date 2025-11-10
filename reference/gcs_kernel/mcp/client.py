@@ -1,228 +1,176 @@
 """
-MCP (Model Context Protocol) Client implementation for the GCS Kernel.
+MCP Client using the official Model Context Protocol SDK.
 
-This module implements the MCPClient class which connects to external
-tool servers and communicates with the kernel MCP server.
+This module implements the MCP client using the official mcp package SDK.
+The implementation now focuses on using existing sessions to perform MCP operations,
+separating concerns from connection management to the client manager.
 """
 
 import asyncio
-import json
-from typing import Dict, Any, Optional
-from gcs_kernel.models import MCPConfig, ToolResult
+from typing import Dict, Any, Optional, Callable
+from mcp.client.session import ClientSession
 
 
 class MCPClient:
     """
-    MCP client for connecting to external tool servers.
-    Validates external tool schemas and capabilities, ensures secure
-    communication with external MCP services.
+    Application-level MCP client using the official mcp SDK.
+    This class focuses on using an existing session to perform MCP operations.
     """
-    
-    def __init__(self, config: MCPConfig = None):
+
+    def __init__(self, session: ClientSession, server_url: str):
         """
-        Initialize the MCP client with configuration.
-        
+        Initialize the MCP client with an existing session.
+
         Args:
-            config: Optional MCP configuration
+            session: The ClientSession instance to use for MCP operations
+            server_url: URL of the server for identification
         """
-        self.config = config or MCPConfig(server_url="http://localhost:8000")
-        self.session = None
+        self.session = session
+        self.server_url = server_url
+        self.initialized = True  # Already initialized when session is passed
         self.logger = None  # Will be set by kernel
-        self.initialized = False
 
-    async def initialize(self):
-        """Initialize the MCP client."""
-        import httpx
-        self.session = httpx.AsyncClient(timeout=self.config.request_timeout)
-        self.initialized = True
-        
-        if self.logger:
-            self.logger.info(f"MCP client initialized with server: {self.config.server_url}")
-
-    async def shutdown(self):
-        """Shutdown the MCP client."""
-        if self.session:
-            await self.session.aclose()
-        self.initialized = False
-        
-        if self.logger:
-            self.logger.info("MCP client shutdown")
-
-    async def connect_to_server(self):
+    async def list_tools(self) -> Optional[Dict[str, Any]]:
         """
-        Connect to the MCP server and verify connectivity.
-        
+        List tools available on the server using the official SDK.
+
         Returns:
-            Connection result object
+            Dictionary containing the list of available tools or None if request failed
         """
-        if not self.initialized:
-            await self.initialize()
-        
         try:
-            response = await self.session.get(f"{self.config.server_url}/health")
-            if response.status_code == 200:
-                return {"success": True, "message": "Connected to server successfully"}
+            result = await self.session.list_tools()
+            if hasattr(result, 'model_dump'):
+                return result.model_dump()
+            elif isinstance(result, (dict, list)):
+                return result
+            elif hasattr(result, '__dict__'):
+                # If it's an object, try to convert to dict
+                return result.__dict__
             else:
-                return {"success": False, "message": f"Server returned status: {response.status_code}"}
-        except Exception as e:
-            return {"success": False, "message": f"Failed to connect: {str(e)}"}
-
-    async def list_tools(self) -> Dict[str, Any]:
-        """
-        List tools available on the server.
-        
-        Returns:
-            Dictionary containing the list of available tools
-        """
-        if not self.initialized:
-            await self.initialize()
-        
-        try:
-            response = await self.session.get(f"{self.config.server_url}/tools")
-            response.raise_for_status()
-            return response.json()
+                # If it's a response object, convert it to dict
+                return {"result": str(result)}
         except Exception as e:
             if self.logger:
                 self.logger.error(f"Failed to list tools: {e}")
             return {"tools": []}
 
-    async def get_tool(self, tool_name: str) -> Optional[Dict[str, Any]]:
+
+
+    async def call_tool(self, tool_name: str, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
-        Get details of a specific tool.
-        
+        Call a specific tool on the server using the official SDK.
+
         Args:
-            tool_name: Name of the tool to get details for
-            
+            tool_name: Name of the tool to call
+            params: Parameters for the tool execution
+
         Returns:
-            Tool details or None if not found
+            Tool execution result or None if request failed
         """
-        if not self.initialized:
-            await self.initialize()
-        
         try:
-            response = await self.session.get(f"{self.config.server_url}/tools/{tool_name}")
-            if response.status_code == 200:
-                return response.json()
+            result = await self.session.call_tool(name=tool_name, arguments=params)
+            if hasattr(result, 'model_dump'):
+                return result.model_dump()
+            elif isinstance(result, (dict, list)):
+                return result
+            elif hasattr(result, '__dict__'):
+                # If it's an object, try to convert to dict
+                return result.__dict__
             else:
-                return None
+                # If it's a response object, convert it to dict
+                return {"result": str(result)}
         except Exception as e:
             if self.logger:
-                self.logger.error(f"Failed to get tool {tool_name}: {e}")
+                self.logger.error(f"Failed to call tool {tool_name}: {e}")
+            return {"error": str(e)}
+
+    async def list_prompts(self) -> Optional[Dict[str, Any]]:
+        """
+        List available prompts from the MCP server.
+        
+        Returns:
+            List of available prompts or None if request failed
+        """
+        try:
+            result = await self.session.list_prompts()
+            if hasattr(result, 'model_dump'):
+                return result.model_dump()
+            elif isinstance(result, (dict, list)):
+                return result
+            elif hasattr(result, '__dict__'):
+                # If it's an object, try to convert to dict
+                return result.__dict__
+            else:
+                # If it's a response object, convert it to dict
+                return {"result": str(result)}
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Failed to list prompts: {e}")
             return None
 
+    async def get_prompt(self, prompt_name: str, arguments: Dict[str, Any] = {}) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific prompt from the MCP server.
+
+        Args:
+            prompt_name: Name of the prompt to retrieve
+            arguments: Arguments to pass to the prompt
+            
+        Returns:
+            Prompt content or None if request failed
+        """
+        try:
+            result = await self.session.get_prompt(name=prompt_name, arguments=arguments)
+            if hasattr(result, 'model_dump'):
+                return result.model_dump()
+            elif isinstance(result, (dict, list)):
+                return result
+            elif hasattr(result, '__dict__'):
+                # If it's an object, try to convert to dict
+                return result.__dict__
+            else:
+                # If it's a response object, convert it to dict
+                return {"result": str(result)}
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Failed to get prompt {prompt_name}: {e}")
+            return None
+
+    # Legacy methods to maintain backward compatibility with existing code
+    # These map to the new methods
     async def submit_tool_execution(self, tool_name: str, params: Dict[str, Any]) -> str:
         """
-        Submit a tool execution to the server.
-        
+        Submit a tool execution to the server using the official SDK.
+        (Backward compatibility method - uses call_tool)
+
         Args:
             tool_name: Name of the tool to execute
             params: Parameters for the tool execution
-            
+
         Returns:
             Execution ID of the submitted execution
         """
-        if not self.initialized:
-            await self.initialize()
-        
-        try:
-            response = await self.session.post(
-                f"{self.config.server_url}/tools/{tool_name}/execute",
-                json=params
-            )
-            response.raise_for_status()
-            result = response.json()
-            return result.get("execution_id", "")
-        except Exception as e:
-            if self.logger:
-                self.logger.error(f"Failed to submit tool execution: {e}")
-            raise e
+        result = await self.call_tool(tool_name, params)
+        if result and 'result' in result:
+            import uuid
+            execution_id = str(uuid.uuid4())
+            return execution_id
+        else:
+            raise Exception(f"Tool execution failed: {result}")
 
-    async def get_execution_result(self, execution_id: str) -> Optional[ToolResult]:
+    async def get_execution_result(self, execution_id: str) -> Optional[Dict[str, Any]]:
         """
-        Get the result of a tool execution.
-        
+        Get the result of a tool execution from the server.
+        Note: In MCP protocol, results are often streamed back rather than polled.
+        (Backward compatibility method)
+
         Args:
             execution_id: ID of the execution to get result for
-            
-        Returns:
-            ToolResult object or None if not found
-        """
-        if not self.initialized:
-            await self.initialize()
-        
-        try:
-            response = await self.session.get(f"{self.config.server_url}/executions/{execution_id}")
-            if response.status_code == 200:
-                execution_data = response.json()
-                
-                # Convert the response to a ToolResult
-                result_data = execution_data.get("result")
-                if result_data:
-                    return ToolResult(
-                        tool_name=execution_data["tool_name"],
-                        llm_content=result_data.get("llm_content", ""),
-                        return_display=result_data.get("return_display", ""),
-                        success=result_data.get("success", True),
-                        error=result_data.get("error")
-                    )
-            return None
-        except Exception as e:
-            if self.logger:
-                self.logger.error(f"Failed to get execution result: {e}")
-            return None
 
-    async def list_executions(self) -> Dict[str, Any]:
-        """
-        List recent tool executions.
-        
         Returns:
-            Dictionary containing recent executions
+            Tool execution result or None if not found
         """
-        # Note: This is a placeholder - the actual server may need a specific endpoint
-        # for listing all executions
         if self.logger:
-            self.logger.warning("List executions endpoint not implemented in server yet")
-        return {"executions": []}
+            self.logger.warning("Direct execution result polling not supported in MCP protocol")
+        return None
 
-    async def validate_tool_schema(self, tool_name: str, params: Dict[str, Any]) -> bool:
-        """
-        Validate tool parameters against the tool's schema.
-        
-        Args:
-            tool_name: Name of the tool to validate against
-            params: Parameters to validate
-            
-        Returns:
-            True if validation passes, False otherwise
-        """
-        tool_info = await self.get_tool(tool_name)
-        if not tool_info:
-            return False
-        
-        schema = tool_info.get("parameters", {})
-        if not schema:
-            return True  # If no schema, assume valid
-        
-        # Basic validation based on schema definition
-        properties = schema.get("properties", {})
-        required = schema.get("required", [])
-        
-        # Check required parameters
-        for param in required:
-            if param not in params:
-                return False
-        
-        # Validate parameter types (simplified)
-        for param_name, param_value in params.items():
-            if param_name in properties:
-                expected_type = properties[param_name].get("type")
-                if expected_type == "string" and not isinstance(param_value, str):
-                    return False
-                elif expected_type == "integer" and not isinstance(param_value, int):
-                    return False
-                elif expected_type == "number" and not isinstance(param_value, (int, float)):
-                    return False
-                elif expected_type == "boolean" and not isinstance(param_value, bool):
-                    return False
-        
-        return True

@@ -155,18 +155,73 @@ class OpenAIProvider(BaseProvider):
                     model_data = response.json()
                     logger.info(f"Successfully retrieved model info for {model_name}")
                     
+                    # Extract max context length - some OpenAI API responses include this information
+                    # In the future, we could also make a separate call to model-specific endpoints
+                    # that provide more detailed information including context window size
+                    max_context_length = None
+                    
+                    # Some OpenAI API responses include context length in various fields
+                    # Check for different possible field names (including the VLLM response format like Qwen3)
+                    if 'max_model_len' in model_data:
+                        # VLLM and many other backends use this field name
+                        max_context_length = model_data['max_model_len']
+                    elif 'max_context_length' in model_data:
+                        max_context_length = model_data['max_context_length']
+                    elif 'context_length' in model_data:
+                        max_context_length = model_data['context_length']
+                    elif 'max_tokens' in model_data:
+                        # Be careful - this might be response max_tokens, not context length
+                        # For now, only use if it looks like a context length (> 4096)
+                        max_tokens_val = model_data['max_tokens']
+                        if isinstance(max_tokens_val, int) and max_tokens_val > 4096:
+                            max_context_length = max_tokens_val
+                    elif 'max_input_tokens' in model_data:
+                        max_context_length = model_data['max_input_tokens']
+                    
+                    # Here we go!!!!  The first Adaptive Loop in the system!
+                    # If we couldn't extract from the API, use the AI service to determine the value
+                    # This pattern allows us to adaptively learn about new models without hardcoding values
+                    # increasing the capabilities of the system over time, if we were to keep track
+                    # of these adaptively learned values in a persistent store.
+                    if max_context_length is None:
+                        # Prepare context for AI processing
+                        context_data = {
+                            "model_response": model_data,
+                            "model_name": model_name,
+                            "missing_field": "max_context_length",
+                            "possible_field_names": [
+                                "max_model_len", "max_context_length", "context_length",
+                                "max_tokens", "max_input_tokens", "max_seq_len", "max_position_embeddings"
+                            ]
+                        }
+
+                        # Use the adaptive error processing service if available
+                        if hasattr(self, 'adaptive_error_service'):
+                            ai_suggested_value = await self.adaptive_error_service.process_error_async(
+                                error_context=context_data,
+                                problem_description=f"Find the maximum context length field in the model response for {model_name}",
+                                fallback_value=4096  # Default fallback
+                            )
+                            logger.info(f"AI suggested max_context_length: {ai_suggested_value}")
+                            max_context_length = ai_suggested_value
+                        else:
+                            # If adaptive error service is not available, use intelligent defaults as fallback
+                            if 'gpt-4-turbo' in model_name or 'gpt-4o' in model_name:
+                                max_context_length = 128000
+                            elif 'gpt-4' in model_name:
+                                max_context_length = 128000
+                            elif 'gpt-3.5-turbo' in model_name:
+                                max_context_length = 16384
+                            else:
+                                max_context_length = 4096  # Default fallback
+    
                     # Extract relevant information from the model data
                     result = {
                         'id': model_data.get('id'),
                         'object': model_data.get('object'),
                         'created': model_data.get('created'),
                         'owned_by': model_data.get('owned_by'),
-                        # Note: OpenAI API doesn't directly provide context length in this endpoint
-                        # This is where we would extract max context length if available
-                        'max_context_length': 128000 if 'gpt-4-turbo' in model_name else 
-                                            128000 if 'gpt-4' in model_name else 
-                                            16384 if 'gpt-3.5-turbo' in model_name else 
-                                            4096,  # Default fallback
+                        'max_context_length': max_context_length,
                         'capabilities': {
                             # Additional capabilities could be included here
                         }
@@ -190,3 +245,12 @@ class OpenAIProvider(BaseProvider):
                 'max_context_length': settings.llm_max_tokens,
                 'capabilities': {}
             }
+
+    def set_adaptive_error_service(self, adaptive_error_service):
+        """
+        Set the adaptive error processing service for this provider.
+
+        Args:
+            adaptive_error_service: The adaptive error processing service instance
+        """
+        self.adaptive_error_service = adaptive_error_service

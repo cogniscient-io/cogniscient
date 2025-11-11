@@ -71,15 +71,27 @@ class GCSKernel:
         )
         
         # Initialize AI orchestrator with direct kernel access for simplified architecture
-        # Create content generator using settings
-        content_generator = LLMContentGenerator()
+        # Create the Adaptive Error Processing Service (without orchestrator initially)
+        from services.error_processing.adaptive_error_service import AdaptiveErrorProcessingService
+        self.adaptive_error_service = AdaptiveErrorProcessingService(
+            mcp_client=self.mcp_client_manager,
+            ai_orchestrator=None  # Will be set after creation
+        )
+        
+        # Create content generator with the adaptive error service
+        content_generator = LLMContentGenerator(adaptive_error_service=self.adaptive_error_service)
         content_generator.kernel = self  # Set kernel reference for model info updates
+        
         # Initialize orchestrator as the primary AI interaction handler
         self.ai_orchestrator = AIOrchestratorService(
             self.mcp_client_manager,
             content_generator=content_generator,
             kernel=self
         )
+        
+        # Now set the orchestrator in the adaptive error service
+        self.adaptive_error_service.ai_orchestrator = self.ai_orchestrator
+        
         # Set kernel services for direct access by orchestrator
         self.ai_orchestrator.set_kernel_services(
             registry=self.registry,

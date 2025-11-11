@@ -360,13 +360,23 @@ class MockProvider(BaseProvider):
         Returns:
             Dictionary containing model information including capabilities
         """
+        # For mock provider, return static information with intelligent defaults based on model name
+        if 'gpt-4-turbo' in model_name or 'gpt-4o' in model_name:
+            max_context_length = 128000
+        elif 'gpt-4' in model_name:
+            max_context_length = 128000
+        elif 'gpt-3.5-turbo' in model_name:
+            max_context_length = 16384
+        else:
+            max_context_length = 4096  # Default fallback
+        
         # For mock provider, return static information
         return {
             'id': model_name,
             'object': 'model',
             'created': 1677610602,  # Mock creation timestamp
             'owned_by': 'organization-owner',
-            'max_context_length': 4096,  # Mock context length
+            'max_context_length': max_context_length,
             'capabilities': {
                 'supports_tools': True,
                 'supports_streaming': True

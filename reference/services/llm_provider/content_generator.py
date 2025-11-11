@@ -12,7 +12,7 @@ from gcs_kernel.models import PromptObject
 from services.llm_provider.base_generator import BaseContentGenerator
 from services.llm_provider.pipeline import ContentGenerationPipeline
 from services.llm_provider.providers.provider_factory import ProviderFactory
-from common.settings import settings
+
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -25,13 +25,13 @@ class LLMContentGenerator(BaseContentGenerator):
     Supports multiple LLM providers through the provider factory.
     """
 
-    def __init__(self):
+    def __init__(self, adaptive_error_service=None):
         # Initialize provider components
         # The provider factory will handle all configuration internally from settings
         self.provider_factory = ProviderFactory()
 
         # Let the provider factory create the provider with configuration from settings
-        self.provider = self.provider_factory.create_provider_from_settings()
+        self.provider = self.provider_factory.create_provider_from_settings(adaptive_error_service)
         self.pipeline = ContentGenerationPipeline(self.provider)
         
         # Initialize kernel reference (will be set by orchestrator)
@@ -124,18 +124,6 @@ class LLMContentGenerator(BaseContentGenerator):
                 prompt_obj.result_content = message.get("content", "")
 
                 logger.debug(f"ContentGenerator process_full_response - extracted content: '{prompt_obj.result_content}'")
-
-                # Extract max_tokens from the content if provided by the LLM
-                # The LLM might return max_tokens information in its response content
-                # Look for a special format in the content like "MAX_TOKENS: 500"
-                import re
-                max_tokens_match = re.search(r'MAX_TOKENS:\s*(\d+)', prompt_obj.result_content)
-                if max_tokens_match:
-                    extracted_max_tokens = int(max_tokens_match.group(1))
-                    # Update the prompt object's max_tokens for this specific interaction
-                    # This allows the LLM to influence the max_tokens parameter for future calls
-                    prompt_obj.max_tokens = extracted_max_tokens
-                    logger.info(f"Updated max_tokens from LLM response: {extracted_max_tokens}")
 
                 # Add any tool calls to the prompt object (but don't execute them)
                 # Execution is handled by the orchestrator/turn manager

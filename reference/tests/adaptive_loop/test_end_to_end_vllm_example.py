@@ -8,7 +8,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 
 from gcs_kernel.models import PromptObject
-from services.error_processing.adaptive_error_service import AdaptiveErrorProcessingService
+from services.adaptive_loop.adaptive_loop_service import AdaptiveLoopService
 
 
 class SimulatedAIResponse:
@@ -82,7 +82,7 @@ async def test_adaptive_loop_with_exact_vllm_response_example():
         ]
     }
     
-    # Create the adaptive error service with simulated AI behavior
+    # Create the adaptive loop service with simulated AI behavior
     mock_client = MagicMock()
     ai_simulator = SimulatedAIResponse()
     
@@ -90,7 +90,7 @@ async def test_adaptive_loop_with_exact_vllm_response_example():
         async def handle_ai_interaction(self, prompt_obj):
             return await ai_simulator.handle_request(prompt_obj)
     
-    adaptive_service = AdaptiveErrorProcessingService(
+    adaptive_service = AdaptiveLoopService(
         mcp_client=mock_client,
         ai_orchestrator=SimulatedOrchestrator()
     )
@@ -106,9 +106,9 @@ async def test_adaptive_loop_with_exact_vllm_response_example():
         ]
     }
     
-    # Process the error context using the adaptive service
-    result = await adaptive_service.process_error_async(
-        error_context=context_data,
+    # Process the context using the adaptive service
+    result = await adaptive_service.adapt_async(
+        context=context_data,
         problem_description="Find the maximum context length field in the model response for qwen/qwen3-coder-30b-a3b-instruct",
         fallback_value=4096  # This would be used if AI couldn't find the field
     )
@@ -173,7 +173,7 @@ async def test_different_field_name_patterns():
             async def handle_ai_interaction(self, prompt_obj):
                 return await self.simulator.handle_request(prompt_obj)
         
-        adaptive_service = AdaptiveErrorProcessingService(
+        adaptive_service = AdaptiveLoopService(
             mcp_client=mock_client,
             ai_orchestrator=PerTestOrchestrator(case["search_term"], case["expected"])
         )
@@ -184,8 +184,8 @@ async def test_different_field_name_patterns():
             "missing_field": case["field"]
         }
         
-        result = await adaptive_service.process_error_async(
-            error_context=context_data,
+        result = await adaptive_service.adapt_async(
+            context=context_data,
             problem_description=f"Find {case['field']} in model response",
             fallback_value=4096
         )
@@ -200,7 +200,7 @@ def test_prompt_building_for_vllm_example():
     """
     mock_client = MagicMock()
     mock_orchestrator = MagicMock()
-    adaptive_service = AdaptiveErrorProcessingService(
+    adaptive_service = AdaptiveLoopService(
         mcp_client=mock_client,
         ai_orchestrator=mock_orchestrator
     )

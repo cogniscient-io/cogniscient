@@ -25,13 +25,13 @@ class LLMContentGenerator(BaseContentGenerator):
     Supports multiple LLM providers through the provider factory.
     """
 
-    def __init__(self, adaptive_error_service=None):
+    def __init__(self, adaptive_loop_service=None):
         # Initialize provider components
         # The provider factory will handle all configuration internally from settings
         self.provider_factory = ProviderFactory()
 
         # Let the provider factory create the provider with configuration from settings
-        self.provider = self.provider_factory.create_provider_from_settings(adaptive_error_service)
+        self.provider = self.provider_factory.create_provider_from_settings(adaptive_loop_service)
         self.pipeline = ContentGenerationPipeline(self.provider)
         
         # Initialize kernel reference (will be set by orchestrator)
@@ -79,7 +79,7 @@ class LLMContentGenerator(BaseContentGenerator):
         prompt_obj.mark_processing()
 
         try:
-            # Store all chunks to reconstruct the full response later
+            # Store all chunks to reconstruct the full response temporarily
             chunks_accumulated = []
 
             # Process streaming chunks from the pipeline and yield content as it comes
@@ -96,8 +96,15 @@ class LLMContentGenerator(BaseContentGenerator):
                 # Store the chunk to reconstruct the full response later
                 chunks_accumulated.append(chunk)
 
-            # Convert accumulated chunks to full response format and process it
+            # After streaming completes, reconstruct the full response from accumulated chunks
+            # NOTE: For OpenAI-compatible APIs including vLLM, the streaming response provides
+            # content deltas during the stream and potentially a final chunk with finish_reason,
+            # but may not include post-processing metadata like usage statistics that would 
+            # be available in a non-streaming response. The process_streaming_chunks method
+            # reconstructs the complete message content and structure from the streamed deltas.
             full_response = self.process_streaming_chunks(chunks_accumulated)
+            
+            # Process the reconstructed full response
             self.process_full_response(prompt_obj, full_response)
 
         except Exception as e:
@@ -161,6 +168,7 @@ class LLMContentGenerator(BaseContentGenerator):
         # Initialize variables to collect the full response for potential tool calls
         accumulated_tool_calls = []
         accumulated_content = ""
+        final_finish_reason = None  # Track the finish reason from the final chunk
 
         # Process each chunk to accumulate content and tool calls
         for chunk in chunks:
@@ -200,6 +208,13 @@ class LLMContentGenerator(BaseContentGenerator):
                             if "arguments" in function_delta:
                                 current_tc["function"]["arguments"] += function_delta["arguments"]
 
+                # Check if this chunk contains the finish_reason (which would be in the choice, not delta)
+                # This is important for capturing the final message object's finish_reason
+                chunk_finish_reason = choices[0].get("finish_reason")
+                if chunk_finish_reason:
+                    # If we have a finish_reason in this chunk, it's likely the final chunk
+                    final_finish_reason = chunk_finish_reason
+
         # Construct the full response
         full_response = {
             "choices": []
@@ -214,7 +229,8 @@ class LLMContentGenerator(BaseContentGenerator):
         if accumulated_tool_calls:
             message_obj["tool_calls"] = accumulated_tool_calls
 
-        finish_reason = "tool_calls" if accumulated_tool_calls else "stop"
+        # Use the finish_reason from the final chunk if available, otherwise determine it based on tool calls
+        finish_reason = final_finish_reason if final_finish_reason else ("tool_calls" if accumulated_tool_calls else "stop")
 
         full_response["choices"].append({
             "index": 0,
@@ -222,7 +238,7 @@ class LLMContentGenerator(BaseContentGenerator):
             "finish_reason": finish_reason
         })
 
-        logger.debug(f"ContentGenerator process_streaming_chunks - accumulated_content: '{accumulated_content}', accumulated_tool_calls: {accumulated_tool_calls}")
+        logger.debug(f"ContentGenerator process_streaming_chunks - accumulated_content: '{accumulated_content}', accumulated_tool_calls: {accumulated_tool_calls}, finish_reason: {finish_reason}")
 
         return full_response
 

@@ -1,13 +1,13 @@
 """
 Test suite for Adaptive Loop integration with OpenAI Provider.
 
-This module tests the integration between AdaptiveErrorProcessingService
+This module tests the integration between AdaptiveLoopService
 and OpenAIProvider's get_model_info functionality.
 """
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from services.error_processing.adaptive_error_service import AdaptiveErrorProcessingService
+from services.adaptive_loop.adaptive_loop_service import AdaptiveLoopService
 from services.llm_provider.providers.openai_provider import OpenAIProvider
 
 
@@ -38,16 +38,16 @@ async def test_openai_provider_has_adaptive_error_service_method(mock_openai_pro
     # Verify it can be called without error
     mock_service = MagicMock()
     mock_openai_provider.set_adaptive_error_service(mock_service)
-    assert mock_openai_provider.adaptive_error_service == mock_service
+    assert mock_openai_provider.adaptive_loop_service == mock_service
 
 
 @pytest.mark.asyncio
-async def test_adaptive_error_service_integration():
-    """Test full integration between AdaptiveErrorProcessingService and OpenAIProvider."""
-    # Create the adaptive error service
+async def test_adaptive_loop_service_integration():
+    """Test full integration between AdaptiveLoopService and OpenAIProvider."""
+    # Create the adaptive loop service
     mock_client = MagicMock()
     mock_orchestrator = MockOrchestrator()
-    adaptive_service = AdaptiveErrorProcessingService(mock_client, mock_orchestrator)
+    adaptive_service = AdaptiveLoopService(mock_client, mock_orchestrator)
     
     # Create the provider and set the adaptive service
     config = {
@@ -58,12 +58,12 @@ async def test_adaptive_error_service_integration():
     provider.set_adaptive_error_service(adaptive_service)
     
     # Verify the service was set correctly
-    assert provider.adaptive_error_service == adaptive_service
+    assert provider.adaptive_loop_service == adaptive_service
 
 
 @pytest.mark.asyncio
 async def test_get_model_info_uses_adaptive_service_if_available(monkeypatch, mock_openai_provider):
-    """Test that get_model_info uses adaptive error service when available."""
+    """Test that get_model_info uses adaptive service when available."""
     # Mock the HTTP call to simulate a model response without max_context_length
     async def mock_get(url, headers=None):
         mock_response = MagicMock()
@@ -94,7 +94,7 @@ async def test_get_model_info_uses_adaptive_service_if_available(monkeypatch, mo
     # Patch httpx.AsyncClient
     monkeypatch.setattr("httpx.AsyncClient", MockAsyncClient)
     
-    # Create adaptive error service with known return value
+    # Create adaptive loop service with known return value
     mock_client = MagicMock()
     
     class DeterministicOrchestrator:
@@ -104,9 +104,9 @@ async def test_get_model_info_uses_adaptive_service_if_available(monkeypatch, mo
             prompt_obj.mark_completed(prompt_obj.result_content)
             return prompt_obj
     
-    adaptive_service = AdaptiveErrorProcessingService(mock_client, DeterministicOrchestrator())
+    adaptive_service = AdaptiveLoopService(mock_client, DeterministicOrchestrator())
     
-    # Set the adaptive error service on the provider
+    # Set the adaptive loop service on the provider
     mock_openai_provider.set_adaptive_error_service(adaptive_service)
     
     # Call get_model_info
@@ -150,7 +150,7 @@ async def test_get_model_info_uses_fallback_when_adaptive_service_not_available(
     # Patch httpx.AsyncClient
     monkeypatch.setattr("httpx.AsyncClient", MockAsyncClient)
     
-    # Don't set adaptive error service, so it should use fallback logic
+    # Don't set adaptive loop service, so it should use fallback logic
     # When the adaptive service is not set, it should use the hardcoded fallback logic
     
     # Call get_model_info

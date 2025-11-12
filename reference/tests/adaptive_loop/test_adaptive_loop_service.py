@@ -1,14 +1,14 @@
 """
-Test suite for Adaptive Error Processing Service.
+Test suite for Adaptive Loop Service.
 
-This module tests the AdaptiveErrorProcessingService functionality,
-including AI-assisted error handling and fallback mechanisms.
+This module tests the AdaptiveLoopService functionality,
+including AI-assisted adaptation and fallback mechanisms.
 """
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
 from gcs_kernel.models import PromptObject
-from services.error_processing.adaptive_error_service import AdaptiveErrorProcessingService
+from services.adaptive_loop.adaptive_loop_service import AdaptiveLoopService
 
 
 class MockOrchestrator:
@@ -50,17 +50,17 @@ def mock_orchestrator():
 
 
 @pytest.fixture
-def adaptive_error_service(mock_client, mock_orchestrator):
-    """Create an adaptive error processing service instance for testing."""
-    return AdaptiveErrorProcessingService(
+def adaptive_loop_service(mock_client, mock_orchestrator):
+    """Create an adaptive loop service instance for testing."""
+    return AdaptiveLoopService(
         mcp_client=mock_client,
         ai_orchestrator=mock_orchestrator
     )
 
 
 @pytest.mark.asyncio
-async def test_adaptive_error_processing_success(adaptive_error_service):
-    """Test successful AI processing of error context."""
+async def test_adaptive_loop_success(adaptive_loop_service):
+    """Test successful AI processing of context."""
     context_data = {
         "model_response": {
             "id": "gpt-4-turbo-2024-04-09",
@@ -73,8 +73,8 @@ async def test_adaptive_error_processing_success(adaptive_error_service):
         "missing_field": "max_context_length"
     }
     
-    result = await adaptive_error_service.process_error_async(
-        error_context=context_data,
+    result = await adaptive_loop_service.adapt_async(
+        context=context_data,
         problem_description="Find the maximum context length field in the model response for gpt-4-turbo",
         fallback_value=4096
     )
@@ -84,10 +84,10 @@ async def test_adaptive_error_processing_success(adaptive_error_service):
 
 
 @pytest.mark.asyncio
-async def test_adaptive_error_processing_with_fallback():
+async def test_adaptive_loop_with_fallback():
     """Test fallback when AI processing fails."""
     mock_client = MagicMock()
-    failing_service = AdaptiveErrorProcessingService(
+    failing_service = AdaptiveLoopService(
         mcp_client=mock_client,
         ai_orchestrator=FailingOrchestrator()
     )
@@ -98,8 +98,8 @@ async def test_adaptive_error_processing_with_fallback():
         "missing_field": "max_tokens"
     }
     
-    result = await failing_service.process_error_async(
-        error_context=context_data,
+    result = await failing_service.adapt_async(
+        context=context_data,
         problem_description="This should fail and use fallback",
         fallback_value=9999
     )
@@ -109,7 +109,7 @@ async def test_adaptive_error_processing_with_fallback():
 
 
 @pytest.mark.asyncio
-async def test_adaptive_error_processing_ai_returns_not_found():
+async def test_adaptive_loop_ai_returns_not_found():
     """Test when AI explicitly returns NOT_FOUND, fallback should be used."""
     mock_client = MagicMock()
     
@@ -119,13 +119,13 @@ async def test_adaptive_error_processing_ai_returns_not_found():
             prompt_obj.mark_completed(prompt_obj.result_content)
             return prompt_obj
     
-    not_found_service = AdaptiveErrorProcessingService(
+    not_found_service = AdaptiveLoopService(
         mcp_client=mock_client,
         ai_orchestrator=NotFoundOrchestrator()
     )
     
-    result = await not_found_service.process_error_async(
-        error_context={"some": "data"},
+    result = await not_found_service.adapt_async(
+        context={"some": "data"},
         problem_description="AI should respond with NOT_FOUND",
         fallback_value=7777
     )
@@ -138,7 +138,7 @@ def test_parse_ai_response_integer():
     """Test parsing AI response for integer values."""
     mock_client = MagicMock()
     mock_orchestrator = MagicMock()
-    service = AdaptiveErrorProcessingService(mock_client, mock_orchestrator)
+    service = AdaptiveLoopService(mock_client, mock_orchestrator)
     
     result = service._parse_ai_response("max_context_length: 16000")
     assert result == 16000
@@ -148,7 +148,7 @@ def test_parse_ai_response_float():
     """Test parsing AI response for float values."""
     mock_client = MagicMock()
     mock_orchestrator = MagicMock()
-    service = AdaptiveErrorProcessingService(mock_client, mock_orchestrator)
+    service = AdaptiveLoopService(mock_client, mock_orchestrator)
     
     result = service._parse_ai_response("max_tokens: 32.5")
     assert result == 32.5
@@ -158,7 +158,7 @@ def test_parse_ai_response_not_found():
     """Test parsing AI response for NOT_FOUND."""
     mock_client = MagicMock()
     mock_orchestrator = MagicMock()
-    service = AdaptiveErrorProcessingService(mock_client, mock_orchestrator)
+    service = AdaptiveLoopService(mock_client, mock_orchestrator)
     
     result = service._parse_ai_response("NOT_FOUND")
     assert result is None
@@ -168,7 +168,7 @@ def test_parse_ai_response_string():
     """Test parsing AI response for string values."""
     mock_client = MagicMock()
     mock_orchestrator = MagicMock()
-    service = AdaptiveErrorProcessingService(mock_client, mock_orchestrator)
+    service = AdaptiveLoopService(mock_client, mock_orchestrator)
     
     result = service._parse_ai_response("model_name: gpt-4-turbo")
     assert result == "gpt-4-turbo"
@@ -178,7 +178,7 @@ def test_build_prompt():
     """Test building the AI prompt."""
     mock_client = MagicMock()
     mock_orchestrator = MagicMock()
-    service = AdaptiveErrorProcessingService(mock_client, mock_orchestrator)
+    service = AdaptiveLoopService(mock_client, mock_orchestrator)
     
     context = {"test": "data"}
     problem = "Find the answer"

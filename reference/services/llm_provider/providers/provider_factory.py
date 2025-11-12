@@ -32,14 +32,14 @@ class ProviderFactory:
         """
         self.providers[name] = provider_class
     
-    def create_provider(self, provider_type: str, config: Dict[str, Any], adaptive_error_service=None) -> BaseProvider:
+    def create_provider(self, provider_type: str, config: Dict[str, Any], adaptive_loop_service=None) -> BaseProvider:
         """
         Create a provider instance of the specified type.
         
         Args:
             provider_type: Type of provider to create
             config: Configuration for the provider
-            adaptive_error_service: Optional adaptive error processing service
+            adaptive_loop_service: Optional adaptive loop service
             
         Returns:
             Provider instance
@@ -53,19 +53,19 @@ class ProviderFactory:
         provider_class = self.providers[provider_type]
         provider = provider_class(config)
         
-        # If adaptive error service is provided and the provider supports it, set it
-        if adaptive_error_service and hasattr(provider, 'set_adaptive_error_service'):
-            provider.set_adaptive_error_service(adaptive_error_service)
+        # If adaptive loop service is provided and the provider supports it, set it
+        if adaptive_loop_service and hasattr(provider, 'set_adaptive_error_service'):
+            provider.set_adaptive_error_service(adaptive_loop_service)
             
         return provider
     
-    def create_provider_from_settings(self, adaptive_error_service=None) -> BaseProvider:
+    def create_provider_from_settings(self, adaptive_loop_service=None) -> BaseProvider:
         """
         Create a provider instance using configuration from global settings.
         This eliminates the need for callers to handle configuration details.
 
         Args:
-            adaptive_error_service: Optional adaptive error processing service
+            adaptive_loop_service: Optional adaptive loop service
         
         Returns:
             Provider instance configured from global settings
@@ -105,9 +105,9 @@ class ProviderFactory:
         provider_class = self.providers[provider_type]
         provider = provider_class(config)
         
-        # If adaptive error service is provided and the provider supports it, set it
-        if adaptive_error_service and hasattr(provider, 'set_adaptive_error_service'):
-            provider.set_adaptive_error_service(adaptive_error_service)
+        # If adaptive loop service is provided and the provider supports it, set it
+        if adaptive_loop_service and hasattr(provider, 'set_adaptive_error_service'):
+            provider.set_adaptive_error_service(adaptive_loop_service)
             
         return provider
     

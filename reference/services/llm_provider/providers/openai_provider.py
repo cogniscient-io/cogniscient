@@ -97,6 +97,7 @@ class OpenAIProvider(BaseProvider):
         }
         
         # Add optional parameters if present in the prompt object
+
         if prompt_obj.max_tokens is not None:
             openai_request["max_tokens"] = prompt_obj.max_tokens
         if prompt_obj.temperature:
@@ -195,17 +196,17 @@ class OpenAIProvider(BaseProvider):
                             ]
                         }
 
-                        # Use the adaptive error processing service if available
-                        if hasattr(self, 'adaptive_error_service'):
-                            ai_suggested_value = await self.adaptive_error_service.process_error_async(
-                                error_context=context_data,
+                        # Use the adaptive loop service if available
+                        if hasattr(self, 'adaptive_loop_service') and self.adaptive_loop_service:
+                            ai_suggested_value = await self.adaptive_loop_service.adapt_async(
+                                context=context_data,
                                 problem_description=f"Find the maximum context length field in the model response for {model_name}",
                                 fallback_value=4096  # Default fallback
                             )
                             logger.info(f"AI suggested max_context_length: {ai_suggested_value}")
                             max_context_length = ai_suggested_value
                         else:
-                            # If adaptive error service is not available, use intelligent defaults as fallback
+                            # If adaptive loop service is not available, use intelligent defaults as fallback
                             if 'gpt-4-turbo' in model_name or 'gpt-4o' in model_name:
                                 max_context_length = 128000
                             elif 'gpt-4' in model_name:
@@ -246,11 +247,11 @@ class OpenAIProvider(BaseProvider):
                 'capabilities': {}
             }
 
-    def set_adaptive_error_service(self, adaptive_error_service):
+    def set_adaptive_error_service(self, adaptive_loop_service):
         """
-        Set the adaptive error processing service for this provider.
+        Set the adaptive loop service for this provider (using legacy method name for compatibility).
 
         Args:
-            adaptive_error_service: The adaptive error processing service instance
+            adaptive_loop_service: The adaptive loop service instance
         """
-        self.adaptive_error_service = adaptive_error_service
+        self.adaptive_loop_service = adaptive_loop_service

@@ -57,6 +57,76 @@ class SystemContextBuilder:
         except json.JSONDecodeError:
             logger.warning(f"Invalid JSON in {prompts_file_path}. Using default prompts.")
             return self._get_default_prompts()
+
+    def get_formatted_prompt_with_model_style(self, prompt_type: str, model_name: str = None, **kwargs) -> str:
+        """
+        Get a formatted prompt based on the model style (XML vs JSON).
+        
+        Args:
+            prompt_type: Type of prompt to retrieve (e.g., 'tool_usage_instructions')
+            model_name: Name of the model to determine appropriate style
+            **kwargs: Arguments for formatting the prompt
+            
+        Returns:
+            Formatted prompt string based on model style
+        """
+        # Determine if we should use XML-style or JSON-style based on model
+        use_xml_style = False
+        if model_name:
+            # Check for qwen3-coder or similar models that prefer XML-style
+            if 'qwen' in model_name.lower() and ('-coder' in model_name.lower() or '3-coder' in model_name.lower()):
+                use_xml_style = True
+            # You can add more model detection logic here
+        
+        # Select the appropriate prompt based on model style
+        if use_xml_style:
+            if prompt_type == "tool_usage_instructions":
+                prompt_data = self.prompts.get("tool_usage_instructions_xml", self.prompts.get("tool_usage_instructions", []))
+            else:
+                prompt_data = self.prompts.get(f"{prompt_type}_xml", self.prompts.get(prompt_type, []))
+        else:
+            prompt_data = self.prompts.get(f"{prompt_type}_json", self.prompts.get(prompt_type, []))
+        
+        return self._format_prompt(prompt_data, **kwargs)
+
+    async def build_and_apply_system_context(self, prompt_obj: PromptObject, additional_context: str = None, model_name: str = None) -> bool:
+        """
+        Build system context with general information about capabilities and apply it to the prompt object.
+        Supports model-specific tool call formats (XML vs JSON).
+
+        Args:
+            prompt_obj: The PromptObject to apply the system context to
+            additional_context: Optional additional context to include
+            model_name: Name of the model to determine appropriate tool call format
+
+        Returns:
+            Boolean indicating success or failure
+        """
+        try:
+            # Build the system context with general guidance only (no more tool listings)
+            system_context = self._format_prompt(self.prompts["base_message_with_tools"], tool_names="available through the tools API")
+
+            # Add general guidance
+            system_context += self._format_prompt(self.prompts["general_guidance"])
+
+            # Add model-specific tool usage instructions
+            tool_instructions = self.get_formatted_prompt_with_model_style("tool_usage_instructions", model_name=model_name)
+            system_context += tool_instructions
+
+            # Add tool guidance
+            system_context += self._format_prompt(self.prompts["tool_guidance"])
+
+            # Add any additional context if provided
+            if additional_context:
+                system_context += self._format_prompt(self.prompts["additional_context_format"], additional_context=additional_context)
+
+            # Add the system context to the prompt object's conversation history
+            prompt_obj.add_system_message(system_context)
+
+            return True
+        except Exception as e:
+            logger.error(f"Error building and applying system context: {str(e)}")
+            return False
     
     def _get_default_prompts(self) -> Dict[str, Any]:
         """
@@ -122,38 +192,6 @@ class SystemContextBuilder:
                 "safety, security, and efficiency when executing tasks or using tools."
             ]
         }
-
-    async def build_and_apply_system_context(self, prompt_obj: PromptObject, additional_context: str = None) -> bool:
-        """
-        Build system context with general information about capabilities and apply it to the prompt object.
-        Note: Specific tools are provided separately in the tools section of API requests,
-        not in the system context, to avoid duplication.
-        
-        Args:
-            prompt_obj: The PromptObject to apply the system context to
-            additional_context: Optional additional context to include
-            
-        Returns:
-            Boolean indicating success or failure
-        """
-        try:
-            # Build the system context with general guidance only (no more tool listings)
-            system_context = self._format_prompt(self.prompts["base_message_with_tools"], tool_names="available through the tools API")
-            
-            # Add general guidance
-            system_context += self._format_prompt(self.prompts["general_guidance"])
-            
-            # Add any additional context if provided
-            if additional_context:
-                system_context += self._format_prompt(self.prompts["additional_context_format"], additional_context=additional_context)
-            
-            # Add the system context to the prompt object's conversation history
-            prompt_obj.add_system_message(system_context)
-            
-            return True
-        except Exception as e:
-            logger.error(f"Error building and applying system context: {str(e)}")
-            return False
 
     def _format_prompt(self, prompt_data, **kwargs) -> str:
         """

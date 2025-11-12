@@ -2,6 +2,7 @@
 Unit tests for BaseProvider functionality in the pipeline.
 """
 import pytest
+from typing import Dict, Any
 from services.llm_provider.providers.base_provider import BaseProvider
 
 
@@ -23,6 +24,14 @@ class ConcreteBaseProvider(BaseProvider):
     def build_request(self, prompt_obj):
         # Simple implementation for testing
         return {"prompt": prompt_obj.content}
+
+    async def get_model_info(self, model_name: str) -> Dict[str, Any]:
+        # Simple implementation for testing
+        return {
+            "model": model_name,
+            "capabilities": ["text-generation", "tool-calling"],
+            "max_tokens": 4096
+        }
 
 
 def test_base_provider_abstract_methods():

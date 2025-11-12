@@ -1,5 +1,5 @@
 """
-Integration test for Adaptive Loop with real AI orchestrator components.
+Integration test for Adaptive Loop with real kernel components.
 
 This module tests the complete Adaptive Loop flow using real components,
 though it requires actual LLM access to function properly.
@@ -9,7 +9,7 @@ import os
 from unittest.mock import MagicMock
 
 from gcs_kernel.kernel import GCSKernel
-from services.error_processing.adaptive_error_service import AdaptiveErrorProcessingService
+from services.adaptive_loop.adaptive_loop_service import AdaptiveLoopService
 
 
 @pytest.mark.asyncio
@@ -27,11 +27,11 @@ async def test_adaptive_loop_with_real_kernel_components():
         }
     }
     
-    # Create the kernel (this will set up the adaptive error service and orchestrator)
+    # Create the kernel (this will set up the adaptive loop service and orchestrator)
     kernel = GCSKernel(config)
     
-    # Access the adaptive error service that was created with the kernel
-    adaptive_service = kernel.adaptive_error_service
+    # Access the adaptive loop service that was created with the kernel
+    adaptive_service = kernel.adaptive_loop_service
     
     # Verify that the service and its orchestrator are properly connected
     assert adaptive_service is not None
@@ -42,7 +42,7 @@ async def test_adaptive_loop_with_real_kernel_components():
     assert hasattr(adaptive_service.ai_orchestrator, 'handle_ai_interaction')
     assert hasattr(kernel.mcp_client_manager, 'initialize')
     
-    print("✓ AdaptiveErrorProcessingService is properly integrated with kernel components")
+    print("✓ AdaptiveLoopService is properly integrated with kernel components")
     print("✓ AI orchestrator is connected to the adaptive service")
     print("✓ MCP client is available for communication")
     
@@ -96,11 +96,11 @@ async def test_adaptive_loop_with_real_kernel_components():
     # this would actually process the request and get a response from the LLM.
     
     # Verify that all required fields are accessible
-    assert hasattr(adaptive_service, 'process_error_async')
+    assert hasattr(adaptive_service, 'adapt_async')
     assert hasattr(adaptive_service, '_build_prompt')
     assert hasattr(adaptive_service, '_parse_ai_response')
     
-    print("✓ AdaptiveErrorProcessingService has all required methods")
+    print("✓ AdaptiveLoopService has all required methods")
     
     # The service is ready to process real requests when the system is properly configured
     print("✓ System is properly configured to process real AI requests when LLM is available")
@@ -123,26 +123,28 @@ async def test_kernel_initialization_sets_up_adaptive_loop():
     config = {}
     kernel = GCSKernel(config)
     
-    # Verify that the kernel has the adaptive error service
-    assert hasattr(kernel, 'adaptive_error_service')
-    assert kernel.adaptive_error_service is not None
+    # Verify that the kernel has the adaptive loop service
+    assert hasattr(kernel, 'adaptive_loop_service')
+    assert kernel.adaptive_loop_service is not None
     
-    # Verify that the adaptive error service is connected to the AI orchestrator
-    assert kernel.adaptive_error_service.ai_orchestrator is kernel.ai_orchestrator
+    # Verify that the adaptive loop service is connected to the AI orchestrator
+    assert kernel.adaptive_loop_service.ai_orchestrator is kernel.ai_orchestrator
     
-    # Verify that the provider (through content generator) has the adaptive error service
+    # Verify that the provider (through content generator) has the adaptive loop service
     content_generator = kernel.ai_orchestrator.content_generator
     provider = content_generator.provider
     
-    # Verify the adaptive error service is set on the provider
-    assert provider.adaptive_error_service is kernel.adaptive_error_service
+    # Verify the adaptive loop service is set on the provider
+    # (This works because the kernel sets it via the provider's set_adaptive_error_service method)
+    assert hasattr(provider, 'adaptive_loop_service') 
+    assert provider.adaptive_loop_service is kernel.adaptive_loop_service
     
     print("✓ Kernel properly initializes and connects all Adaptive Loop components")
-    print("✓ AdaptiveErrorProcessingService is connected to AI orchestrator")
-    print("✓ OpenAIProvider has reference to adaptive error service")
+    print("✓ AdaptiveLoopService is connected to AI orchestrator")
+    print("✓ OpenAIProvider has reference to adaptive loop service")
     
     # Verify the complete chain: Kernel -> AdaptiveService -> Orchestrator -> Provider -> AdaptiveService
-    assert kernel.adaptive_error_service.ai_orchestrator == kernel.ai_orchestrator
-    assert provider.adaptive_error_service == kernel.adaptive_error_service
+    assert kernel.adaptive_loop_service.ai_orchestrator == kernel.ai_orchestrator
+    assert provider.adaptive_loop_service == kernel.adaptive_loop_service
     
     print("✓ Full component chain is properly established")

@@ -117,7 +117,8 @@ class AIOrchestratorService:
                 prompt_obj.custom_tools = available_tools
         
         # Apply system context to the prompt object
-        success = await self.system_context_builder.build_and_apply_system_context(prompt_obj)
+        model_name = getattr(self.content_generator, 'model_name', None) if self.content_generator else None
+        success = await self.system_context_builder.build_and_apply_system_context(prompt_obj, model_name=model_name)
         if not success:
             # If building system context failed, we can still continue with the interaction
             # but log the issue
@@ -202,7 +203,8 @@ class AIOrchestratorService:
                 prompt_obj.custom_tools = available_tools
         
         # Apply system context to the prompt object
-        success = await self.system_context_builder.build_and_apply_system_context(prompt_obj)
+        model_name = getattr(self.content_generator, 'model_name', None) if self.content_generator else None
+        success = await self.system_context_builder.build_and_apply_system_context(prompt_obj, model_name=model_name)
         if not success:
             # If building system context failed, we can still continue with the interaction
             # but log the issue

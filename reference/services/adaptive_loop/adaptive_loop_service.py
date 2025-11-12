@@ -1,8 +1,8 @@
 """
-Adaptive Error Processing Service implementation for GCS Kernel.
+Adaptive Loop Service implementation for GCS Kernel.
 
-This module implements the AdaptiveErrorProcessingService which intelligently
-handles ambiguous or missing data in API responses by using AI to determine
+This module implements the AdaptiveLoopService which intelligently
+adapts to various situations by using AI to determine
 appropriate solutions. This implements the Adaptive Loop concept.
 """
 
@@ -14,15 +14,15 @@ from gcs_kernel.models import PromptObject
 from services.ai_orchestrator.orchestrator_service import AIOrchestratorService
 
 
-class AdaptiveErrorProcessingService:
+class AdaptiveLoopService:
     """
-    AI-Assisted Error Processing Service that intelligently handles ambiguous
-    or missing data in API responses by using AI to determine appropriate solutions.
+    AI-Assisted Adaptive Loop Service that intelligently adapts to various
+    situations by using AI to determine appropriate solutions.
     """
 
     def __init__(self, mcp_client: MCPClient, ai_orchestrator: AIOrchestratorService):
         """
-        Initialize the adaptive error processing service.
+        Initialize the adaptive loop service.
 
         Args:
             mcp_client: MCP client for communicating with the kernel server
@@ -32,17 +32,17 @@ class AdaptiveErrorProcessingService:
         self.ai_orchestrator = ai_orchestrator
         self.logger = logging.getLogger(__name__)
 
-    async def process_error_async(
+    async def adapt_async(
         self,
-        error_context: Dict[str, Any],
+        context: Dict[str, Any],
         problem_description: str,
         fallback_value=None
     ) -> Any:
         """
-        Process an error context by using AI to find a solution.
+        Adapt to a situation by using AI to find a solution.
 
         Args:
-            error_context: Context data (e.g., model response) to analyze
+            context: Context data (e.g., model response) to analyze
             problem_description: Description of the specific problem to solve
             fallback_value: Value to return if AI processing fails
 
@@ -50,8 +50,8 @@ class AdaptiveErrorProcessingService:
             AI-proposed solution or fallback value
         """
         # Create a PromptObject for the AI request with proper session isolation
-        prompt_content = self._build_prompt(error_context, problem_description)
-        self.logger.info(f"Adaptive Loop: Processing error context for model {error_context.get('model_name', 'unknown')}")
+        prompt_content = self._build_prompt(context, problem_description)
+        self.logger.info(f"Adaptive Loop: Processing context for model {context.get('model_name', 'unknown')}")
         self.logger.debug(f"Adaptive Loop: AI prompt content: {prompt_content}")
         
         prompt_obj = PromptObject.create(

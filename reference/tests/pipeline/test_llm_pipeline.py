@@ -5,6 +5,7 @@ This module tests the ContentGenerationPipeline class and its functionality.
 """
 import pytest
 import asyncio
+from typing import Dict, Any
 from unittest.mock import AsyncMock, MagicMock
 from services.llm_provider.pipeline import ContentGenerationPipeline
 from services.llm_provider.providers.base_provider import BaseProvider
@@ -64,6 +65,14 @@ class MockProvider(BaseProvider):
             enhanced_request["user"] = prompt_obj.prompt_id
         
         return enhanced_request
+
+    async def get_model_info(self, model_name: str) -> Dict[str, Any]:
+        # Simple implementation for testing
+        return {
+            "model": model_name,
+            "capabilities": ["text-generation", "tool-calling"],
+            "max_tokens": 4096
+        }
 
 
 @pytest.mark.asyncio

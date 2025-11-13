@@ -13,6 +13,9 @@ from gcs_kernel.mcp.client import MCPClient
 from gcs_kernel.models import PromptObject
 from services.ai_orchestrator.orchestrator_service import AIOrchestratorService
 
+# TODO: Storing successful adaptations in a cache for future reference
+# TODO: Better logging/journaling of adaptation attempts and outcomes
+# TODO: More sophisticated prompt engineering for improved AI responses
 
 class AdaptiveLoopService:
     """

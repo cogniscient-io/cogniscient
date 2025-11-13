@@ -197,6 +197,7 @@ class PromptObject(BaseModel):
     # Configuration
     streaming_enabled: bool = Field(default=True, description="Whether to stream the response")
     max_tokens: Optional[int] = Field(default=None, description="Maximum tokens to generate")
+    tool_choice: str = Field(default="auto", description="Tool choice strategy")
     temperature: float = Field(default=0.7, description="Temperature setting for generation")
     
     @classmethod
@@ -211,6 +212,7 @@ class PromptObject(BaseModel):
                session_id: str = None,
                streaming_enabled: bool = True,
                max_tokens: int = None,
+               tool_choice: str = "auto",
                temperature: float = 0.7) -> 'PromptObject':
         """
         Create a new PromptObject with sensible defaults.

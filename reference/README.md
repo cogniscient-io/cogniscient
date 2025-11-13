@@ -2,6 +2,28 @@
 
 The GCS Kernel is a minimal, operating-system-like kernel that provides core services for streaming AI agent orchestration. Inspired by Qwen Code's event loop and streaming response model, the kernel focuses on simplicity and modularity from the ground up.
 
+## Quick Start
+
+1. Install the package in development mode:
+```bash
+pip install -e .
+```
+
+2. Run the GCS Kernel CLI:
+```bash
+gcs
+```
+
+3. Or run in server mode:
+```bash
+gcs --mode server
+```
+
+4. For help with available options:
+```bash
+gcs --help
+```
+
 ## Architecture
 
 The GCS Kernel follows a streaming, OS-like architecture with:

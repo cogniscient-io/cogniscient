@@ -2,7 +2,7 @@
 
 The GCS Kernel is a minimal, operating-system-like kernel that provides core services for streaming AI agent orchestration. Inspired by Qwen Code's event loop and streaming response model, the kernel focuses on simplicity and modularity from the ground up.
 
-## Quick Start
+## Getting Started
 
 1. Install the package in development mode:
 ```bash
@@ -22,6 +22,12 @@ gcs --mode server
 4. For help with available options:
 ```bash
 gcs --help
+```
+
+5. Alternative method (if not installed as a package):
+```bash
+pip install -r requirements.txt
+python main.py --mode cli
 ```
 
 ## Architecture
@@ -65,23 +71,6 @@ The GCS Kernel follows a streaming, OS-like architecture with:
 - Client connects to external tool servers, validates schemas and capabilities
 - Ensures secure communication with external MCP services
 
-## Getting Started
-
-1. Install the required dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-2. Run the kernel in CLI mode:
-```bash
-python main.py --mode cli
-```
-
-3. Run the kernel as a server:
-```bash
-python main.py --mode server
-```
-
 ## MCP Integration
 
 The GCS Kernel implements MCP (Model Context Protocol) for standardized tool interaction:
@@ -93,48 +82,86 @@ The GCS Kernel implements MCP (Model Context Protocol) for standardized tool int
 ## Project Structure
 
 ```
-gcs_kernel/                 # Core kernel functionality only
-├── __init__.py
-├── kernel.py               # Main GCS Kernel implementation
-├── event_loop.py           # Master Event Loop (Turn Processing)
-├── scheduler.py            # Tool execution scheduler
-├── registry.py             # Tool registry system (kernel-level)
-├── resource_manager.py     # Resource allocation manager
-├── security.py             # Security layer
-├── logger.py               # Event logging
-└── mcp/
-    ├── __init__.py
-    ├── server.py           # MCP server to expose kernel services and tools
-    └── client.py           # MCP client to connect to external tool services
-services/                   # Services that run on top of the kernel
-├── __init__.py
-├── ai_orchestrator/        # AI orchestrator package
-│   ├── __init__.py         # Package init
-│   └── orchestrator_service.py # AI client orchestrator service
-├── tool_discovery/         # Tool discovery services
+├── pyproject.toml          # Project configuration and package metadata
+├── requirements.txt        # Python dependencies
+├── README.md               # Project documentation
+├── .env                   # Environment variables
+├── .env.example           # Example environment variables
+├── gcs_kernel/            # Core kernel functionality
 │   ├── __init__.py
-│   ├── command_discovery.py # Command-based tool discovery
-│   └── mcp_discovery.py    # MCP-based tool discovery
-└── example_service.py      # Example service implementation
-ui/                         # User interface layer (separate from kernel and services)
-├── __init__.py
-├── cli/
+│   ├── __main__.py
+│   ├── kernel.py          # Main GCS Kernel implementation
+│   ├── event_loop.py      # Master Event Loop (Turn Processing)
+│   ├── registry.py        # Tool registry system (kernel-level)
+│   ├── resource_manager.py # Resource allocation manager
+│   ├── security.py        # Security layer
+│   ├── logger.py          # Event logging
+│   ├── models.py          # Data models
+│   ├── tool_call_model.py # Tool call data model
+│   ├── tool_execution_manager.py # Tool execution management
+│   └── mcp/              # Model Context Protocol components
+│   │   ├── __init__.py
+│   │   ├── server.py     # MCP server to expose kernel services and tools
+│   │   ├── client.py     # MCP client to connect to external tool services
+│   │   ├── client_manager.py # MCP client manager
+│   │   └── server_registry.py # MCP server registry
+│   └── tools/            # Built-in tools for the kernel
+│       ├── __init__.py
+│       ├── file_operations.py # File operation tools
+│       ├── mcp_tools.py  # MCP-related tools
+│       ├── shell_command.py # Shell command tools
+│       └── system_tools.py # System utilities
+├── services/              # Services that run on top of the kernel
 │   ├── __init__.py
-│   └── cli.py              # CLI interface
-└── webui/                  # Web user interface (future implementation)
-    ├── __init__.py
-    └── app.py              # Web UI application
-tests/                      # Unit test suite
-├── test_kernel.py
-├── test_event_loop.py
-├── test_scheduler.py
-├── test_registry.py
-└── test_mcp.py
-tests/integration/          # Integration test suite
-└── test_kernel_llm_integration.py  # End-to-end kernel to LLM flow tests
-requirements.txt            # Python dependencies
-pyproject.toml              # Project configuration
-main.py                     # Entry point
+│   ├── ai_orchestrator/   # AI orchestrator service
+│   │   ├── __init__.py
+│   │   ├── orchestrator_service.py # AI client orchestrator service
+│   │   ├── prompts.json  # Prompt templates
+│   │   ├── system_context_builder.py # System context builder
+│   │   └── turn_manager.py # Turn management
+│   ├── adaptive_loop/     # Adaptive Loop service
+│   │   ├── adaptive_loop_service.py # Adaptive Loop implementation
+│   │   └── __init__.py
+│   ├── llm_provider/      # LLM provider service
+│   │   ├── __init__.py
+│   │   ├── content_generator.py # Content generation logic
+│   │   ├── pipeline.py   # Processing pipeline
+│   │   ├── base_converter.py # Base converter
+│   │   ├── base_generator.py # Base generator
+│   │   ├── interfaces.py # Interfaces
+│   │   ├── test_mocks.py # Test mocks
+│   │   └── providers/    # LLM provider implementations
+│   │       ├── __init__.py
+│   │       ├── base_provider.py # Base provider
+│   │       ├── mock_provider.py # Mock provider
+│   │       ├── openai_provider.py # OpenAI provider
+│   │       ├── openai_converter.py # OpenAI converter
+│   │       └── provider_factory.py # Provider factory
+│   ├── tool_discovery/    # Tool discovery services
+│   │   ├── __init__.py
+│   │   ├── command_discovery.py # Command-based tool discovery
+│   │   └── mcp_discovery.py # MCP-based tool discovery
+│   ├── example_service.py # Example service implementation
+│   └── example_mcp_server.py # Example MCP server
+├── ui/                    # User interface layer
+│   ├── __init__.py
+│   ├── cli/              # Command-line interface
+│   │   ├── __init__.py
+│   │   ├── cli.py        # CLI interface
+│   │   └── demo_streaming.py # Demo streaming functionality
+│   ├── common/           # Common UI components
+│   │   ├── __init__.py
+│   │   ├── base_ui.py    # Base UI class
+│   │   ├── cli_ui.py     # CLI UI implementation
+│   │   └── kernel_api.py # Kernel API client
+│   └── webui/            # Web user interface
+│       ├── __init__.py
+│       └── app.py        # Web UI application
+├── tests/                 # Unit and integration tests
+├── docs/                  # Documentation
+├── common/                # Common utilities
+├── custom_runtime/        # Custom runtime components
+└── runtime_data/          # Runtime data directory
 ```
 
 ## Design Principles

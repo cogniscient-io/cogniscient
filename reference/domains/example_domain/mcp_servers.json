@@ -1,0 +1,7 @@
+[
+  {
+    "name": "example_server",
+    "server_url": "http://localhost:8080",
+    "description": "Example MCP server for the example domain"
+  }
+]

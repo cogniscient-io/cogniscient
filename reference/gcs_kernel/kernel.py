@@ -25,7 +25,7 @@ from gcs_kernel.tools.file_operations import register_file_operation_tools
 from gcs_kernel.tools.shell_command import register_shell_command_tools
 from gcs_kernel.tools.system_tools import register_system_tools
 from gcs_kernel.tools.mcp_tools import register_mcp_tools
-
+from gcs_kernel.tools.domain_tools import register_domain_tools
 
 class GCSKernel:
     """
@@ -107,6 +107,10 @@ class GCSKernel:
         self.tool_discovery_service = ToolDiscoveryService(self.registry)
         self.tool_discovery_service.logger = self.logger  # Set logger
 
+        # Initialize Domain Manager
+        from gcs_kernel.domain_manager import DomainManager
+        self.domain_manager = DomainManager(self)
+
         # Set up shutdown flag
         self._running = False
         # Set up initialization flag
@@ -150,8 +154,6 @@ class GCSKernel:
         else:
             logger.error("Could not access provider to fetch model information")
             return settings.llm_max_context_length
-
-
 
     async def run(self):
         """
@@ -275,6 +277,12 @@ class GCSKernel:
             total_elapsed = time.time() - start_time
             self.logger.debug(f"MCP tools registered (step: {elapsed:.2f}s, total: {total_elapsed:.2f}s)")
         
+        await register_domain_tools(self)
+        if self.logger:
+            elapsed = time.time() - tool_start_time
+            total_elapsed = time.time() - start_time
+            self.logger.debug(f"Domain tools registered (step: {elapsed:.2f}s, total: {total_elapsed:.2f}s)")
+        
         if self.logger:
             elapsed = time.time() - start_time
             self.logger.debug(f"All tools registered (elapsed: {elapsed:.2f}s)")
@@ -285,6 +293,9 @@ class GCSKernel:
         # AI orchestrator is initialized with content generator in constructor
         
         # Set a readiness flag that works across async/sync boundaries
+        # Discover available domains
+        if self.domain_manager:
+            await self.domain_manager.discover_domains()
         self._fully_initialized = True
         if self.logger:
             elapsed = time.time() - start_time
@@ -381,8 +392,6 @@ class GCSKernel:
             True if the kernel is running, False otherwise
         """
         return self._running
-
-
 
     def create_prompt_object(self, content: str, **kwargs) -> PromptObject:
         """Create a new prompt object with the given content and additional properties."""

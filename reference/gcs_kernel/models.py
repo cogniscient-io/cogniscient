@@ -246,6 +246,7 @@ class PromptObject(BaseModel):
             session_id=session_id,
             streaming_enabled=streaming_enabled,
             max_tokens=max_tokens,
+            tool_choice="auto",
             temperature=temperature
         )
     

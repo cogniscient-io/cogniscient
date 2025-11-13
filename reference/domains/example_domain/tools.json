@@ -1,0 +1,22 @@
+{
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "greet_user",
+        "description": "A simple tool to greet the user in the example domain",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "The name of the user to greet"
+            }
+          },
+          "required": ["name"]
+        }
+      },
+      "approval_required": false
+    }
+  ]
+}

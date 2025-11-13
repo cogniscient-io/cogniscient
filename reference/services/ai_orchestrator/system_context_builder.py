@@ -34,7 +34,8 @@ class SystemContextBuilder:
         """
         self.mcp_client = mcp_client
         self.kernel = kernel
-        self.prompts = self._load_prompts()
+        self._default_prompts = self._load_prompts()
+        self.prompts = self._default_prompts.copy()
     
     def _load_prompts(self) -> Dict[str, Any]:
         """
@@ -57,6 +58,31 @@ class SystemContextBuilder:
         except json.JSONDecodeError:
             logger.warning(f"Invalid JSON in {prompts_file_path}. Using default prompts.")
             return self._get_default_prompts()
+
+    def load_prompts_from_domain(self, domain_prompts_path: str) -> bool:
+        """
+        Load prompts from a domain-specific prompts file.
+
+        Args:
+            domain_prompts_path: Path to the domain-specific prompts.json file
+
+        Returns:
+            Boolean indicating success or failure
+        """
+        try:
+            with open(domain_prompts_path, 'r', encoding='utf-8') as f:
+                domain_prompts = json.load(f)['system_context']
+            self.prompts = domain_prompts
+            return True
+        except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+            logger.warning(f"Could not load domain prompts from {domain_prompts_path}: {str(e)}")
+            return False
+
+    def revert_to_default_prompts(self):
+        """
+        Revert to the default prompts that were loaded at initialization.
+        """
+        self.prompts = self._default_prompts.copy()
 
     def get_formatted_prompt_with_model_style(self, prompt_type: str, model_name: str = None, **kwargs) -> str:
         """

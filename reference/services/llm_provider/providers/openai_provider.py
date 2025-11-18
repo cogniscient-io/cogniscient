@@ -168,14 +168,6 @@ class OpenAIProvider(BaseProvider):
                         max_context_length = model_data['max_model_len']
                     elif 'max_context_length' in model_data:
                         max_context_length = model_data['max_context_length']
-                    elif 'context_length' in model_data:
-                        max_context_length = model_data['context_length']
-                    elif 'max_tokens' in model_data:
-                        # Be careful - this might be response max_tokens, not context length
-                        # For now, only use if it looks like a context length (> 4096)
-                        max_tokens_val = model_data['max_tokens']
-                        if isinstance(max_tokens_val, int) and max_tokens_val > 4096:
-                            max_context_length = max_tokens_val
                     elif 'max_input_tokens' in model_data:
                         max_context_length = model_data['max_input_tokens']
                     
@@ -217,6 +209,7 @@ class OpenAIProvider(BaseProvider):
                                 max_context_length = 4096  # Default fallback
     
                     # Extract relevant information from the model data
+                    # TODO: Yes, we can and should use the adaptive loop for all the fields
                     result = {
                         'id': model_data.get('id'),
                         'object': model_data.get('object'),

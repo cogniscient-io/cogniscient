@@ -6,8 +6,10 @@ dynamic loading of specialized domain knowledge and capabilities.
 """
 import json
 from pathlib import Path
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Any
 from pydantic import BaseModel, Field
+
+from common.settings import settings
 
 
 class DomainConfig(BaseModel):
@@ -21,15 +23,25 @@ class DomainConfig(BaseModel):
 class DomainManager:
     """Manages dynamic loading of specialized domains"""
     
-    def __init__(self, kernel, domains_directory: str = "./domains"):
+    def __init__(self, kernel):
         self.kernel = kernel
-        self.domains_directory = Path(domains_directory)
+        self.domains_directory = Path(settings.domain_directory)
         self.available_domains: Dict[str, Path] = {}
         self.current_domain: Optional[str] = None
         self.system_context_builder = kernel.ai_orchestrator.system_context_builder
         self._default_prompts = None
         self._domain_loaded_tools: List[str] = []  # Track tools loaded from the current domain
         self._domain_loaded_servers: List[str] = []  # Track servers loaded from the current domain
+        self._current_domain_data = {}  # Store current domain data to be accessed by system_context_builder
+    
+    def get_current_domain_data(self) -> Dict[str, Any]:
+        """
+        Get the currently loaded domain data.
+        
+        Returns:
+            Dictionary containing domain-specific data, or empty dict if no domain is loaded
+        """
+        return self._current_domain_data.copy()  # Return a copy to prevent external modification
         
         # Store default prompts from the system context builder
         if hasattr(self.system_context_builder, 'prompts'):
@@ -155,28 +167,26 @@ class DomainManager:
             return False
 
     async def _apply_domain_prompts(self, domain_path: Path):
-        """Apply domain-specific prompts from the domain directory"""
+        """Load domain-specific data from the domain directory into internal state"""
         prompts_path = domain_path / "prompts.json"
         
         if prompts_path.exists():
             try:
-                with open(prompts_path, 'r') as f:
-                    domain_prompts = json.load(f)
+                # Load domain data into internal state
+                with open(prompts_path, 'r', encoding='utf-8') as f:
+                    domain_data = json.load(f)
                 
-                # Update the system context builder with domain prompts
-                self.system_context_builder.prompts = domain_prompts
-            except (json.JSONDecodeError, FileNotFoundError):
-                # If domain prompts are invalid, keep current prompts
-                pass
+                self._current_domain_data = domain_data.get('system_context', {})
+            except (json.JSONDecodeError, FileNotFoundError, KeyError):
+                # If domain data is invalid, clear the domain data
+                self._current_domain_data = {}
         else:
-            # If no domain prompts exist, revert to default
-            if self._default_prompts:
-                self.system_context_builder.prompts = self._default_prompts
+            # If no domain prompts exist, clear the domain data
+            self._current_domain_data = {}
 
     async def _revert_to_default_prompts(self):
-        """Revert back to the default prompts"""
-        if self._default_prompts:
-            self.system_context_builder.prompts = self._default_prompts
+        """Revert back to the default prompts by clearing domain data"""
+        self._current_domain_data = {}
 
     async def _register_domain_tools(self, domain_path: Path):
         """Register domain-specific tools from the domain directory"""

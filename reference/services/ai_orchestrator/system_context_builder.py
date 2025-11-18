@@ -6,11 +6,10 @@ system-level context for AI interactions, including available tools,
 capabilities, and relevant context information.
 """
 
-import asyncio
 import json
 import logging
 import os
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any
 from gcs_kernel.mcp.client import MCPClient
 from gcs_kernel.models import PromptObject
 
@@ -59,31 +58,6 @@ class SystemContextBuilder:
             logger.warning(f"Invalid JSON in {prompts_file_path}. Using default prompts.")
             return self._get_default_prompts()
 
-    def load_prompts_from_domain(self, domain_prompts_path: str) -> bool:
-        """
-        Load prompts from a domain-specific prompts file.
-
-        Args:
-            domain_prompts_path: Path to the domain-specific prompts.json file
-
-        Returns:
-            Boolean indicating success or failure
-        """
-        try:
-            with open(domain_prompts_path, 'r', encoding='utf-8') as f:
-                domain_prompts = json.load(f)['system_context']
-            self.prompts = domain_prompts
-            return True
-        except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
-            logger.warning(f"Could not load domain prompts from {domain_prompts_path}: {str(e)}")
-            return False
-
-    def revert_to_default_prompts(self):
-        """
-        Revert to the default prompts that were loaded at initialization.
-        """
-        self.prompts = self._default_prompts.copy()
-
     def get_formatted_prompt_with_model_style(self, prompt_type: str, model_name: str = None, **kwargs) -> str:
         """
         Get a formatted prompt based on the model style (XML vs JSON).
@@ -104,14 +78,12 @@ class SystemContextBuilder:
                 use_xml_style = True
             # You can add more model detection logic here
         
-        # Select the appropriate prompt based on model style
-        if use_xml_style:
-            if prompt_type == "tool_usage_instructions":
-                prompt_data = self.prompts.get("tool_usage_instructions_xml", self.prompts.get("tool_usage_instructions", []))
-            else:
-                prompt_data = self.prompts.get(f"{prompt_type}_xml", self.prompts.get(prompt_type, []))
-        else:
-            prompt_data = self.prompts.get(f"{prompt_type}_json", self.prompts.get(prompt_type, []))
+        # For model-specific formatting, only use base prompts (tool format is system-level)
+        # Domain data should not override the fundamental tool calling format
+        prompt_data = self.prompts.get(
+            f"{prompt_type}_xml" if use_xml_style else f"{prompt_type}_json",
+            self.prompts.get(prompt_type, [])
+        )
         
         return self._format_prompt(prompt_data, **kwargs)
 
@@ -131,6 +103,11 @@ class SystemContextBuilder:
         try:
             # Build the system context with general guidance only (no more tool listings)
             system_context = self._format_prompt(self.prompts["base_message_with_tools"], tool_names="available through the tools API")
+
+            # Add domain-specific information if available
+            domain_data = self.get_domain_data()
+            if domain_data.get("domain_specific_info"):
+                system_context += self._format_prompt(domain_data["domain_specific_info"])
 
             # Add general guidance
             system_context += self._format_prompt(self.prompts["general_guidance"])

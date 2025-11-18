@@ -28,7 +28,7 @@ class GlobalSettings(BaseSettings):
     llm_timeout: int = 60
     llm_max_retries: int = 3
     llm_temperature: float = 0.7
-    llm_max_tokens: int = 1000  # Max tokens for the response/output
+    llm_max_tokens: int = 5000  # Max tokens for the response/output
     llm_max_context_length: int = 128000  # Max total tokens for context (input + output)
 
     # Application settings
@@ -37,6 +37,9 @@ class GlobalSettings(BaseSettings):
     # MCP settings
     mcp_runtime_data_directory: str = "./runtime_data"
     mcp_server_registry_filename: str = "mcp_servers.json"
+
+    # Domain settings
+    domain_directory: str = "./domains"
 
     model_config = ConfigDict(
         env_file=".env",

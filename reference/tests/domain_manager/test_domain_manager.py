@@ -23,11 +23,18 @@ class TestDomainManager:
         """Set up test fixtures before each test method."""
         # Create a temporary directory for test domains
         self.test_domains_dir = Path(tempfile.mkdtemp())
+        
+        # For testing, we'll temporarily change the settings
+        from common.settings import settings
+        self.original_domain_directory = settings.domain_directory
+        settings.domain_directory = str(self.test_domains_dir)
+
         self.kernel_mock = MagicMock()
         
         # Mock AI orchestrator with system context builder
         self.system_context_builder_mock = MagicMock()
         self.system_context_builder_mock.prompts = {"test": "default_prompts"}
+        self.system_context_builder_mock.revert_to_default_prompts.return_value = True
         self.kernel_mock.ai_orchestrator = MagicMock()
         self.kernel_mock.ai_orchestrator.system_context_builder = self.system_context_builder_mock
         
@@ -42,10 +49,13 @@ class TestDomainManager:
         self.kernel_mock.registry = self.registry_mock
         
         # Create the DomainManager instance
-        self.domain_manager = DomainManager(self.kernel_mock, domains_directory=str(self.test_domains_dir))
+        self.domain_manager = DomainManager(self.kernel_mock)
     
     def teardown_method(self):
         """Clean up after each test method."""
+        # Restore original domain directory setting
+        from common.settings import settings
+        settings.domain_directory = self.original_domain_directory
         shutil.rmtree(self.test_domains_dir)
     
     def create_test_domain(self, name, description="Test Domain", version="1.0.0", tools=None, mcp_servers=None, has_prompts=True):
@@ -93,7 +103,7 @@ class TestDomainManager:
         assert self.domain_manager.domains_directory == self.test_domains_dir
         assert self.domain_manager.available_domains == {}
         assert self.domain_manager.current_domain is None
-        assert self.domain_manager._default_prompts is not None
+        assert hasattr(self.domain_manager, '_current_domain_data')
     
     def test_discover_domains(self):
         """Test discovery of available domains."""
@@ -313,8 +323,8 @@ class TestDomainManager:
         domain_path = self.create_test_domain("prompt_domain")
         custom_prompts = {
             "system_context": {
-                "base_message_with_tools": [
-                    "Custom prompts for test."
+                "domain_specific_info": [
+                    "Custom domain-specific information."
                 ]
             }
         }
@@ -328,11 +338,12 @@ class TestDomainManager:
         # Load the domain
         result = asyncio.run(self.domain_manager.load_domain("prompt_domain"))
         
-        # Verify domain was loaded and prompts were updated
+        # Verify domain was loaded
         assert result is True
         assert self.domain_manager.current_domain == "prompt_domain"
-        # Check that system context builder received the new prompts
-        assert self.domain_manager.system_context_builder.prompts != self.domain_manager._default_prompts
+        
+        # Check that the domain data was loaded into the DomainManager
+        assert self.domain_manager._current_domain_data  # Should not be empty after loading domain
     
     def test_unload_domain_reverts_prompts(self):
         """Test that unloading domain reverts to default prompts."""
@@ -340,8 +351,8 @@ class TestDomainManager:
         domain_path = self.create_test_domain("prompt_domain")
         custom_prompts = {
             "system_context": {
-                "base_message_with_tools": [
-                    "Custom prompts for test."
+                "domain_specific_info": [
+                    "Custom domain-specific information."
                 ]
             }
         }
@@ -355,14 +366,14 @@ class TestDomainManager:
         # Load the domain
         load_result = asyncio.run(self.domain_manager.load_domain("prompt_domain"))
         assert load_result is True
-        # At this point, custom prompts should be active
+        # At this point, domain-specific prompts should be active
         
         # Now unload the domain
         unload_result = asyncio.run(self.domain_manager.unload_domain())
         assert unload_result is True
         
-        # Verify that default prompts were restored
-        assert self.domain_manager.system_context_builder.prompts == self.domain_manager._default_prompts
+        # Verify that domain data was cleared
+        assert self.domain_manager._current_domain_data == {}  # Should be empty after unloading domain
     
     def test_load_domain_with_mcp_servers(self):
         """Test loading domain with MCP servers."""

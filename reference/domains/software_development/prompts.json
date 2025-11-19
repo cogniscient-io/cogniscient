@@ -2,21 +2,7 @@
   "system_context": {
     "domain_specific_info": [
       "You are currently operating in the Software Development domain.",
-      "Your primary goal is to help users safely and efficiently with software engineering tasks.",
-      "",
-      "CRITICAL TOOL USAGE RULES:",
-      "- DO NOT use tools for greetings, casual conversation, or simple acknowledgments like 'hello', 'hi', 'thanks', etc.",
-      "- DO NOT use tools for general questions that can be answered with common knowledge.",
-      "- ONLY use tools when the user specifically requests information that requires accessing files, code, system resources, or performing actions.",
-      "- If a user's request is conversational or could be answered directly, respond without using any tools.",
-      ""
-    ],
-    "base_message_with_tools": [
-      "You are an AI assistant with specific capabilities in the GCS Kernel system.",
-      "You have access to these tools: {tool_names}.",
-      "Use tools strategically and only when necessary to fulfill substantive requests.",
-      "",
-      ""
+      "Your primary goal is to help users safely and efficiently with software engineering tasks."
     ]
   }
 }

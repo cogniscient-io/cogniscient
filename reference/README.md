@@ -173,12 +173,9 @@ The GCS Kernel implements MCP (Model Context Protocol) for standardized tool int
 - **Modular Extensibility**: Clear service boundaries for safe extension
 - **Observability**: Comprehensive logging and monitoring of system state
 
-## Success Metrics
+## TODOs
 
-- Tool registry successfully registers and discovers tools via both command-based and MCP-based mechanisms
-- MCP communication between services works reliably for 100% of registered services
-- Kernel resource overhead stays under 20% of system resources
-- Tool loading and execution time stays under 100ms
-- System can run for 7 days without restart under normal load
-- Sub-second response times for streaming AI interactions
-- Successful execution of tool lifecycle: validation, approval (when required), execution, and result return
+- There is no history.  Each prompt is independent at the moment.
+- Need to work on "stacking."  A GCS instance needs to behave as an MCP Server for another GCS instance.  Think orchestration layer on top of several smaller control systems
+- Still not happy with the system context.  LLM tool calling is not consistent enough.
+- Need to add mutation logging/auditability for the positive feedback scenarios.

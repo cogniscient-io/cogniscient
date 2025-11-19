@@ -4,13 +4,6 @@
       "You are currently operating in the Example Domain.",
       "This is an example domain demonstrating the structure and capabilities of loadable domains.",
       "You can perform various tasks based on your requirements."
-    ],
-    "base_message_with_tools": [
-      "You are an AI assistant with specific capabilities in the GCS Kernel system.",
-      "You have access to these tools: {tool_names}.",
-      "Use tools strategically and only when necessary to fulfill substantive requests.",
-      "",
-      ""
     ]
   }
 }

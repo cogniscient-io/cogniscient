@@ -61,10 +61,13 @@ async def test_content_generator_streaming_and_response_processing():
 async def test_content_generator_with_tool_calls():
     """Test that the content generator properly handles tool calls in streaming responses."""
     # For this test, we need to create a mock provider that returns tool calls in streaming chunks
-    # Since the real implementation is complex, we'll test the processing logic by directly 
-    # calling the process_streaming_chunks method
+    # Since the real implementation now uses the ToolCallStreamingService, we'll test both:
+    # 1. The streaming service directly
+    # 2. The process_streaming_chunks method when provided with an operation_id
+    from services.tool_call_streaming_service import tool_call_streaming_service
+
     generator = LLMContentGenerator()
-    
+
     # Create mock streaming chunks that include tool calls
     mock_chunks = [
         {
@@ -113,19 +116,45 @@ async def test_content_generator_with_tool_calls():
             }]
         }
     ]
-    
-    # Process the chunks to get the complete response
-    complete_response = generator.process_streaming_chunks(mock_chunks)
-    
+
+    # Test the service directly first with a fresh operation ID
+    operation_id1 = 'test_operation_123a'
+
+    # Process chunks through the streaming service
+    for chunk in mock_chunks:
+        tool_call_streaming_service.process_streaming_chunk(chunk, operation_id1)
+
+    # Get the completed tool calls from the service
+    completed_tool_calls = tool_call_streaming_service.get_completed_tool_calls(operation_id1)
+
+    # Verify the tool call was properly accumulated by the service
+    assert len(completed_tool_calls) == 1
+    assert completed_tool_calls[0]['id'] == 'call_123'
+    assert completed_tool_calls[0]['name'] == 'test_tool'
+    assert completed_tool_calls[0]['args'] == {"param": "value1"}
+
+    # Now test process_streaming_chunks with a separate flow
+    # Create new operation ID and process the same chunks through stream_response simulation
+    operation_id2 = 'test_operation_123b'
+
+    # Simulate what happens in stream_response method - processing each chunk
+    for chunk in mock_chunks:
+        # This simulates the call that happens in stream_response
+        tool_call_streaming_service.process_streaming_chunk(chunk, operation_id2)
+
+    # Now test process_streaming_chunks with the operation ID which will retrieve
+    # tool calls from the streaming service
+    complete_response = generator.process_streaming_chunks(mock_chunks, operation_id2)
+
     # Verify the complete response structure
     assert complete_response is not None
     assert 'choices' in complete_response
     assert len(complete_response['choices']) == 1
-    
+
     choice = complete_response['choices'][0]
     assert 'message' in choice
     assert 'tool_calls' in choice['message']
-    
+
     # Verify the tool call was properly accumulated
     tool_calls = choice['message']['tool_calls']
     assert len(tool_calls) == 1

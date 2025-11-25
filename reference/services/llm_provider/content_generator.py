@@ -6,12 +6,14 @@ and follows Qwen Code patterns for content generation, using Pydantic Settings.
 It supports multiple LLM providers through the provider factory.
 """
 
+import json
 import logging
 from typing import Any, AsyncIterator, Dict
 from gcs_kernel.models import PromptObject
 from services.llm_provider.base_generator import BaseContentGenerator
 from services.llm_provider.pipeline import ContentGenerationPipeline
 from services.llm_provider.providers.provider_factory import ProviderFactory
+from services.tool_call_streaming_service import tool_call_streaming_service
 
 
 # Set up logging
@@ -78,6 +80,9 @@ class LLMContentGenerator(BaseContentGenerator):
         # Mark the prompt as processing
         prompt_obj.mark_processing()
 
+        # Generate a unique ID for this streaming operation
+        operation_id = f"{prompt_obj.prompt_id}_{id(prompt_obj)}"
+
         try:
             # Store all chunks to reconstruct the full response temporarily
             chunks_accumulated = []
@@ -93,21 +98,46 @@ class LLMContentGenerator(BaseContentGenerator):
                     if content:
                         yield content
 
+                    # Process any tool call deltas using the new streaming service
+                    tool_calls_delta = delta.get("tool_calls")
+                    if tool_calls_delta:
+                        # Process each tool call delta with the streaming service
+                        completed_tool_calls = tool_call_streaming_service.process_streaming_chunk(
+                            chunk, operation_id
+                        )
+
+                        # Add completed tool calls to the prompt object if any
+                        for tool_call in completed_tool_calls:
+                            from gcs_kernel.tool_call_model import ToolCall
+                            openai_tool_call = ToolCall.ensure_openai_format(tool_call)
+                            prompt_obj.add_tool_call(openai_tool_call)
+
                 # Store the chunk to reconstruct the full response later
                 chunks_accumulated.append(chunk)
+
+            # After streaming completes, get any remaining completed tool calls
+            final_completed_tool_calls = tool_call_streaming_service.get_completed_tool_calls(operation_id)
+
+            # Add any final completed tool calls to the prompt object
+            for tool_call in final_completed_tool_calls:
+                from gcs_kernel.tool_call_model import ToolCall
+                openai_tool_call = ToolCall.ensure_openai_format(tool_call)
+                prompt_obj.add_tool_call(openai_tool_call)
 
             # After streaming completes, reconstruct the full response from accumulated chunks
             # NOTE: For OpenAI-compatible APIs including vLLM, the streaming response provides
             # content deltas during the stream and potentially a final chunk with finish_reason,
-            # but may not include post-processing metadata like usage statistics that would 
+            # but may not include post-processing metadata like usage statistics that would
             # be available in a non-streaming response. The process_streaming_chunks method
             # reconstructs the complete message content and structure from the streamed deltas.
-            full_response = self.process_streaming_chunks(chunks_accumulated)
-            
+            full_response = self.process_streaming_chunks(chunks_accumulated, operation_id)
+
             # Process the reconstructed full response
             self.process_full_response(prompt_obj, full_response)
 
         except Exception as e:
+            # Reset the parser state if there's an error
+            tool_call_streaming_service.reset_parser(operation_id)
             prompt_obj.mark_error(str(e))
             raise
 
@@ -155,22 +185,22 @@ class LLMContentGenerator(BaseContentGenerator):
 
         logger.debug(f"ContentGenerator process_full_response - finished, result_content: '{prompt_obj.result_content}', tool_calls count: {len(prompt_obj.tool_calls)}")
 
-    def process_streaming_chunks(self, chunks: list) -> Dict[str, Any]:
+    def process_streaming_chunks(self, chunks: list, operation_id: str = None) -> Dict[str, Any]:
         """
         Process accumulated streaming chunks into a complete response.
 
         Args:
             chunks: List of streaming response chunks
+            operation_id: Optional operation ID to reference completed tool calls from streaming service
 
         Returns:
             Complete response in OpenAI format
         """
         # Initialize variables to collect the full response for potential tool calls
-        accumulated_tool_calls = []
         accumulated_content = ""
         final_finish_reason = None  # Track the finish reason from the final chunk
 
-        # Process each chunk to accumulate content and tool calls
+        # Process each chunk to accumulate content
         for chunk in chunks:
             choices = chunk.get("choices", [])
             if choices:
@@ -180,33 +210,6 @@ class LLMContentGenerator(BaseContentGenerator):
                 content = delta.get("content", "")
                 if content:
                     accumulated_content += content
-
-                # Handle tool call chunks - OpenAI streams tool calls as deltas too
-                tool_calls_delta = delta.get("tool_calls")
-                if tool_calls_delta:
-                    # Process tool call deltas
-                    for tool_call_delta in tool_calls_delta:
-                        index = tool_call_delta.get("index")
-                        # Ensure we have enough slots in accumulated_tool_calls
-                        while len(accumulated_tool_calls) <= index:
-                            accumulated_tool_calls.append({
-                                "id": "",
-                                "type": "",
-                                "function": {"name": "", "arguments": ""}
-                            })
-
-                        # Update the appropriate tool call slot with the delta info
-                        current_tc = accumulated_tool_calls[index]
-                        if "id" in tool_call_delta:
-                            current_tc["id"] = tool_call_delta["id"]
-                        if "type" in tool_call_delta:
-                            current_tc["type"] = tool_call_delta["type"]
-                        if "function" in tool_call_delta:
-                            function_delta = tool_call_delta["function"]
-                            if "name" in function_delta:
-                                current_tc["function"]["name"] += function_delta["name"]
-                            if "arguments" in function_delta:
-                                current_tc["function"]["arguments"] += function_delta["arguments"]
 
                 # Check if this chunk contains the finish_reason (which would be in the choice, not delta)
                 # This is important for capturing the final message object's finish_reason
@@ -226,11 +229,29 @@ class LLMContentGenerator(BaseContentGenerator):
         }
         if accumulated_content:
             message_obj["content"] = accumulated_content
-        if accumulated_tool_calls:
-            message_obj["tool_calls"] = accumulated_tool_calls
+
+        # If we have an operation ID, get completed tool calls from the streaming service
+        if operation_id:
+            # Get completed tool calls for this operation without permanently removing them
+            completed_tool_calls = tool_call_streaming_service.peek_completed_tool_calls(operation_id)
+            if completed_tool_calls:
+                # Format tool calls in OpenAI format
+                formatted_tool_calls = []
+                for tc in completed_tool_calls:
+                    formatted_tool_calls.append({
+                        "id": tc.get("id", ""),
+                        "type": "function",
+                        "function": {
+                            "name": tc.get("name", ""),
+                            "arguments": json.dumps(tc.get("args", {}))
+                        }
+                    })
+                message_obj["tool_calls"] = formatted_tool_calls
 
         # Use the finish_reason from the final chunk if available, otherwise determine it based on tool calls
-        finish_reason = final_finish_reason if final_finish_reason else ("tool_calls" if accumulated_tool_calls else "stop")
+        finish_reason = final_finish_reason if final_finish_reason else (
+            "tool_calls" if message_obj.get("tool_calls") else "stop"
+        )
 
         full_response["choices"].append({
             "index": 0,
@@ -238,7 +259,7 @@ class LLMContentGenerator(BaseContentGenerator):
             "finish_reason": finish_reason
         })
 
-        logger.debug(f"ContentGenerator process_streaming_chunks - accumulated_content: '{accumulated_content}', accumulated_tool_calls: {accumulated_tool_calls}, finish_reason: {finish_reason}")
+        logger.debug(f"ContentGenerator process_streaming_chunks - accumulated_content: '{accumulated_content}', finish_reason: {finish_reason}")
 
         return full_response
 
